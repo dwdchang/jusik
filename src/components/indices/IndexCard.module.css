@@ -1,0 +1,48 @@
+.card {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-20);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.name {
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-8);
+}
+
+.close {
+  font-size: var(--text-price);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tight);
+  color: var(--color-text-primary);
+  line-height: 1.2;
+  margin-bottom: var(--space-8);
+}
+
+.change {
+  font-size: var(--text-caption);
+  font-weight: var(--weight-semibold);
+  margin-bottom: var(--space-12);
+}
+
+.rise {
+  color: var(--color-rise);
+}
+
+.fall {
+  color: var(--color-fall);
+}
+
+.flat {
+  color: var(--color-flat);
+}
+
+.basDt {
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+}
