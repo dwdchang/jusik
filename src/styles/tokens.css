@@ -56,3 +56,17 @@
   --chart-stroke-kospi: var(--color-primary);
   --chart-stroke-kosdaq: var(--color-fall);
 }
+
+/**
+ * 다크 모드 — 배경/surface/텍스트/보더만 전환.
+ * --color-rise, --color-fall은 라이트·다크 공통 고정값이라 여기서 재정의하지 않는다.
+ */
+html[data-theme="dark"] {
+  --color-bg: #14161a;
+  --color-surface: #1c1f26;
+  --color-border: #2b2f38;
+
+  --color-text-primary: #f2f4f6;
+  --color-text-secondary: #b0b8c4;
+  --color-text-tertiary: #7b8794;
+}

@@ -1,3 +1,4 @@
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import type { IndexDashboardData } from "@/types/indices";
 import { DataAsOfFooter } from "./DataAsOfFooter";
 import { IndexCard } from "./IndexCard";
@@ -8,8 +9,11 @@ export function IndexDashboard({ data }: { data: IndexDashboardData }) {
   return (
     <div className={styles.dashboard}>
       <header className={styles.header}>
-        <h1 className={styles.title}>국내 지수</h1>
-        <p className={styles.subtitle}>KOSPI · KOSDAQ 최근 7거래일 추이</p>
+        <div>
+          <h1 className={styles.title}>국내 지수</h1>
+          <p className={styles.subtitle}>KOSPI · KOSDAQ 최근 7거래일 추이</p>
+        </div>
+        <ThemeToggle />
       </header>
 
       <section className={styles.cards} aria-label="지수 현황">
