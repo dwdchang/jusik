@@ -1048,7 +1048,7 @@ body {
 
 ---
 
-## 6. 단계별 구현 마일스톤 (Phase 1 ~ 4)
+## 6. 단계별 구현 마일스톤 (Phase 1 ~ 6)
 
 ### Phase 1 — 환경·API 클라이언트·Raw 파이프
 
@@ -1123,6 +1123,51 @@ body {
 
 **Phase 4 완료 조건:** ☐ `revalidateTag('indices')` 후 새 `asOf` 반영.
 
+### 4.7 (2026-07-03) 결정: 14:00 KST cron 제거
+
+**결정:** 4-2/4-3에서 구축한 `api/cron/revalidate-indices` 라우트와 `vercel.json`의 `0 5 * * 1-5`(평일 14:00 KST) cron 스케줄을 **삭제**했다. `src/app/api/cron/`, `vercel.json`을 제거했고, `CRON_SECRET`은 애초에 `.env.local`에 설정된 적이 없어 추가 정리는 불필요했다.
+
+**이유:**
+- 이 cron은 원안(data-go-kr, §5.2~5.4)의 캐시 구조를 전제로 설계되었다. data-go-kr API는 **하루 한 번, 그것도 익영업일 13:00 이후**에야 전일 종가가 반영되고 캐시도 `revalidate: 86400`(24시간)이었기 때문에, 새 데이터가 나온 뒤 캐시가 자연 만료될 때까지 기다리면 최대 24시간 지연될 수 있어 **14:00 KST 강제 revalidate**가 필요했다.
+- Phase 5에서 data-go-kr 레거시를 전량 제거하고 KIS API로 완전히 전환한 지금은 캐시 정책이 `KIS_CACHE_REVALIDATE_SECONDS = 600`(10분)이며, KIS는 준실시간 시세를 제공한다(research.md §14.1~14.2). 하루 중 언제 방문해도 최악의 경우 10분 이내의 데이터가 자동으로 나오므로, 하루 한 번뿐인 14:00 강제 갱신은 10분 자동 캐시가 이미 하는 일을 중복할 뿐 추가 이점이 없다.
+- 14:00이라는 시각 자체도 "T+1 13:00 이후 공공 API 반영"이라는 data-go-kr 전용 타이밍 근거였고, KIS 준실시간 데이터와는 무관하다.
+
+**결과:** Phase 4의 운영 갱신 방식은 cron 없이 **fetch 레벨 `revalidate: 600s`(ISR) 단독**으로 대체되었다. 이에 따라 4-1~4-3, 4-5는 더 이상 유효하지 않은 항목으로 처리하고, Phase 4 완료 조건도 "10분 자동 캐시로 `asOf`가 갱신되는지"로 재해석한다 (Phase 6 검증 시 `getDashboard.ts` 캐시 만료·재검증 동작을 통해 이미 실측 확인함).
+
+---
+
+### Phase 5 — KIS API 마이그레이션 문서화 및 레거시 정리
+
+**목표:** 이미 코드베이스에 구현된 KIS API 전환 내용을 계획 문서에 소급 반영하고, 남은 data-go-kr 레거시 코드의 처리 방향을 확정한다. (배경: research.md §14)
+
+| 순서 | 작업 | 파일 | 상태 |
+|------|------|------|------|
+| 5-1 | KIS 전환 배경·API 개요·토큰 제약 리서치 반영 | `research.md` §14 | ☑ 완료 |
+| 5-2 | data-go-kr 레거시(`lib/api/data-go-kr/`, `lib/indices/mapper.ts` 중 KIS 미전환 함수) 사용 여부 확인 | `lib/api/data-go-kr/`, `lib/indices/mapper.ts` | ☑ 확인 완료 — `history.ts`만 참조하는 죽은 코드였고, `mapper.ts`는 `kisMapper.ts`가 유틸 3개만 재사용 중이었음 |
+| 5-3 | 미사용 확정 시 제거 여부 결정 (제거 또는 유지 사유 기록) | 동일 | ☑ 제거로 결정·실행 — `history.ts`·`mapper.ts`·`lib/api/data-go-kr/` 전체 삭제, 재사용 유틸 3개(`parseNum`/`resolveDirection`/`formatBasDtLabel`)는 `kisMapper.ts`로 이관. 부수적으로 cron 라우트가 레거시 `CACHE_TAGS`를 import하던 버그도 `KIS_CACHE_TAGS`로 수정 |
+| 5-4 | `DATA_GO_KR_SERVICE_KEY` 등 미사용 env 정리 여부 확인 | `.env.local`, README | ☑ 완료 — `.env.local`에서 주석 처리된 `DATA_GO_KR_SERVICE_KEY` 줄 삭제 |
+| 5-5 | `KIS_DATA_NOTICE` 문구가 UI(`DataAsOfFooter` 등)에 정상 반영되는지 확인 | `types/indices.ts`, `components/indices/` | ☑ 완료 |
+
+**Phase 5 완료 조건:** ☑ research.md/plan.md에 KIS 전환 내역 반영 완료, ☑ data-go-kr 레거시 처리 방향 결정(제거·실행 완료).
+
+---
+
+### Phase 6 — KIS 토큰 캐시 외부 저장소 전환
+
+**목표:** 서버리스 다중 인스턴스 환경에서 토큰 발급 요청이 인스턴스별로 분산되어 발생하는 `1분당 1회`(`EGW00133`) rate limit 리스크를 제거한다. (배경: research.md §14.3~14.4)
+
+| 순서 | 작업 | 파일 | 상태 |
+|------|------|------|------|
+| 6-1 | 저장소 선택 확정 (Vercel KV vs Upstash Redis) — research.md §14.4 권고안(Upstash Redis) 검토 | 의사결정 | ☑ Upstash Redis 채택 |
+| 6-2 | 패키지 설치 및 env 추가 (`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` 등) | `.env.local`, `package.json` | ☑ 완료 |
+| 6-3 | `getKisAccessToken`을 외부 저장소 get/set으로 리팩터링 (토큰 + 만료 시각 함께 저장) | `lib/api/kis/auth.ts` | ☑ 완료 |
+| 6-4 | 동시 요청 합류(`inflight`) 로직을 분산 환경에 맞게 재검토 (저장소 레벨 락 또는 짧은 TTL로 완화) | 동일 | ☑ `SET NX PX` 분산 락 + 기존 inflight 병행 |
+| 6-5 | 로컬에서 토큰 캐시 hit/miss 로그로 검증 | — | ☑ 완료 (summary.md 참고) |
+| 6-6 | 프로덕션(Vercel) 배포 후 다중 인스턴스에서 토큰 발급 횟수 감소 확인 | Vercel 로그 | ☐ 미완료 — 배포 후 확인 필요 |
+
+**Phase 6 완료 조건:** ☐ 인스턴스 재시작/스케일아웃 시에도 토큰이 재사용되어 `1분당 1회` 제한에 걸리지 않음.
+(로컬 6-1~6-5 검증 완료. 프로덕션 다중 인스턴스 확인(6-6)은 배포 후 별도 진행 필요.)
+
 ---
 
 ## 7. PR 분리 권장 (선택)
@@ -1132,6 +1177,8 @@ body {
 | PR-1 | 1~2 | 키 보안, mapper, 캐시 |
 | PR-2 | 3 | UI/UX, Recharts, a11y |
 | PR-3 | 4 | cron, 운영 |
+| PR-4 | 5 | 문서 정합성, 레거시 정리 |
+| PR-5 | 6 | 토큰 캐시 외부화, 운영 안정성 |
 
 ---
 
@@ -1166,4 +1213,4 @@ mkdir -p src/lib/api/data-go-kr src/lib/indices src/types src/styles
 
 ---
 
-*문서 버전: 1.0 · 공공 API 국내 지수 대시보드 최종 구현 계획*
+*문서 버전: 1.1 (2026-07-03: Phase 5~6 KIS 마이그레이션 문서화·토큰 캐시 외부화 추가) · 공공 API 국내 지수 대시보드 최종 구현 계획*

@@ -640,4 +640,43 @@ src/
 
 ---
 
+## 14. KIS API 마이그레이션 리서치 (추가, 2026-07-03)
+
+> §14는 실제 구현이 코드베이스에 선반영된 뒤 사후 문서화한 내용이다. §1~13(공공데이터포털 기반 원안)은 초기 리서치 기록으로 유지하고, 데이터 소스는 이후 한국투자증권(KIS) Open API로 전환되었다.
+
+### 14.1 전환 배경
+
+- 원안(§3)의 금융위원회 지수시세정보 API 대비, KIS Open API는 준실시간(약 10분 간격) 시세를 제공해 「15:30 이후 갱신」 기대치 격차(R2, §5.2, §10)를 줄일 수 있다.
+- 코드베이스에 `src/lib/api/kis/`(`auth.ts`, `client.ts`, `constants.ts`, `types.ts`), `src/lib/indices/kisMapper.ts`가 이미 구현되어 있고, `getDashboard.ts`가 KIS 경로로 완전히 전환되어 있다.
+- `src/lib/api/data-go-kr/`, `src/lib/indices/mapper.ts`(data-go-kr 전용 함수)는 레거시로 남아 있으며 사용 여부·정리 방향은 미확정 → `plan.md` Phase 5로 등록.
+
+### 14.2 KIS Open API 개요
+
+| 항목 | 내용 |
+|------|------|
+| Base URL | `https://openapi.koreainvestment.com:9443` (`KIS_BASE_URL` env로 override 가능) |
+| 인증 | OAuth2 client_credentials, `POST /oauth2/tokenP` |
+| 시세 조회 | `GET /uapi/domestic-stock/v1/quotations/inquire-index-daily-price` (TR_ID `FHPUP02120000`) |
+| 지수 코드 | KOSPI `0001`, KOSDAQ `1001` (업종 시장분류 코드 `U`) |
+| 응답 구조 | `output1`(당일 요약 스냅샷) + `output2`(일자별 배열, 최신순) |
+| 캐시 정책 | fetch 레벨 `revalidate: 600s` + `unstable_cache` 이중 캐시 (§5.3 전략 1+3과 동일 패턴) |
+
+### 14.3 토큰 발급 제약 (실측, 2026-07-03)
+
+- 토큰 발급 엔드포인트는 **1분당 1회** 제한이며, 초과 시 `error_code: EGW00133`("접근토큰 발급 잠시 후 다시 시도하세요")로 거부된다. 로컬 검증 중 연속 스크립트 실행으로 실제 재현됨.
+- 현재 구현(`src/lib/api/kis/auth.ts`)은 **모듈 메모리**에 토큰을 캐시(`cachedToken` + `inflight` 프로미스로 동시 요청 합류)한다. 단일 프로세스 내에서는 안전하지만, **서버리스 다중 인스턴스 환경(Vercel)에서는 인스턴스마다 캐시가 별도로 초기화**되어 트래픽 증가 시 인스턴스 수만큼 토큰 발급이 분산 발생 → 1분당 1회 제한에 걸릴 위험이 커진다.
+- `auth.ts` 코드 내 기존 NOTE 주석에 "Vercel KV / Upstash Redis 등 외부 저장소 캐시로 교체 검토"가 이미 언급되어 있었으나 계획 문서에는 미반영 상태였다 → `plan.md` Phase 6으로 정식 등록.
+
+### 14.4 외부 저장소 캐시 옵션 비교
+
+| 옵션 | 장점 | 단점 |
+|------|------|------|
+| **Vercel KV**(Upstash 기반 Redis) | Vercel 프로젝트에 통합, 대시보드에서 즉시 프로비저닝 | Vercel 플랫폼 종속 |
+| **Upstash Redis**(직접 연동) | REST API로 Edge/서버리스 모두 호환, 배포처 종속 없음 | 별도 계정·키 관리 필요 |
+| 유지(모듈 메모리) | 변경 없음 | 인스턴스별 분산 발급 지속, 스케일 시 rate limit 리스크 |
+
+**권고:** Upstash Redis(REST API 방식)를 우선 검토한다 — 현재 Vercel 배포와 호환되면서도 특정 플랫폼에 종속되지 않는다. 상세 구현 순서는 `plan.md` Phase 6 참고.
+
+---
+
 *문서 버전: 2.0 · 국내 지수 대시보드 / 공공 API 연동 리서치*
