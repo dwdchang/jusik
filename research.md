@@ -7,7 +7,24 @@
 
 ---
 
+## 요약 (현재 상태, 2026-07-03)
+
+| 구분 | 항목 | 상태 |
+|------|------|------|
+| **최종 채택** | 데이터 소스: 한국투자증권(KIS) Open API | ✅ §14 참고 — 준실시간(약 10분 간격) 시세 |
+| **최종 채택** | 캐싱: fetch 레벨 `revalidate: 600s` + `unstable_cache` (자동 재검증만 사용) | ✅ §14.2 |
+| **최종 채택** | 토큰 캐시: Upstash Redis (`SET NX PX` 분산 락) | ✅ §14.3~14.4, `plan.md` Phase 6 |
+| **폐기됨** | 데이터 소스: 공공데이터포털 금융위원회_지수시세정보 (`getStockMarketIndex`) | ❌ §1~13 원안, `lib/api/data-go-kr/` 코드 전량 삭제 |
+| **폐기됨** | 캐싱: `revalidate: 86400`(24시간) + 평일 14:00 KST cron(`revalidateTag`) | ❌ §5.3 전략 2 — cron 라우트·`vercel.json` 삭제, `plan.md` §4.7 참고 |
+| **폐기됨** | 토큰/키 캐시: 모듈 메모리 단일 캐시 | ❌ 서버리스 다중 인스턴스에서 분산 발급 위험 → Redis로 대체 |
+
+아래 §1~13은 공공데이터포털 원안(초기 리서치)을 **삭제하지 않고 그대로 보존**한 기록이며, 실제 구현은 §14의 KIS API 전환 내용을 따른다.
+
+---
+
 ## 1. 요약 및 핵심 권고
+
+> ⚠️ **이 섹션(§1~13)은 공공데이터포털 원안이며 현재는 KIS API로 전환되어 폐기됨 — §14 참고**
 
 | 주제 | 권고 |
 |------|------|
@@ -273,6 +290,8 @@ next: { revalidate: 86_400, tags: ["indices"] }
 - 주말·공휴일에도 revalidate는 돌지만 **API 데이터는 변하지 않음** → 트래픽 낭비 최소화하려면 전략 2 병행.
 
 #### 전략 2 — Cron + `revalidateTag` (권장, 운영)
+
+> 📝 **각주 (2026-07-03):** 이 cron은 이후 제거됨 (`plan.md` §4.7 참고) — KIS API 전환 후 `revalidate: 600s`(10분) 자동 재검증만으로 충분해 별도 cron이 불필요해졌다.
 
 | 항목 | 값 |
 |------|-----|
@@ -560,6 +579,8 @@ Tailwind 없이 진행. `research.md`(이전 jusik 계획)와 동일하게:
 
 ## 9. 제안 디렉터리 구조 (구현 시)
 
+> ⚠️ `lib/api/data-go-kr/` 관련 경로는 삭제됨 (KIS API로 전환, `plan.md` Phase 5 참고). 아래는 원안 당시 제안 구조를 그대로 보존한 것이다.
+
 ```
 src/
 ├── app/
@@ -567,7 +588,7 @@ src/
 │   ├── page.module.css
 │   ├── layout.tsx
 │   └── api/
-│       └── cron/revalidate-indices/route.ts   # (선택)
+│       └── cron/revalidate-indices/route.ts   # (선택) — 삭제됨, plan.md §4.7 참고
 ├── components/
 │   └── indices/
 │       ├── IndexDashboard.tsx
@@ -577,12 +598,12 @@ src/
 │       ├── IndexLineChart.tsx                 # 'use client'
 │       └── IndexLineChart.module.css
 ├── lib/
-│   ├── api/data-go-kr/
+│   ├── api/data-go-kr/                        # 삭제됨 — KIS API(lib/api/kis/)로 대체
 │   │   ├── client.ts
 │   │   ├── types.ts
 │   │   └── normalize.ts
 │   └── indices/
-│       ├── mapper.ts
+│       ├── mapper.ts                          # 삭제됨 — 유틸은 kisMapper.ts로 이관
 │       ├── getDashboard.ts
 │       └── dates.ts                           # 영업일 7개 계산
 ├── types/
