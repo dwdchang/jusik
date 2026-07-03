@@ -38,5 +38,5 @@ export interface IndexDashboardData {
   kosdaqHistory: IndexSeries;
 }
 
-export const DATA_UPDATE_NOTICE =
-  "지수 데이터는 공공데이터포털 기준 익영업일 오후 1시 이후 반영됩니다.";
+export const KIS_DATA_NOTICE =
+  "지수 데이터는 한국투자증권 OpenAPI 기준이며 약 10분 간격으로 갱신됩니다. (장중 시세 지연 가능)";

@@ -2,7 +2,7 @@ import { IndexDashboard } from "@/components/indices/IndexDashboard";
 import { getDashboardData } from "@/lib/indices/getDashboard";
 import styles from "./page.module.css";
 
-export const revalidate = 86400;
+export const revalidate = 600;
 
 export default async function HomePage() {
   let data: Awaited<ReturnType<typeof getDashboardData>>;
