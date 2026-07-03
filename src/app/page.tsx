@@ -1,10 +1,45 @@
+import { redirect } from "next/navigation";
+import { auth, signOut } from "@/auth";
 import { IndexDashboard } from "@/components/indices/IndexDashboard";
+import { isEmailAllowed } from "@/lib/auth/allowedEmails";
 import { getDashboardData } from "@/lib/indices/getDashboard";
 import styles from "./page.module.css";
 
 export const revalidate = 600;
 
 export default async function HomePage() {
+  const session = await auth();
+
+  if (!session) {
+    redirect("/login");
+  }
+
+  const email = session.user?.email;
+
+  if (!isEmailAllowed(email)) {
+    return (
+      <main className={styles.page}>
+        <div className={styles.error} role="alert">
+          <h1 className={styles.errorTitle}>접근 권한이 없습니다</h1>
+          <p className={styles.errorMessage}>
+            {email ?? "이 계정"}은(는) 이 대시보드에 접근할 수 있는 목록에
+            없습니다.
+          </p>
+          <form
+            action={async () => {
+              "use server";
+              await signOut({ redirectTo: "/login" });
+            }}
+          >
+            <button type="submit" className={styles.signOutButton}>
+              로그아웃
+            </button>
+          </form>
+        </div>
+      </main>
+    );
+  }
+
   let data: Awaited<ReturnType<typeof getDashboardData>>;
 
   try {

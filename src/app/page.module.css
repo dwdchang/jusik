@@ -26,3 +26,19 @@
   color: var(--color-text-secondary);
   line-height: 1.5;
 }
+
+.signOutButton {
+  margin-top: var(--space-16);
+  padding: var(--space-8) var(--space-16);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+.signOutButton:hover {
+  background-color: var(--color-bg);
+}
