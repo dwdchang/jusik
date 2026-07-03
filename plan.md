@@ -7,7 +7,7 @@
 
 ---
 
-## 요약 (현재 상태, 2026-07-03)
+## 요약 (현재 상태, 2026-07-04)
 
 | Phase | 상태 |
 |-------|------|
@@ -17,8 +17,10 @@
 | 4 — 운영 갱신(cron)·polish | ✅ 완료 (14:00 cron은 §4.7에서 제거, 10분 자동 캐시로 대체) |
 | 5 — KIS 마이그레이션 문서화·레거시 정리 | ✅ 완료 |
 | 6 — KIS 토큰 캐시 외부 저장소(Upstash Redis) 전환 | ⚠️ 6-1~6-5 완료, **6-6 남음** |
+| 7 — Google OAuth 로그인 및 접근 제한 | ⚠️ 코드 구현·미인증 리다이렉트 확인 완료, **실제 Google 로그인 검증 남음** |
 
 **남은 작업 (6-6):** 프로덕션(Vercel) 배포 후 다중 인스턴스 환경에서 토큰 발급 횟수가 실제로 줄었는지 Vercel 로그로 확인.
+**남은 작업 (Phase 7):** 사용자가 Google Cloud Console에서 OAuth 클라이언트를 발급해 `.env.local`(`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`ALLOWED_EMAILS`)을 채우면 실제 로그인 플로우 검증.
 
 이하는 각 Phase의 상세 계획·근거·작업 단위 원문이다.
 
@@ -1065,7 +1067,7 @@ body {
 
 ---
 
-## 6. 단계별 구현 마일스톤 (Phase 1 ~ 6)
+## 6. 단계별 구현 마일스톤 (Phase 1 ~ 7)
 
 ### Phase 1 — 환경·API 클라이언트·Raw 파이프
 
@@ -1187,6 +1189,36 @@ body {
 
 ---
 
+### Phase 7 — Google OAuth 로그인 및 접근 제한
+
+**목표:** 미인증 사용자에게는 대시보드를 노출하지 않고, Google OAuth 로그인 후 사전에 허용된 이메일 계정만 실제 대시보드에 접근하도록 제한한다. (2026-07-04 계획 수립 및 구현)
+
+**아키텍처 결정:**
+- Next.js 16 App Router에서 세션을 확인해야 하므로, 구버전 `next-auth@4`가 아니라 App Router 네이티브 지원이 되는 **Auth.js v5**(`next-auth@beta`, 실측 `5.0.0-beta.31`, `next ^16.0.0` peer 지원 확인)를 사용한다.
+- **구현 중 발견:** Next.js 16에서 `middleware.ts` 컨벤션이 `proxy.ts`로 이름이 바뀌었다(`middleware`는 deprecated, `node_modules/next/dist/docs`의 `proxy.md` 확인). 기본 런타임도 Edge가 아닌 **Node.js**로 바뀌어, Auth.js 설정을 edge/node로 분리할 필요 없이 `src/auth.ts` 하나를 `src/proxy.ts`에서 바로 import해서 쓴다.
+- Provider는 **Google** 단일 사용 (`Google` provider), 별도 회원가입/비밀번호 플로우 없음.
+- 허용 여부 판단은 DB 없이 **env 변수의 이메일 화이트리스트**(`ALLOWED_EMAILS`, 쉼표 구분)로 처리한다.
+- 로그인 페이지는 **제목·설명 없이 "Google로 로그인" 버튼 중심**의 미니멀 디자인 — 기존 `tokens.css` + CSS Modules 규칙 그대로 따름(Tailwind 금지).
+- **구현 중 변경:** 로그인 버튼은 별도 Client Component 대신, Next.js App Router의 `<form action={서버 액션}>` 패턴(Auth.js 공식 예제와 동일)으로 처리했다. `signIn("google")` 호출에 클라이언트 상태가 필요 없어 `"use client"` 없이도 동작하고, 프로젝트의 "Server Component 우선" 원칙에 더 부합한다.
+
+| 순서 | 작업 | 파일 | 상태 |
+|------|------|------|------|
+| 7-1 | 패키지 설치 및 env 추가 (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `AUTH_SECRET`, `ALLOWED_EMAILS`) | `.env.local`, `package.json` | ☑ 완료 (`AUTH_SECRET`은 `openssl rand -base64 32`로 생성해 채움) |
+| 7-2 | Google Cloud Console에서 OAuth 클라이언트 발급 (승인된 리디렉션 URI: `.../api/auth/callback/google`) | 외부 설정 (사용자 작업) | ☐ **사용자 작업 필요** — `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`ALLOWED_EMAILS`는 아직 빈 값 |
+| 7-3 | Auth.js 설정 — `Google` provider. 화이트리스트 검사는 signIn 콜백이 아니라 대시보드 렌더 시점(7-8)에서 수행 | `src/auth.ts` | ☑ 완료 |
+| 7-4 | Auth.js 라우트 핸들러 마운트 | `src/app/api/auth/[...nextauth]/route.ts` | ☑ 완료 |
+| 7-5 | `proxy.ts` — 미인증 요청은 `/login`으로 리다이렉트해 대시보드(`/`) 및 향후 추가될 경로를 보호 (matcher로 `/login`, `/api/auth`, 정적 자원 제외) | `src/proxy.ts` | ☑ 완료 |
+| 7-6 | `/login` 페이지 — 제목/설명 없이 "Google로 로그인" 버튼만 배치, Server Action으로 `signIn("google")` 호출 | `src/app/login/page.tsx`, `page.module.css` | ☑ 완료 |
+| 7-7 | 허용 이메일이 아닌 계정으로 로그인 성공 시 접근 거부 처리 — 대시보드 대신 "접근 권한이 없습니다" 안내 + 로그아웃 버튼 | `src/app/page.tsx` 조건 분기 | ☑ 완료 |
+| 7-8 | 대시보드(`page.tsx`)에서 서버 세션(`auth()`) 확인 → 세션 없으면 `/login` redirect(방어적 이중 확인) → `ALLOWED_EMAILS` 통과 시에만 `IndexDashboard` 렌더 | `src/app/page.tsx` | ☑ 완료 |
+| 7-9 | 로컬 검증 — (a) 미인증 상태로 `/` 접속 → `/login` 리다이렉트(307) 확인, (b) `/login` 렌더 확인(스크린샷), (c) 허용/비허용 이메일 실제 로그인 플로우 | — | ⚠️ (a)(b)만 확인. (c)는 **실제 Google 계정 로그인 필요** — 7-2 완료 후 진행 |
+| 7-10 | 프로덕션(Vercel) 배포 시 `AUTH_SECRET`/`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`ALLOWED_EMAILS` env 등록, Google Console에 프로덕션 콜백 URL 추가 | Vercel 대시보드, Google Cloud Console | ☐ 미완료 — 배포 시 진행 |
+
+**Phase 7 완료 조건:** ☑ 미인증 사용자는 `/login`만 볼 수 있음(확인 완료), ☐ `ALLOWED_EMAILS`에 있는 계정만 대시보드 접근 가능(실제 로그인 검증 대기), ☐ 그 외 계정은 로그인은 되지만 접근 거부 메시지만 표시됨(실제 로그인 검증 대기).
+**남은 작업:** 사용자가 Google Cloud Console에서 OAuth 클라이언트를 발급해 `.env.local`의 `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`ALLOWED_EMAILS`를 채우면, 실제 로그인 플로우(7-9-c)를 마저 검증한다.
+
+---
+
 ## 7. PR 분리 권장 (선택)
 
 | PR | Phase | 리뷰 포인트 |
@@ -1196,6 +1228,7 @@ body {
 | PR-3 | 4 | cron, 운영 |
 | PR-4 | 5 | 문서 정합성, 레거시 정리 |
 | PR-5 | 6 | 토큰 캐시 외부화, 운영 안정성 |
+| PR-6 | 7 | 인증 플로우, 접근 제어, 시크릿 관리 |
 
 ---
 
