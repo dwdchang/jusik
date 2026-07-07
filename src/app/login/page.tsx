@@ -1,4 +1,5 @@
-import { signIn } from "@/auth";
+import { redirect } from "next/navigation";
+import { auth, signIn } from "@/auth";
 import styles from "./page.module.css";
 
 function GoogleIcon() {
@@ -24,7 +25,13 @@ function GoogleIcon() {
   );
 }
 
-export default function LoginPage() {
+export default async function LoginPage() {
+  const session = await auth();
+
+  if (session) {
+    redirect("/");
+  }
+
   return (
     <main className={styles.page}>
       <form

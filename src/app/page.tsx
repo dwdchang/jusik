@@ -50,7 +50,11 @@ export default async function HomePage() {
         ? error.message
         : "지수 데이터를 불러오지 못했습니다.";
 
-    console.error("[HomePage] getDashboardData failed:", message);
+    console.error(
+      "[HomePage] getDashboardData failed:",
+      message,
+      error instanceof Error ? error.cause : undefined
+    );
 
     return (
       <main className={styles.page}>
