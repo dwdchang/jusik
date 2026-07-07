@@ -13,6 +13,12 @@
   margin-bottom: var(--space-24);
 }
 
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+
 .title {
   font-size: var(--text-title);
   font-weight: var(--weight-bold);
