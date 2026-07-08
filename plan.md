@@ -18,6 +18,7 @@
 | 5 — KIS 마이그레이션 문서화·레거시 정리 | ✅ 완료 |
 | 6 — KIS 토큰 캐시 외부 저장소(Upstash Redis) 전환 | ⚠️ 6-1~6-5 완료, **6-6 남음** |
 | 7 — Google OAuth 로그인 및 접근 제한 | ✅ 완료 (실제 Google 로그인 플로우 검증 완료, 2026-07-04) |
+| 8 — 시간대별 캐시 최적화 (KIS 마감 후 갱신 패턴 반영) | ⚠️ 8-1~8-5 로컬 구현·검증 완료, **8-6 프로덕션 배포 후 확인 남음** |
 
 **남은 작업 (6-6):** 프로덕션(Vercel) 배포 후 다중 인스턴스 환경에서 토큰 발급 횟수가 실제로 줄었는지 Vercel 로그로 확인.
 **참고 (2026-07-04):** KIS 서버가 7/4~7/5 전산 점검 중이라 이 기간 대시보드에서 "fetch failed"(KIS API 연결 실패)가 발생할 수 있음 — 코드 문제 아님, 점검 종료 후 재확인.
@@ -1223,6 +1224,119 @@ body {
 
 ---
 
+### Phase 8 — 시간대별 캐시 최적화 (KIS 마감 후 갱신 패턴 반영)
+
+**목표:** `summary.md`("KIS 지수 API 장 마감 후 갱신 여부 조사", 2026-07-07 실측)의 결론을 바탕으로, 기본 캐시 주기는 그대로 두되 확정 반영 시각에 강제 캐시 무효화를 걸어 불필요한 지연 없이 최신 데이터를 보장한다.
+
+**배경 (실측 요약 — 전체 근거는 `summary.md` 참고):**
+- 09:00~15:30 정규장: 5분 간격으로 계속 변동.
+- 15:35경 마감 직후 최종 체결가 반영, 18:10경 누적거래량(`acml_vol`)만 소폭 정정.
+- 18:30 이후~다음 개장 전까지는 완전히 정적(2시간 20분 이상 무변화 확인, NXT 20:00 마감 포함).
+
+**최종 설계 (2026-07-08 확정):**
+
+- **기본 캐시는 변경하지 않는다.** `unstable_cache`/fetch 레벨 모두 기존 `KIS_CACHE_REVALIDATE_SECONDS = 600`(10분)을 09:00~다음 개장 전까지 시간대 구분 없이 그대로 유지한다. (이전 초안에서 검토했던 `getKisCacheRevalidateSeconds` 시간대별 동적 TTL 방식은 `unstable_cache`가 정의 시점에 revalidate를 고정하는 한계 때문에 채택하지 않고 폐기한다.)
+- 대신 **정확한 확정 시각에 강제 무효화하는 cron 2개**를 신설해 "10분 자동 재검증 + 확정 시각 강제 갱신"을 병행한다:
+  - **15:40 KST (평일 월~금)** — 15:35 마감 후 최종 체결가 확정 반영
+  - **18:15 KST (평일 월~금)** — 18:10 누적거래량 정정치 확정 반영
+- 두 cron 모두 Phase 4.7(§4.7)에서 제거했던 `api/cron/revalidate-indices/route.ts`의 구조(커밋 `0bcfdd7`의 부모 커밋에 있던 버전)를 그대로 재사용하되, 삭제된 legacy `CACHE_TAGS`(`lib/api/data-go-kr/constants`, Phase 5에서 제거됨) import만 현재의 `KIS_CACHE_TAGS`(`lib/api/kis/constants`)로 교체한다. `isValidCronSecret`(`timingSafeEqual` 기반 Bearer 토큰 비교), 응답 포맷은 그대로 유지.
+- `CRON_SECRET` 인증 방식도 예전과 동일하게 유지한다 (env 값은 Phase 7에서 비어있는 상태이므로 재발급 필요할 수 있음).
+- `vercel.json`을 새로 만들어 crons 배열에 2개 스케줄을 등록한다.
+
+**`vercel.json` 스니펫 (KST → UTC, KST는 서머타임 없이 항상 UTC+9):**
+
+```json
+{
+  "crons": [
+    { "path": "/api/cron/revalidate-indices", "schedule": "40 6 * * 1-5" },
+    { "path": "/api/cron/revalidate-indices", "schedule": "15 9 * * 1-5" }
+  ]
+}
+```
+
+| KST 실행 시각 | UTC cron 표현식 | 의미 |
+|---|---|---|
+| 15:40 (월~금) | `40 6 * * 1-5` | 15:35 종가 확정 반영 |
+| 18:15 (월~금) | `15 9 * * 1-5` | 18:10 거래량 확정 반영 |
+
+**cron 라우트 스니펫 (`0bcfdd7^` 구조 재사용, 태그만 교체):**
+
+```ts
+// src/app/api/cron/revalidate-indices/route.ts — 스니펫 (신규 파일)
+import { timingSafeEqual } from "node:crypto";
+import { revalidateTag } from "next/cache";
+import { KIS_CACHE_TAGS } from "@/lib/api/kis/constants";
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
+function isValidCronSecret(request: Request): boolean {
+  const secret = process.env.CRON_SECRET?.trim();
+  if (!secret) return false;
+  const authorization = request.headers.get("authorization");
+  if (!authorization) return false;
+  const expected = `Bearer ${secret}`;
+  const authBuffer = Buffer.from(authorization);
+  const expectedBuffer = Buffer.from(expected);
+  if (authBuffer.length !== expectedBuffer.length) return false;
+  return timingSafeEqual(authBuffer, expectedBuffer);
+}
+
+export async function GET(request: Request) {
+  if (!isValidCronSecret(request)) {
+    return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
+
+  const revalidatedAt = new Date().toISOString();
+  for (const tag of KIS_CACHE_TAGS) {
+    revalidateTag(tag, { expire: 0 });
+  }
+
+  return Response.json({
+    ok: true,
+    revalidatedAt,
+    tags: [...KIS_CACHE_TAGS],
+    message: "Cache tags expired immediately (expire: 0).",
+  });
+}
+```
+
+**구현 중 발견 1 — `revalidateTag`의 두 번째 인자 (`node_modules/next/dist/docs`의 `revalidateTag.md` 확인 후 반영):**
+
+당초 스니펫은 공식 예제를 따라 `revalidateTag(tag, "max")`를 사용했으나, 로컬 검증(8-5) 과정에서 크론 호출 직후 첫 응답이 여전히 이전 `asOf`를 반환하는 것을 확인했다. 문서 확인 결과 `profile="max"`는 **stale-while-revalidate**로 동작한다 — 태그를 stale로만 표시하고, 실제 재요청은 "그 태그를 쓰는 페이지/라우트가 다음에 방문될 때"에야 백그라운드로 트리거되며, 그 방문 자체는 여전히 이전 값을 반환한다(한 번 더 방문해야 새 값). 이는 방문자가 뜸한 대시보드에서 크론이 원하는 "확정 시각에는 이미 최신"이라는 목표와 맞지 않는다.
+
+문서는 정확히 이 케이스("외부 시스템/webhook이 Route Handler를 호출해 즉시 만료가 필요한 경우")를 위해 `revalidateTag(tag, { expire: 0 })`를 명시적으로 권장하고 있어 이를 채택했다. 로컬 재검증 결과 크론 호출 직후 첫 요청부터 바로 새 `asOf`가 반영됨을 확인함 (아래 8-5 참고).
+
+**구현 중 발견 2 — `proxy.ts`의 인증 matcher가 `/api/cron`을 보호 대상에서 빠뜨림:**
+
+Phase 7에서 설정한 `proxy.ts`의 matcher(`/((?!api/auth|_next/static|_next/image|favicon.ico).*)`)는 `/api/auth`만 예외 처리하고 있어, 신설한 `/api/cron/revalidate-indices`도 인증 미들웨어에 걸려 세션 없는 요청(= Vercel Cron 호출 포함 모든 외부 호출)이 매번 `/login`으로 307 리다이렉트되고 실제 라우트 핸들러(및 그 안의 `CRON_SECRET` 검사)에 전혀 도달하지 못하는 문제를 발견했다.
+
+최초 수정은 `api/cron` 경로 전체를 예외 처리했으나, 보안 검토(2026-07-08) 과정에서 이 경우 향후 `/api/cron/` 아래에 자체 인증 로직 없는 라우트가 추가되면 그대로 공개될 위험이 있다는 지적이 나와, 예외 범위를 현재 존재하는 라우트 하나로 좁혔다:
+
+```ts
+// src/proxy.ts — 최종 수정본
+export const config = {
+  matcher: [
+    "/((?!api/auth|api/cron/revalidate-indices|_next/static|_next/image|favicon.ico).*)",
+  ],
+};
+```
+
+**작업 목록:**
+
+| 순서 | 작업 | 파일 | 상태 |
+|------|------|------|------|
+| 8-1 | `CRON_SECRET` env 값 확인·재발급 | `.env.local` | ☑ 완료 — 값 없었음, `openssl rand -base64 32`로 신규 발급해 추가 |
+| 8-2 | cron 라우트 재작성 — `CACHE_TAGS` → `KIS_CACHE_TAGS`(`@/lib/api/kis/constants`)로 교체해 복원, `revalidateTag(tag, { expire: 0 })`로 즉시 만료 | `src/app/api/cron/revalidate-indices/route.ts` (신규) | ☑ 완료 |
+| 8-3 | `vercel.json` 신규 생성, crons 2개(`40 6 * * 1-5`, `15 9 * * 1-5`) 등록 | `vercel.json` (신규) | ☑ 완료 |
+| 8-4 | 기본 캐시(`KIS_CACHE_REVALIDATE_SECONDS = 600`)는 변경 없이 유지되는지 재확인 | `lib/api/kis/constants.ts` | ☑ 확인 완료 — 파일 변경 없음 |
+| 8-5 | 로컬에서 `curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/revalidate-indices` → 200 응답 + `asOf` 갱신 확인 | — | ☑ 완료 — `npm run build && npm run start` 후 무인증(401)/오답 시크릿(401)/정답 시크릿(200) 확인. `asOf` 갱신은 임시 디버그 라우트(`/api/cron/debug-asof`, 검증 후 삭제)로 실제 `getDashboardData()`를 호출해 확인: 크론 호출 전 `05:34:54.097`(revalidatedAt) → 크론 호출 직후 첫 요청부터 새 `asOf` `05:34:54.591` 반영 |
+| 8-6 | Vercel 프로덕션 배포 후 `CRON_SECRET` env 등록, 15:40/18:15 KST 실제 cron 실행 로그와 `asOf` 갱신 여부 확인 | Vercel 대시보드/로그 | ☐ 미완료 — 배포 후 확인 필요 |
+
+**Phase 8 완료 조건:** ☑ cron route(8-2) 구현 및 로컬 200/401 검증, ☑ `vercel.json` crons 2개 등록, ☑ 기본 10분 캐시 변경 없음 재확인, ☑ 로컬에서 `asOf` 즉시 갱신 확인, ☐ 배포 후 15:40/18:15 KST 실행 및 `asOf` 갱신 확인(8-6, 남은 작업).
+
+---
+
 ## 7. PR 분리 권장 (선택)
 
 | PR | Phase | 리뷰 포인트 |
@@ -1233,6 +1347,7 @@ body {
 | PR-4 | 5 | 문서 정합성, 레거시 정리 |
 | PR-5 | 6 | 토큰 캐시 외부화, 운영 안정성 |
 | PR-6 | 7 | 인증 플로우, 접근 제어, 시크릿 관리 |
+| PR-7 | 8 | 확정 시각 cron 2개(15:40/18:15 KST), `vercel.json`, `CRON_SECRET` 인증 재사용 |
 
 ---
 
@@ -1267,4 +1382,4 @@ mkdir -p src/lib/api/data-go-kr src/lib/indices src/types src/styles
 
 ---
 
-*문서 버전: 1.1 (2026-07-03: Phase 5~6 KIS 마이그레이션 문서화·토큰 캐시 외부화 추가) · 공공 API 국내 지수 대시보드 최종 구현 계획*
+*문서 버전: 1.4 (2026-07-08: Phase 8 구현 완료 — cron 라우트/`vercel.json` 추가, `revalidateTag`는 `{ expire: 0 }`로 즉시 만료 채택, `proxy.ts` matcher에 `api/cron` 누락 버그 수정. 8-6 프로덕션 확인만 남음) · 공공 API 국내 지수 대시보드 최종 구현 계획*
