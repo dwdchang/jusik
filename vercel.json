@@ -1,0 +1,6 @@
+{
+  "crons": [
+    { "path": "/api/cron/revalidate-indices", "schedule": "40 6 * * 1-5" },
+    { "path": "/api/cron/revalidate-indices", "schedule": "15 9 * * 1-5" }
+  ]
+}
