@@ -10,6 +10,12 @@ export function formatChangeRate(rate: number): string {
   return `${sign}${rate.toFixed(2)}%`;
 }
 
+/** %p(퍼센트포인트) 증감 표기 — 전월 대비 등 */
+export function formatPercentPoint(diff: number): string {
+  const sign = diff > 0 ? "+" : "";
+  return `${sign}${diff.toFixed(2)}%p`;
+}
+
 export function formatChange(amount: number, rate: number): string {
   return `${formatChangeAmount(amount)} (${formatChangeRate(rate)})`;
 }

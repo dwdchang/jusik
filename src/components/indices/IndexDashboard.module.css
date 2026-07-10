@@ -33,14 +33,14 @@
 }
 
 .cards {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 1fr;
   gap: var(--space-12);
   margin-bottom: var(--space-24);
 }
 
 @media (min-width: 400px) {
   .cards {
-    flex-direction: row;
+    grid-template-columns: repeat(2, 1fr);
   }
 }

@@ -1,19 +1,4 @@
-.charts {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-12);
-  margin-bottom: var(--space-8);
-}
-
-@media (min-width: 400px) {
-  .charts {
-    flex-direction: row;
-    align-items: stretch;
-  }
-}
-
 .chartSkeleton {
-  flex: 1;
   min-height: var(--chart-height);
   padding: var(--space-16);
   display: flex;

@@ -17,12 +17,34 @@ export const KIS_ENDPOINTS = {
   /** 국내업종 일자별지수 (현재 스냅샷 output1 + 일자별 output2) */
   INDEX_DAILY_PRICE:
     "/uapi/domestic-stock/v1/quotations/inquire-index-daily-price",
+  /** 해외지수/환율/금리 기간별시세 (output1 요약 + output2 일자별) */
+  OVERSEAS_DAILY_CHART:
+    "/uapi/overseas-price/v1/quotations/inquire-daily-chartprice",
+  /** 국내주식 현재가 시세 */
+  STOCK_PRICE: "/uapi/domestic-stock/v1/quotations/inquire-price",
 } as const;
 
 export const KIS_TR_ID = {
   INDEX_PRICE: "FHPUP02100000",
   INDEX_DAILY_PRICE: "FHPUP02120000",
+  OVERSEAS_DAILY_CHART: "FHKST03030100",
+  STOCK_PRICE: "FHKST01010100",
 } as const;
+
+/** 국내주식(현재가 조회) 시장 분류 코드 */
+export const KIS_STOCK_MARKET_DIV_CODE = "J";
+
+/**
+ * 해외지수/환율/금리 지표별 조회 코드 — plan.md §9.1 (2026-07-08 실측 검증)
+ * marketDivCode: N 해외지수 / X 환율 / I 국채 / S 금선물
+ */
+export const KIS_OVERSEAS_INDICATOR = {
+  USDKRW: { marketDivCode: "X", code: "FX@KRW" },
+  US10Y: { marketDivCode: "I", code: "Y0202" },
+} as const;
+
+/** 해외 기간별시세 조회 기간(일) — 최근 7거래일 확보용 여유 포함 */
+export const KIS_OVERSEAS_LOOKBACK_DAYS = 31;
 
 /** 업종(지수) 시장 분류 코드 */
 export const KIS_MARKET_DIV_CODE = "U";

@@ -1,0 +1,68 @@
+.chart {
+  padding: var(--space-16);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+  margin-bottom: var(--space-12);
+}
+
+.title {
+  font-size: var(--text-caption);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-secondary);
+}
+
+.toggle {
+  display: flex;
+  gap: 4px;
+  padding: 2px;
+  background-color: var(--color-bg);
+  border-radius: var(--radius-md);
+}
+
+.toggleButton,
+.toggleActive {
+  padding: 4px var(--space-8);
+  border: none;
+  border-radius: 10px;
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  background-color: transparent;
+  color: var(--color-text-tertiary);
+}
+
+.toggleActive {
+  background-color: var(--color-surface);
+  color: var(--color-text-primary);
+  font-weight: var(--weight-semibold);
+  box-shadow: var(--shadow-sm);
+}
+
+.chartBody {
+  height: var(--chart-height);
+}
+
+.tooltip {
+  padding: var(--space-8) var(--space-12);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  font-size: var(--text-micro);
+  color: var(--color-text-secondary);
+}
+
+.tooltipValue {
+  margin-top: 2px;
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+}

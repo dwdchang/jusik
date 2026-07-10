@@ -42,3 +42,49 @@ export interface KisIndexDailyResponse {
   /** 일자별 배열 (최신순) */
   output2?: KisIndexDailyOutput[];
 }
+
+/**
+ * 해외지수/환율/금리 기간별시세 (FHKST03030100) — output1 요약
+ * 필드 구조는 국내업종의 bstp_nmix_*와 1:1 대응 (ovrs_nmix_* 접두)
+ */
+export interface KisOverseasDailyOutput1 {
+  /** 현재가(종가) */
+  ovrs_nmix_prpr?: string;
+  /** 전일 대비 */
+  ovrs_nmix_prdy_vrss?: string;
+  /** 전일 대비 부호 (1 상한 / 2 상승 / 3 보합 / 4 하한 / 5 하락) */
+  prdy_vrss_sign?: string;
+  /** 전일 대비율(%) */
+  prdy_ctrt?: string;
+  [key: string]: unknown;
+}
+
+/** 해외지수/환율/금리 기간별시세 — output2 일자별 행 */
+export interface KisOverseasDailyOutput2 {
+  /** 영업 일자 (YYYYMMDD) */
+  stck_bsop_date?: string;
+  /** 종가 */
+  ovrs_nmix_prpr?: string;
+  [key: string]: unknown;
+}
+
+export interface KisOverseasDailyResponse {
+  rt_cd?: string;
+  msg_cd?: string;
+  msg1?: string;
+  output1?: KisOverseasDailyOutput1;
+  /** 일자별 배열 (최신순) */
+  output2?: KisOverseasDailyOutput2[];
+}
+
+/** 국내주식 현재가 시세 (FHKST01010100) */
+export interface KisStockPriceResponse {
+  rt_cd?: string;
+  msg_cd?: string;
+  msg1?: string;
+  output?: {
+    /** 주식 현재가 */
+    stck_prpr?: string;
+    [key: string]: unknown;
+  };
+}

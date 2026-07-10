@@ -2,7 +2,9 @@ import { redirect } from "next/navigation";
 import { auth, signOut } from "@/auth";
 import { IndexDashboard } from "@/components/indices/IndexDashboard";
 import { isEmailAllowed } from "@/lib/auth/allowedEmails";
+import { getHoldingsCardSummary } from "@/lib/holdings/summary";
 import { getDashboardData } from "@/lib/indices/getDashboard";
+import { getVolatilityCardSummary } from "@/lib/indices/volatility";
 import styles from "./page.module.css";
 
 export const revalidate = 600;
@@ -41,9 +43,16 @@ export default async function HomePage() {
   }
 
   let data: Awaited<ReturnType<typeof getDashboardData>>;
+  let holdingsSummary: Awaited<ReturnType<typeof getHoldingsCardSummary>>;
+  let volatilitySummary: Awaited<ReturnType<typeof getVolatilityCardSummary>>;
 
   try {
-    data = await getDashboardData();
+    // 카드 요약(보유종목·변동성)은 실패 시 null 반환 — 홈 전체를 막지 않는다
+    [data, holdingsSummary, volatilitySummary] = await Promise.all([
+      getDashboardData(),
+      getHoldingsCardSummary(email),
+      getVolatilityCardSummary(),
+    ]);
   } catch (error) {
     const message =
       error instanceof Error
@@ -68,7 +77,11 @@ export default async function HomePage() {
 
   return (
     <main className={styles.page}>
-      <IndexDashboard data={data} />
+      <IndexDashboard
+        data={data}
+        holdingsSummary={holdingsSummary}
+        volatilitySummary={volatilitySummary}
+      />
     </main>
   );
 }

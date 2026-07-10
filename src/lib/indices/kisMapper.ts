@@ -4,13 +4,14 @@ import type {
   KisIndexDailyResponse,
 } from "@/lib/api/kis/types";
 import type {
+  IndexDailyRow,
   IndexSeries,
   IndexSnapshot,
   MarketIndex,
   PriceDirection,
 } from "@/types/indices";
 
-function parseNum(value: string | number | undefined): number {
+export function parseNum(value: string | number | undefined): number {
   if (value === undefined || value === "") {
     return 0;
   }
@@ -21,7 +22,7 @@ function parseNum(value: string | number | undefined): number {
   return parsed;
 }
 
-function resolveDirection(changeRate: number): PriceDirection {
+export function resolveDirection(changeRate: number): PriceDirection {
   if (changeRate > 0) {
     return "rise";
   }
@@ -32,7 +33,7 @@ function resolveDirection(changeRate: number): PriceDirection {
 }
 
 /** "20260601" → "06/01" */
-function formatBasDtLabel(basDt: string): string {
+export function formatBasDtLabel(basDt: string): string {
   if (basDt.length !== 8) {
     return basDt;
   }
@@ -43,7 +44,7 @@ function formatBasDtLabel(basDt: string): string {
  * KIS 전일 대비 부호를 부호 있는 숫자로 변환한다.
  * 1 상한 / 2 상승 → +, 4 하한 / 5 하락 → -, 3 보합 → 0
  */
-function applyKisSign(value: number, sign: string | undefined): number {
+export function applyKisSign(value: number, sign: string | undefined): number {
   const magnitude = Math.abs(value);
   if (sign === "1" || sign === "2") {
     return magnitude;
@@ -87,6 +88,41 @@ export function mapKisHistory(
   }
 
   return { market, points };
+}
+
+/** output2(일자별 배열) → 상세 페이지 일별 시세 리스트 (최신순) */
+export function mapKisDailyRows(
+  raw: KisIndexDailyResponse,
+  market: MarketIndex
+): IndexDailyRow[] {
+  const rows = (raw.output2 ?? [])
+    .filter((row) => row.stck_bsop_date && row.bstp_nmix_prpr)
+    .sort((a, b) =>
+      (b.stck_bsop_date as string).localeCompare(a.stck_bsop_date as string)
+    )
+    .slice(0, KIS_HISTORY_POINT_COUNT)
+    .map((row) => {
+      const sign = row.prdy_vrss_sign;
+      const changeRate = applyKisSign(
+        parseNum(row.bstp_nmix_prdy_ctrt),
+        sign
+      );
+
+      return {
+        basDt: row.stck_bsop_date as string,
+        date: formatBasDtLabel(row.stck_bsop_date as string),
+        close: parseNum(row.bstp_nmix_prpr),
+        changeAmount: applyKisSign(parseNum(row.bstp_nmix_prdy_vrss), sign),
+        changeRate,
+        direction: resolveDirection(changeRate),
+      };
+    });
+
+  if (rows.length === 0) {
+    throw new Error(`No KIS daily rows available for ${market}`);
+  }
+
+  return rows;
 }
 
 /** output1(요약) 우선, 없으면 output2 최신 행을 스냅샷으로 변환 */

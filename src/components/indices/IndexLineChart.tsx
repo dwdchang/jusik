@@ -1,7 +1,11 @@
 "use client";
 
 import { formatIndex } from "@/lib/format/index";
-import type { IndexChartPoint, IndexSeries } from "@/types/indices";
+import {
+  INDICATOR_NAMES,
+  type IndexChartPoint,
+  type IndexSeries,
+} from "@/types/indices";
 import {
   CartesianGrid,
   Line,
@@ -14,17 +18,14 @@ import {
 import styles from "./IndexLineChart.module.css";
 
 function getChartTitle(market: IndexSeries["market"]): string {
-  if (market === "KOSPI") {
-    return "코스피";
-  }
-  return "코스닥";
+  return INDICATOR_NAMES[market];
 }
 
 function getChartStroke(market: IndexSeries["market"]): string {
-  if (market === "KOSPI") {
-    return "var(--chart-stroke-kospi)";
+  if (market === "KOSDAQ") {
+    return "var(--chart-stroke-kosdaq)";
   }
-  return "var(--chart-stroke-kosdaq)";
+  return "var(--chart-stroke-kospi)";
 }
 
 function ChartTooltipContent({
