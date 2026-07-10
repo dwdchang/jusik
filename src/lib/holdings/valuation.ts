@@ -18,7 +18,7 @@ export async function getPortfolioValuation(
 
   const items = holdings.map((holding, i) => {
     const currentPrice = prices[i];
-    const cost = holding.avgPrice * holding.quantity;
+    const cost = holding.totalCost;
     const value = currentPrice * holding.quantity;
     const profit = value - cost;
 

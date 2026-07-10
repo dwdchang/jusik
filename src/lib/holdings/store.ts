@@ -47,8 +47,31 @@ async function readStoredArray<T>(key: string): Promise<T[]> {
   throw new Error(`holdings store: unexpected value type for ${key}`);
 }
 
+/** 레거시(Phase 9, avgPrice 저장) 항목 — totalCost 도입 전 모델 */
+type StoredHolding = Holding & { avgPrice?: number };
+
+/**
+ * 읽기 하위호환 — totalCost가 없는 레거시 항목은 avgPrice × quantity로 역산한다.
+ * 쓰기는 항상 totalCost 모델이므로 다음 저장 시 자연 마이그레이션된다 (plan.md §13.1).
+ */
+function normalizeHolding(stored: StoredHolding): Holding {
+  const { avgPrice, ...rest } = stored;
+
+  if (Number.isFinite(rest.totalCost)) {
+    return rest;
+  }
+  if (typeof avgPrice === "number" && Number.isFinite(avgPrice)) {
+    return { ...rest, totalCost: avgPrice * stored.quantity };
+  }
+
+  throw new Error(
+    `holdings store: holding ${stored.id} has neither totalCost nor avgPrice`
+  );
+}
+
 export async function getHoldings(email: string): Promise<Holding[]> {
-  return readStoredArray<Holding>(holdingsKey(email));
+  const stored = await readStoredArray<StoredHolding>(holdingsKey(email));
+  return stored.map(normalizeHolding);
 }
 
 export async function saveHoldings(

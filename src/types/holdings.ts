@@ -1,17 +1,17 @@
 /**
  * 보유종목 관리 — 도메인 타입
- * @see plan.md §9.4.3
+ * @see plan.md §9.4.3, §13.1
  */
 
 export interface Holding {
   id: string;
   /** 종목코드 6자리, 예: "005930" */
   symbolCode: string;
-  /** 종목명 (표시용, 사용자가 직접 입력) */
+  /** 종목명 (KIS 주식기본조회 응답에서 자동 저장) */
   name: string;
   quantity: number;
-  /** 매입가(원) */
-  avgPrice: number;
+  /** 총 매입금액(원) — 1주당 평균 매입가는 저장하지 않고 표시 시 계산 */
+  totalCost: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -30,7 +30,7 @@ export interface PortfolioDailyRecord {
 export interface HoldingValuation {
   holding: Holding;
   currentPrice: number;
-  /** 매입금액 = 매입가 × 수량 */
+  /** 매입금액 = totalCost */
   cost: number;
   /** 평가금액 = 현재가 × 수량 */
   value: number;
