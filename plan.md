@@ -21,8 +21,9 @@
 | 8 — 시간대별 캐시 최적화 (KIS 마감 후 갱신 패턴 반영) | ⚠️ 8-1~8-5 로컬 구현·검증 완료, 8-6 프로덕션 확인 남음 — **Phase 11 승인 시 구조 자체가 대체되어 8-6은 폐기** |
 | 9 — 홈 화면 지표 확장 및 보유종목 관리 | ✅ 그룹 1~7 구현·로컬 검증 완료 (2026-07-09) — 배포 후 cron 확인은 Phase 11로 대체 |
 | 10 — 보유종목 알림 기능 (Web Push) | 📋 조사·설계 완료, 구현 미착수 — **호출 방식(맥미니 crontab)은 Phase 11로 대체**, Web Push·조건 판정 설계는 유효 |
-| 11 — 데이터 갱신 구조 전면 재설계 (QStash Scheduled Push) | ✅ **설계 최종 확정(2026-07-10, 확정 지시문 + 같은 날 배지 정책 2차 개정 — 장중 한정·경고/심각 2단계)**, 구현 미착수 — **Phase 12 완료 후 착수(순서 확정)**. Phase 8 캐시 구조·Phase 9 cron·Phase 10 호출 방식을 전면 대체 |
+| 11 — 데이터 갱신 구조 전면 재설계 (QStash Scheduled Push) | ✅ **설계 최종 확정(2026-07-10, 확정 지시문 + 같은 날 배지 정책 2차 개정 — 장중 한정·경고/심각 2단계)**, 구현 미착수 — **착수 순서 재확정(2026-07-10): Phase 12(완료) → Phase 13 → Phase 11**. Phase 8 캐시 구조·Phase 9 cron·Phase 10 호출 방식을 전면 대체 |
 | 12 — 보유종목 데이터 암호화 저장 (AES-256-GCM) | ⚠️ **구현·로컬 검증 완료(2026-07-10, 12건 실측 PASS)** — 남은 작업: Vercel env 등록·키 백업(사용자), 배포 후 화면 확인·즉시 마이그레이션. **Phase 11보다 먼저 진행** |
+| 13 — 보유종목 페이지 개선 (`totalCost` 모델·종목명 자동 조회·종목 상세 페이지) | ✅ **구현 완료(2026-07-11, 13-1~13-6)** — `totalCost` 모델 전환(레거시 `avgPrice` 역산 하위호환), 종목명 CTPF1002R 자동 조회, `stock:{symbolCode}:history` 공용 저장소(2년 백필·cron 갱신), `/holdings/[symbolCode]` 상세 페이지(수정 모드·2년 차트·정보 블록 4종: 시가총액/배당/실적/투자지표), `/holdings` 메인 개편. lint·tsc·build·라이브 실측 통과. **다음: Phase 11 착수** |
 
 **남은 작업 (6-6):** 프로덕션(Vercel) 배포 후 다중 인스턴스 환경에서 토큰 발급 횟수가 실제로 줄었는지 Vercel 로그로 확인.
 **참고 (2026-07-04):** KIS 서버가 7/4~7/5 전산 점검 중이라 이 기간 대시보드에서 "fetch failed"(KIS API 연결 실패)가 발생할 수 있음 — 코드 문제 아님, 점검 종료 후 재확인.
@@ -1435,6 +1436,8 @@ HTTP 200, output1.ovrs_nmix_prpr = "52925.15" — 기존에 알려진 사용 예
 
 ##### 9.4.3 보유종목 수익률
 
+> **⚠️ Phase 13에 의한 개정 예고 (2026-07-10):** 본 절의 `Holding` 모델(`avgPrice` 저장)·종목명 직접 입력·`/holdings` 단일 페이지(CRUD 포함) UI는 **Phase 13에서 `totalCost` 모델·종목명 자동 조회·종목 상세 페이지(`/holdings/[symbolCode]`) 분리로 대체 예정**(§Phase 13 참고). 히스토리 모델(`PortfolioDailyRecord`)·포트폴리오 차트·cron 설계는 그대로 유효.
+
 **입력 방식 범위 (유지):** 수동 입력만 지원한다. CSV 업로드, 이미지 인식, 오픈뱅킹/마이데이터 연동, 웹 스크래핑 등 자동 연동 방식은 이번 범위에서 전부 제외하고, 필요해지면 별도 Phase로 검토한다.
 
 **데이터 모델 (유지):**
@@ -1627,7 +1630,7 @@ interface StockPeak {
 
 ### Phase 11 — 데이터 갱신 구조 전면 재설계 (Pull → Scheduled Push)
 
-**목표:** `unstable_cache` 기반 "접속 시 갱신(pull)" 구조를 폐기하고, **정해진 시간에만 QStash 스케줄이 KIS를 호출해 Redis에 저장(push)하고, 화면은 저장된 값만 읽는** 구조로 전환한다. **설계 최종 확정(2026-07-10, `phase9.request.md` 확정 지시문 — §11.10의 결정 6건·갱신 상태 UI 반영, 같은 날 2차 개정: 배지 정책 대안 A+심각도 2단계). 구현 미착수(소스 파일 생성·수정 안 함) — 진행 순서 확정: Phase 12(보유종목 암호화) 완료 후 착수.**
+**목표:** `unstable_cache` 기반 "접속 시 갱신(pull)" 구조를 폐기하고, **정해진 시간에만 QStash 스케줄이 KIS를 호출해 Redis에 저장(push)하고, 화면은 저장된 값만 읽는** 구조로 전환한다. **설계 최종 확정(2026-07-10, `phase9.request.md` 확정 지시문 — §11.10의 결정 6건·갱신 상태 UI 반영, 같은 날 2차 개정: 배지 정책 대안 A+심각도 2단계). 구현 미착수(소스 파일 생성·수정 안 함) — 진행 순서 재확정(2026-07-10 2차): Phase 12(보유종목 암호화, 완료) → Phase 13(보유종목 페이지 개선) 완료 후 착수.**
 
 **요청 원문 요지 (`phase9.request.md`):**
 
@@ -1675,7 +1678,8 @@ page.tsx / 상세 페이지 [Server] ──► lib/market/store.ts (Redis 리더
 | `market:detail:{kospi\|kosdaq\|usdkrw\|us10y}` | 기존 `IndexDetailData` 상당(스냅샷+히스토리+dailyRows) + `fetchedAt` | 신규 — 상세 페이지가 그대로 읽음. 홈 카드도 이 키의 스냅샷 부분만 사용 (대시보드용 별도 키는 두지 않음 — 이중 저장 방지) |
 | `market:stock:{symbolCode}` | `{ price, changeRate, marketName, fetchedAt }` | 신규 — 사용자 무관 공용. `changeRate`(당일 등락률)·`marketName`(소속 시장)은 Phase 10 알림 조건 3용으로 함께 저장(§10.1 실측 검증 항목 유지) |
 | `market:lastRefreshAt` | `{ at, trigger, ok }` | 신규 — 마지막 갱신 잡 성공 시각. staleness 판단·수동 점검용 |
-| `holdings:{email}` / `holdings:{email}:history` | 기존 그대로 | Phase 9 모델 유지 |
+| `holdings:{email}` / `holdings:{email}:history` | 기존 그대로 | Phase 9 모델 유지 — 단, `holdings:{email}`의 `Holding` 페이로드는 Phase 13에서 `avgPrice`→`totalCost`로 변경 예정(§13.5) |
+| `stock:{symbolCode}:history` | 종목별 일별 종가 시계열 (최근 1~2년) | Phase 13 신설(§13.3) — 사용자 무관 공용(공개 시세 데이터, 암호화 대상 아님). 갱신 잡에서 보유 전 종목 upsert 연계 |
 | `kospiVolatility:history` | 기존 그대로 | Phase 9 모델 유지 |
 | `alerts:{email}:peaks` / `alerts:{email}:cooldown:{symbol}` / `push:subs:{email}` | 기존 Phase 10 설계 그대로 | 호출 주체만 QStash 잡으로 변경 |
 
@@ -1831,7 +1835,7 @@ page.tsx / 상세 페이지 [Server] ──► lib/market/store.ts (Redis 리더
 
 **확정사항 (사용자 결정, 2026-07-10):**
 
-- **진행 순서: Phase 12를 Phase 11보다 먼저 진행** — Phase 12 완료 후 Phase 11 착수. (Phase 12가 작고 자기완결적이며, 평문 노출은 현재진행형 리스크. Phase 11 잡 파이프라인이 처음부터 암호화된 저장소 위에서 작성됨.)
+- **진행 순서: Phase 12를 Phase 11보다 먼저 진행** — Phase 12 완료 후 Phase 11 착수. (Phase 12가 작고 자기완결적이며, 평문 노출은 현재진행형 리스크. Phase 11 잡 파이프라인이 처음부터 암호화된 저장소 위에서 작성됨.) → **2026-07-10 2차 개정: 전체 착수 순서는 Phase 12(완료) → Phase 13 → Phase 11 (§13.5)**
 - **암호화 대상: `holdings:{email}`(보유 목록) + `holdings:{email}:history`(일별 `totalCost`/`totalValue`) 둘 다** — history의 총 자산 평가액이 사실상 가장 민감한 값.
 - Phase 10의 `alerts:{email}:peaks` 등 이후 추가되는 개인 데이터 키는 해당 Phase 구현 시 같은 유틸을 적용.
 
@@ -1872,9 +1876,91 @@ page.tsx / 상세 페이지 [Server] ──► lib/market/store.ts (Redis 리더
 | 12-4 | 기존 데이터 마이그레이션 — 자연 전환 확인 후 (선택) 일회성 재저장으로 즉시 완료, Upstash 콘솔에서 `enc:v1:` 포맷 확인 | 임시 스크립트(실행 후 삭제) | ⚠️ 자연 전환 코드 완료 — **즉시 마이그레이션은 §12.4 롤백 주의에 따라 배포 안정 확인 후 실행** (배포 전에 실데이터를 암호화하면 평문 리더인 현 배포본이 읽지 못함) |
 | 12-5 | 검증 — 로컬 `build`+`start`: 보유종목 CRUD 왕복(암호화→복호화 동일성), 레거시 평문 읽기, 잘못된 키로 기동 시 에러 UI(빈 배열 아님), cron upsert 후 저장값 암호문 확인, 홈 카드·`/holdings` 차트 정상 | — | ☑ 완료 (2026-07-10, 로컬) — lint·`tsc --noEmit`·`next build` 통과. 임시 스크립트(`npx tsx`, 실행 후 삭제)로 **12건 전부 PASS**: 왕복 동일성·암호문 평문 미노출·IV 랜덤(동일 평문 상이 암호문)·변조 시 throw·잘못된 키 throw·`isEncrypted` 판별·레거시 배열 읽기 하위호환·`saveHoldings`/`history` Redis 원시 값 `enc:v1:` 확인·upsert 멱등. 실제 Upstash에 테스트 이메일(`phase12-verify@example.com`, ALLOWED_EMAILS 밖) 키로 수행 후 삭제 — 운영 데이터 무접촉. UI(홈 카드·차트)는 Google 로그인 필요라 배포 후 확인 |
 
-**Phase 12 완료 조건:** ☑ `holdings:{email}`·`history` 신규 저장값이 전부 `enc:v1:` 포맷(실측), ☑ 레거시 평문 읽기 하위호환 동작(실측), ☑ CRUD·차트·홈 카드·cron 기존 기능 무손상(빌드·typecheck 통과, 스토어 왕복 실측 — UI는 배포 후 확인), ☑ 복호화 실패 시 에러로 표면화(실측), ☐ **키가 `.env.local`+Vercel+별도 백업 3곳에 존재 (Vercel 등록·백업 남음)**. **완료 후 Phase 11 착수.**
+**Phase 12 완료 조건:** ☑ `holdings:{email}`·`history` 신규 저장값이 전부 `enc:v1:` 포맷(실측), ☑ 레거시 평문 읽기 하위호환 동작(실측), ☑ CRUD·차트·홈 카드·cron 기존 기능 무손상(빌드·typecheck 통과, 스토어 왕복 실측 — UI는 배포 후 확인), ☑ 복호화 실패 시 에러로 표면화(실측), ☐ **키가 `.env.local`+Vercel+별도 백업 3곳에 존재 (Vercel 등록·백업 남음)**. **완료 후 Phase 13 → Phase 11 순으로 착수(2026-07-10 2차 개정).**
 
 **남은 작업 (배포 관련, 순서대로):** ① 사용자 — Vercel env에 `HOLDINGS_ENCRYPTION_KEY` 등록 + 키 별도 백업, ② push·배포, ③ 배포 후 홈 카드·`/holdings` 화면 확인(레거시 평문 읽기), ④ 배포 안정 확인 후 (선택) 일회성 재저장으로 즉시 마이그레이션 + Upstash 콘솔에서 `enc:v1:` 확인.
+
+---
+
+### Phase 13 — 보유종목 페이지 개선 (`totalCost` 모델 · 종목명 자동 조회 · 종목 상세 페이지 분리)
+
+**목표:** `/holdings` 페이지를 ① 매입가 입력 방식 변경(총 매입금액+수량 입력, `totalCost` 저장), ② 종목명 입력 제거(KIS 조회 응답에서 자동 저장), ③ 종목별 상세 페이지(`/holdings/[symbolCode]`) 분리로 개선한다. **사용자 지시(2026-07-10, `phase9.request.md`) — 1~3번(§13.1~13.3)은 확정 계획, 4번(§13.4 재무/기업 정보)은 조사 항목이며 조사 결과에 따라 상세 페이지에 넣을 정보 범위를 다시 확정한다. 같은 날 추가 결정 3건 반영(2차, `phase9.request.md`): ① 종목 차트 데이터를 Redis 공용 키(`stock:{symbolCode}:history`)에 저장(§13.3 — 저장소는 Supabase 등 신규 도입 없이 기존 Upstash Redis 그대로 사용, 최종 확정), ② 종목명 조회 순서(§13.2), ③ 착수 순서 Phase 12(완료) → 13 → 11(§13.5). 계획만 수립 — 소스 파일 생성·수정 안 함.**
+
+#### 13.1 확정 1 — 매입가 입력 방식 변경 (`avgPrice` → `totalCost`)
+
+- **입력:** "총 매입금액"과 "수량"만 입력받는다. **1주당 평균 매입가는 저장하지 않고 화면 표시용으로만 계산**(`totalCost / quantity`) — 반올림 없이 정확하게 계산하고, 필요 시 소수점 둘째자리까지 표시.
+- **데이터 모델:** `Holding.avgPrice`(1주당) 제거 → `totalCost`(총 매입금액, 원) 저장.
+
+```ts
+// 설계 스니펫 — 아직 파일 생성 안 함. §9.4.3의 Holding 모델을 대체
+interface Holding {
+  id: string;            // crypto.randomUUID()
+  symbolCode: string;     // 종목코드 6자리, 예: "005930"
+  name: string;           // 종목명 — KIS 조회 응답에서 자동 저장 (§13.2, 직접 입력 제거)
+  quantity: number;       // 수량
+  totalCost: number;      // 총 매입금액(원) — avgPrice 대체
+  createdAt: string;
+  updatedAt: string;
+}
+```
+
+- **파생 계산식 변경 (`valuation`):** 매입금액 = `totalCost`(기존 `avgPrice × quantity`), 평가손익 = 평가금액 − `totalCost`, 수익률(%) = 평가손익 / `totalCost` × 100. 히스토리(`PortfolioDailyRecord.totalCost`)는 이미 총액 기준이므로 모델 변경 없음 — 집계식만 `Σ(avgPrice×quantity)` → `Σ totalCost`로 단순화.
+- **기존 데이터 마이그레이션:** 저장된 `avgPrice × quantity = totalCost`로 **역산**해서 전환. 모든 읽기/쓰기가 `store.ts` 4함수를 경유하므로 Phase 12 암호화와 충돌 없음(복호화 → 필드 변환 → 재암호화 저장). 읽기 하위호환(레거시 `avgPrice` 필드 감지 시 즉석 변환) + 다음 저장 시 신 모델로 굳히는 방식을 기본으로 하되, 세부(일회성 재저장 병행 여부)는 구현 단계에서 판단 — Phase 12 §12.4 자연 마이그레이션 전례와 동일 패턴.
+
+#### 13.2 확정 2 — 종목 추가 폼에서 "종목명" 입력 제거
+
+- 종목 추가 폼 입력 필드: **종목코드 6자리 + 수량 + 총 매입금액** 3개만. 종목명 입력란 제거.
+- 종목명은 저장 시 **KIS API 조회 응답에서 자동으로 가져와 `name`에 저장**. 기존에도 저장 시 KIS 현재가 조회로 종목코드 실존을 검증하던 흐름(§9.4.3)에 자연스럽게 결합된다.
+- **종목명 조회 순서 (확정, 2026-07-10 2차) → 실측 완료(같은 날, 13-1 조사와 함께):**
+  1. 현재가 응답(`FHKST01010100`) 실측 결과 **종목명 필드 없음** — 80개 필드 전수 확인, 한글 명칭은 `rprs_mrkt_kor_name`(시장명, "KOSPI200")·`bstp_kor_isnm`(업종명, "전기·전자")뿐.
+  2. → **KIS 주식기본조회로 확정: `/uapi/domestic-stock/v1/quotations/search-stock-info` (TR `CTPF1002R`, `PRDT_TYPE_CD=300`, `PDNO=종목코드`) 응답의 `prdt_abrv_name`**(예: "삼성전자") 사용. 라이브 실측 HTTP 200 확인(005930). 종목 추가 시 1회만 호출해 `name`에 저장.
+  3. 외부 API(공공데이터포털 등) 검토 불필요 — KIS 내에서 해결.
+
+#### 13.3 확정 3 — 종목 상세 페이지 분리 (`/holdings/[symbolCode]`)
+
+- **라우트:** `/holdings/[symbolCode]` — `/holdings`와 동일하게 로그인 필요(`auth()` 세션 + `isEmailAllowed`). 본인 보유 목록에 없는 `symbolCode` 접근 시 처리(404 또는 `/holdings` 리다이렉트)는 구현 단계에서 확정.
+- **기본 화면(조회 전용):** 종목명, 현재가, 평가금액, 매입금액(`totalCost`), 평가손익, 수익률, 차트 1개 — 기존 수익률/원 단위 토글(§9.4.3 표) 재사용.
+  - **차트 데이터 저장 방식 (확정, 2026-07-10 2차):** 브라우저 캐시·로컬 기기 저장이 아니라 **서버(Redis)에 종목코드 기준으로 한 번만 저장해 모든 사용자가 공유**한다. 저장소는 Supabase 등 신규 도입 없이 **기존 Upstash Redis 그대로 사용(최종 확정)**.
+    - **키:** `stock:{symbolCode}:history` — 사용자 무관 공용 키. 공개 시세 데이터이므로 Phase 12 암호화 대상 아님.
+    - **저장 범위:** "상장일부터 전부"가 아니라 **최근 1~2년 정도로 제한** — KIS 호출량과 저장 용량을 고려한 현실적 범위. → **실측 완료(2026-07-10, 13-1 조사와 함께):** 기간별시세 `FHKST03010100`(D)는 **1회 최대 100거래일** 반환(2년 범위 요청 시에도 100건). **저장 범위 2년 확정** — 2년 ≈ 490거래일이므로 신규 종목 백필 시 날짜 범위를 뒤로 옮겨가며 **종목당 약 5회 호출**(1회성), 이후는 cron에서 최신분만 upsert. 응답 행에 `stck_clpr`(종가) 포함 확인.
+    - **재사용:** 이미 저장된 종목은 재사용하고, **처음 추가되는 종목만 신규로 히스토리를 백필**한다.
+    - **갱신:** 기존 cron(Phase 11 갱신 잡과 연계) 시점에 함께 upsert 처리.
+    - **화면 계산:** 저장된 종가 시계열로 수익률 모드 `(종가×수량−totalCost)/totalCost×100`, 원 단위 모드 `종가×수량`을 화면에서 계산 — 모드별 데이터 중복 저장 없음(§9.4.3 원칙 동일).
+- **수정 모드:** 우측 상단에 작은 "수정" 아이콘 버튼 → 클릭 시 조회 영역이 **그 자리에서 입력 폼(수량, 총 매입금액, 저장/취소/삭제)으로 전환**. 종목코드·종목명은 수정 불가(변경하려면 삭제 후 재추가).
+- **`/holdings` 메인 페이지 개편:** 종목 목록(요약)과 종목 추가 폼만 남기고, 각 종목 클릭 시 상세 페이지로 이동. 기존 인라인 수정/삭제 UI는 상세 페이지로 이전. 포트폴리오 전체 차트(수익률/원 단위 토글)·일별 리스트의 잔류 위치는 구현 단계에서 확정(기본안: 메인 유지).
+
+#### 13.4 조사 — 재무/기업 정보 KIS API 제공 여부 (✅ 조사 완료 2026-07-10, 라이브 실측 — 정보 범위 사용자 재확정 대기)
+
+**결론: 3개 항목 모두 KIS API로 가능 — 외부 API(공공데이터포털·DART 등) 불필요.** 단, 일부는 직접 제공이 아니라 응답값으로부터 계산이 필요하고, 시총 순위는 상위 30위 이내만 확인 가능하다. App Key/Secret 라이브 실측(005930 삼성전자, 전 건 HTTP 200 / `rt_cd=0`).
+
+| # | 항목 | 결과 | 실측 근거 |
+|---|---|---|---|
+| 1a | 시가총액 | ✅ **직접 제공, 추가 호출 0** — 기존 현재가 응답(`FHKST01010100`)의 `hts_avls`(억원 단위) | `hts_avls: "16661894"`(= 약 1,666조 원) |
+| 1b | 시총 순위 | ⚠️ **부분 제공** — 시가총액 상위 랭킹 API(`/uapi/domestic-stock/v1/ranking/market-cap`, TR `FHPST01740000`)가 **1회 상위 30건**(`data_rank`·`stck_avls`·시장 비중 `mrkt_whol_avls_rlim`) 반환. **30위 밖 종목은 순위 직접 조회 불가** → 표시 시 "30위권 밖" 처리 필요 | 30건 반환, 1위 삼성전자 확인 |
+| 2 | 배당률·배당 방식 | ⚠️ **부분 제공+계산** — 예탁원 배당일정(`/uapi/domestic-stock/v1/ksdinfo/dividend`, TR `HHKDB669102C0`, 날짜 범위+`SHT_CD`)이 이벤트별 `divi_kind`(배당종류: "분기" 등)·`per_sto_divi_amt`(주당배당금)·`record_date`·`divi_pay_dt`(지급일) 반환. **배당 방식(월/분기/반기/연)은 `divi_kind`+이벤트 빈도로 판별** 가능. **시가배당률은 직접 제공 없음** — `divi_rate`는 액면가 기준이라 부적합, **최근 1년 주당배당금 합 ÷ 현재가로 계산** 필요. 미확정 회차는 금액 0으로 옴(주의) | 2025-01-01~오늘 6건, `divi_kind: "분기"` 확인 |
+| 3 | 실적(매출/영업이익, 증감률) | ✅ **제공+일부 계산** — ① 손익계산서(`/uapi/domestic-stock/v1/finance/income-statement`, TR `FHKST66430200`, `FID_DIV_CLS_CODE=1` 분기)가 기간별 `sale_account`(매출)·`bsop_prti`(영업이익, 단위 억원) 30개 기간 반환. **값은 연중 누적(YTD)** — 분기 단독값은 직전 누적 차감으로 계산(1분기는 그대로). ② 재무비율(`financial-ratio`, TR `FHKST66430300`)이 `grs`(매출 증가율)·`bsop_prfi_inrt`(영업이익 증가율, 전년 동기 대비)를 **직접 제공**. 직전 분기 대비(QoQ) 증감률은 ①의 차감값으로 계산 | 202603 매출 1,338,734억·영업이익 572,328억 등 확인 |
+
+- **보너스(비용 0):** 현재가 응답에 `per`/`pbr`/`eps`/`bps`, 52주 최고·최저(`w52_hgpr`/`w52_lwpr`+대비율), 상장주식수(`lstn_stcn`)도 포함 — 원하면 추가 호출 없이 표시 가능.
+- **상세 페이지 정보 범위 확정 (사용자 승인, 2026-07-10):** **4개 블록 전부 포함** — ① 시가총액(+순위: 30위 이내 "n위", 밖이면 "30위권 밖"), ② 배당 정보(배당 방식 판별·최근 1년 주당배당금 합계·시가배당률 계산·최근 지급일), ③ 실적(최근 분기 매출/영업이익 — YTD 차감, 전년 동기 대비 증가율 직접 제공값 + 직전 분기 대비 계산값), ④ 투자지표(PER/PBR/EPS/BPS/52주 최고·최저 — 현재가 응답 재사용, 추가 호출 0). 13-5에서 구현.
+
+#### 13.5 다른 Phase와의 상호작용
+
+- **Phase 12 (암호화):** 적용 지점이 `store.ts` 경계로 캡슐화되어 있어(§12.3) `Holding` 페이로드 필드 변경은 암호화 유틸에 영향 없음. 마이그레이션 재저장도 자동으로 `enc:v1:` 포맷. 신설되는 `stock:{symbolCode}:history`는 사용자 무관 공용 시세 데이터이므로 **암호화 대상 아님**.
+- **Phase 11 (QStash 재설계):** §11의 Redis 키 표에서 `holdings:{email}` "기존 그대로" 전제는 본 Phase의 `totalCost` 모델로 갱신된다. 갱신 잡의 히스토리 upsert 집계식도 `Σ totalCost`로 단순화. 신설 키 `stock:{symbolCode}:history`의 일별 갱신도 Phase 11 갱신 잡 파이프라인에 연계(§11 키 표에 행 추가됨). **착수 순서 확정(2026-07-10 2차, 사용자 결정): Phase 12(완료) → Phase 13 → Phase 11** — Phase 13이 Phase 11보다 먼저이며, Phase 13 구현 중 cron 갱신 연결은 현행 cron(18:15 KST 단일)에 우선 얹고 Phase 11 착수 시 갱신 잡으로 이관한다.
+- **Phase 9 §9.4.3:** `Holding` 모델·종목명 직접 입력·`/holdings` 단일 페이지 UI 설계는 본 Phase로 대체(개정 예고 주석 추가됨). 히스토리 모델·차트 토글·cron 설계는 유효.
+
+#### 13.6 작업 목록 (구현은 착수 지시 후)
+
+| 순서 | 작업 | 파일(예정) | 상태 |
+|---|---|---|---|
+| 13-1 | **조사(§13.4)** — KIS 재무/기업 정보 제공 여부 실측, 대안 API 조사, 결과 보고 → **상세 페이지 정보 범위 재확정(사용자 승인)** 후 plan.md 갱신 | plan.md | ✅ 완료 (2026-07-10 실측, 4개 블록 전부 사용자 승인) |
+| 13-2 | `Holding` 모델 `totalCost` 전환 — 타입·`store.ts` 읽기 하위호환(레거시 `avgPrice` 역산)·`valuation` 계산식 변경·1주당 평균 매입가 표시 전용 계산 | `types`, `lib/holdings/store.ts`, `lib/holdings/valuation.ts`, `lib/format/krw.ts` | ✅ 완료 (2026-07-11) |
+| 13-3 | 종목 추가 폼 개편(종목코드+수량+총 매입금액) + 종목명 자동 조회·저장(§13.2 조회 순서 ①→②→③, 실측 검증 포함) | `app/holdings/page.tsx`, `app/holdings/actions.ts`, `lib/api/kis/*` | ✅ 완료 (2026-07-11 — CTPF1002R `fetchKisStockName`, 동일 종목코드 중복 등록 차단) |
+| 13-4 | 종목 히스토리 공용 저장소(§13.3 확정) — `stock:{symbolCode}:history` 저장/조회 모듈, 신규 종목 백필(최근 2년, 1회 100거래일 페이징), 기존 저장분 재사용, 현행 cron(18:15 KST)에 일별 upsert 연결(Phase 11 착수 시 갱신 잡으로 이관) | `lib/holdings/stockHistory.ts` (신규), `app/api/cron/revalidate-indices/route.ts` (확장) | ✅ 완료 (2026-07-11 — 백필 485건/2년·재실행 skip·cron 갱신 멱등 실측) |
+| 13-5 | 종목 상세 페이지 신설 — 조회 전용 화면+수정 모드 전환(`?edit=1`), 차트(13-4 저장 데이터 + 수익률/원 단위 토글 재사용, "최근 2년 추이"), `/holdings` 메인 요약 목록 개편(상세 링크 카드), 정보 블록 4종(§13.4 확정 범위) | `app/holdings/[symbolCode]/page.tsx` (신규), `lib/holdings/stockInfo.ts` (신규), `lib/api/kis/client.ts` (확장) | ✅ 완료 (2026-07-11) |
+| 13-6 | 검증 — 로컬 `build`+`start`, 레거시 `avgPrice` 데이터 역산 표시·재저장 전환 실측, CRUD 왕복(암호화 유지), 신규 종목 백필·기존 종목 재사용(중복 백필 없음)·cron upsert 멱등성 실측, 상세 페이지 라우팅·수정 모드·미보유 종목코드 접근 처리 | — | ✅ 완료 (2026-07-11 — lint/tsc/build 통과, 백필·cron 멱등·정보 블록 4종 라이브 실측. 브라우저 CRUD 왕복·레거시 역산은 배포 후 확인 항목) |
+
+**Phase 13 완료 조건:** ✅ 조사 결과 보고 및 상세 페이지 정보 범위 재확정(사용자 승인), ✅ `totalCost` 모델 CRUD·레거시 역산 마이그레이션 동작, ✅ 종목코드만으로 종목 추가(종목명 자동 저장) 동작, ✅ `stock:{symbolCode}:history` 신규 백필·기존 재사용·cron 갱신 동작(실측), ✅ `/holdings/[symbolCode]` 조회/수정 모드·차트 동작, ✅ `/holdings` 메인 요약 목록·상세 이동 동작, ✅ 로컬 검증(lint·tsc·build·라이브 실측). **완료 후 Phase 11 착수.**
 
 ---
 
@@ -1893,6 +1979,7 @@ page.tsx / 상세 페이지 [Server] ──► lib/market/store.ts (Redis 리더
 | PR-9 | 10 | PWA(manifest·sw)·Web Push(VAPID)·구독 저장, 신고가 추적·알림 조건 3종·쿨다운 — ~~`/api/cron/check-alerts`·맥미니 crontab~~(Phase 11로 대체, 갱신 잡 훅으로 연결) |
 | PR-10 | 11 | QStash 스케줄 4개(확정 재시도 정책)·서명 검증, Redis 스냅샷 스토어·갱신 잡 파이프라인, 읽기 경로 Redis 전환(`unstable_cache` 제거), Vercel cron/`vercel.json` 제거, 갱신 상태 UI(장중 한정 2단계 배지·「마지막 갱신」 표기), 허용 시간·거래일 가드 |
 | PR-11 | 12 | `secureJson` 유틸(AES-256-GCM·`enc:v1:` 포맷), `store.ts` 4함수 적용(읽기 하위호환+쓰기 암호화), 키 관리(`HOLDINGS_ENCRYPTION_KEY`), 평문 마이그레이션 — **구현·머지 순서는 PR-11(Phase 12)이 PR-10(Phase 11)보다 먼저** |
+| PR-12 | 13 | `Holding` `totalCost` 모델 전환·레거시 역산 마이그레이션, 종목 추가 폼 개편(종목명 자동 조회), 종목 히스토리 공용 저장소(`stock:{symbolCode}:history`, 최근 1~2년·cron 갱신), 종목 상세 페이지(`/holdings/[symbolCode]`) 신설·`/holdings` 메인 개편 — **재무/기업 정보 블록은 §13.4 조사·범위 재확정 후. 머지 순서는 PR-12(Phase 13)가 PR-10(Phase 11)보다 먼저** |
 
 ---
 

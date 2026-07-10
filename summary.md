@@ -1,27 +1,35 @@
-# 보안 검토 결과 보고 (2026-07-10)
+# Phase 13 보안 검토 보고 (2026-07-11)
 
-보안 검토 완료했습니다. **차단 사유(high 이상) 없음** — 발견 사항을 심각도와 함께 정리합니다.
+**결론: high 이상 취약점 및 push 차단 사유 없음.** 발견 사항은 moderate 의존성 취약점 1건(기존, Phase 13과 무관)과 정보성 참고 2건입니다.
 
-## Push 전 검증 워크플로우
+## 1. 무인증 접근 가능 엔드포인트 — 문제 없음
 
-| 항목 | 결과 |
-|---|---|
-| 1. lint·typecheck | ✅ eslint·`tsc --noEmit` 모두 통과 |
-| 2. 민감정보 | ✅ 없음 — 전체 diff(113KB)와 미추적 파일을 시크릿 패턴(키 형태 문자열·Bearer·upstash.io URL 등)으로 스캔, 검출 0건. 문서에는 env **변수명**만 언급되고 값 없음. `.env.local`은 git 제외 확인(이번 변경에 `.gitignore`에 `.env*.local` 추가된 것도 확인 — 바람직) |
-| 3. npm audit | ⚠️ **high 이상 0건**, moderate 3·low 1 — 전부 Next.js 16.2.6이 내부 의존하는 postcss의 XSS advisory 체인입니다. 제시된 fix가 `next@9.3.3` 다운그레이드라 적용 불가하고, postcss는 빌드 타임 도구라 런타임 노출이 없어 실위험 낮음. Next 업그레이드 시 자연 해소될 항목으로 보고만 드립니다 |
+- API 라우트는 여전히 2개뿐: `/api/auth/*`(NextAuth 자체 처리), `/api/cron/revalidate-indices`(proxy 매처 예외지만 라우트 내부에서 `CRON_SECRET` Bearer를 `timingSafeEqual`로 검증 — 길이 불일치 조기 반환 포함).
+- 신규 `/holdings/[symbolCode]` 페이지는 proxy 매처 예외 목록에 없어 **미들웨어 인증 + 페이지의 `ensureAllowedSession` 이중 확인**을 통과해야 하고, 추가로 **본인이 보유하지 않은 종목코드는 `/holdings`로 리다이렉트**되므로 이 서비스를 임의 종목 조회기로 쓰는 것도 차단됩니다.
+- Server Actions(`addHoldingAction` 등)는 페이지 인증과 별개로 `requireEmail`(세션 + `isEmailAllowed`)을 매번 재검증 — 액션 단독 호출 우회 불가.
 
-## 보안 코드 리뷰 (추가 3항목)
+## 2. 외부 입력 검증 — 문제 없음
 
-1. **무인증 접근 가능 엔드포인트** — 문제 없음. API 라우트는 2개뿐: `/api/auth`(NextAuth 자체 처리), `/api/cron/revalidate-indices`(proxy 예외지만 라우트 내부에서 `CRON_SECRET` Bearer를 `timingSafeEqual`로 검증). 신규 페이지(`/holdings`, `/indices/*`)는 전부 미들웨어 인증 뒤에 있고, `/holdings`는 페이지(`ensureAllowedSession`)와 Server Action(`requireEmail`) **양쪽에서** 세션+허용목록을 재확인합니다 — 액션 단독 호출 우회 불가.
-2. **외부 입력 검증** — 양호. Server Actions에서 `symbolCode` 6자리 정규식, `name` 1~50자, `quantity` 양의 정수, `avgPrice` 유한 양수 검증. `?error=` 쿼리 파라미터는 고정 메시지 사전(`ERROR_MESSAGES`)으로만 매핑되고 원문은 렌더링되지 않으며, 수정/삭제의 `id`는 본인 보유목록 내에서만 조회됩니다.
-3. **위험 렌더링 패턴** — `dangerouslySetInnerHTML` 1곳(`layout.tsx` 테마 초기화 스크립트)뿐인데, 내용이 코드 상수만 포함한 정적 문자열이라 사용자 입력 유입 경로가 없습니다. 안전.
+- **URL 파라미터 `symbolCode`**: Redis 키(`stock:{code}:history`)·KIS 호출에 쓰이기 전에 항상 `/^\d{6}$/` 검증(상세 페이지·추가 액션 모두). KIS URL 조립은 `URLSearchParams`라 인코딩도 보장됩니다.
+- **`?error=`**: `ERROR_MESSAGES[error] ?? null` 화이트리스트 조회만 하고 원본 값은 렌더링하지 않음. **`?edit=`**: `=== "1"` 엄격 비교.
+- **폼 입력**: 수량은 양의 정수, 총 매입금액은 양의 유한수만 통과, `id`는 조회 키로만 사용. 중복 종목코드 차단.
+- **KIS 응답값**(자동 저장되는 종목명 포함)은 JSX 텍스트로만 렌더링되어 React가 이스케이프합니다.
 
-## Phase 12(암호화) 추가 점검
+## 3. 위험 렌더링 패턴 — 신규 코드에 없음
 
-- `secureJson`은 `store.ts`에서만 import — 클라이언트 컴포넌트로 유입되는 경로 없음, 키는 서버 env에서만 읽고 키·암호문을 로그에 남기는 코드 없음. ✅
+`dangerouslySetInnerHTML`은 `layout.tsx`의 테마 초기화 스크립트 1곳뿐(기존 코드) — 정적 상수 문자열이고 사용자 입력이 섞이지 않아 안전합니다. Phase 13 신규/수정 파일에는 해당 패턴이 없습니다.
 
-## 정보성 관찰 1건 (보안 이슈 아님)
+## 4. 민감정보 스캔 — 통과
 
-- `addHoldingAction`의 KIS 실존 검증 호출(`fetchKisStockPrice`)은 Phase 11 확정사항(§11.10-A4: 실존 검증 제거)과 충돌하는 현재 코드입니다 — Phase 11 구현 시 제거 예정이므로 지금은 그대로 둡니다.
+diff에는 `process.env.KIS_APP_SECRET` 같은 **변수 참조만** 있고 실제 값은 없습니다. `.env.local`을 로드하던 임시 실측 스크립트 2개는 스크래치패드에서 삭제 완료했습니다.
 
-**결론: push를 막을 보안 문제는 발견되지 않았습니다.** 이대로 push를 진행할까요? 진행 시 의미 단위(Phase 9 구현 / Phase 11 설계 문서 / Phase 12 암호화)로 커밋을 나눠 올리겠습니다. 참고로 push 후 배포 전에 Vercel env에 `HOLDINGS_ENCRYPTION_KEY` 등록이 선행되어야 `/holdings` 저장 기능이 동작합니다.
+## 5. npm audit — moderate 3건, low 1건 (high 이상 없음)
+
+next가 의존하는 **postcss의 XSS advisory**(GHSA-qx2v-qp2m-jg93)가 원인입니다. `npm audit fix --force`는 next를 9.3.3으로 **다운그레이드**하는 잘못된 해법이라 실행하면 안 되고, 추후 next 패치 버전 업그레이드로 해소하는 게 맞습니다. 빌드 타임 CSS 처리 경로라 실사용 위험은 낮습니다.
+
+## 참고 (조치 불요, 정보성)
+
+- `stock:{symbolCode}:history`는 설계대로 평문 공용 키입니다 — 공개 시세 데이터라 암호화 대상이 아니며(plan.md §13.3), 개인 보유 정보(`holdings:{email}*`)는 기존 AES-256-GCM 암호화가 그대로 유지됩니다(store.ts 경계 무변경).
+- cron 응답 JSON에 허용 이메일이 포함되지만 `CRON_SECRET` 인증 뒤에서만 노출됩니다(기존 동작).
+
+lint·typecheck·build는 앞서 통과 확인했습니다. push 진행 시 의미 단위(13-2 모델 전환 / 13-3·13-4 폼·히스토리 / 13-5 상세 페이지 / 문서)로 커밋을 나눠 올립니다.
