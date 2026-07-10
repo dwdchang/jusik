@@ -37,6 +37,13 @@
   letter-spacing: var(--tracking-tight);
 }
 
+.titleCode {
+  margin-left: var(--space-8);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-tertiary);
+}
+
 .errorBanner {
   margin-bottom: var(--space-16);
   padding: var(--space-12) var(--space-16);
@@ -76,6 +83,12 @@
   color: var(--color-text-primary);
 }
 
+.statSub {
+  margin-left: var(--space-8);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+}
+
 .statEmpty {
   font-size: var(--text-caption);
   color: var(--color-text-tertiary);
@@ -85,73 +98,64 @@
   margin-bottom: var(--space-16);
 }
 
+.sectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+  margin-bottom: var(--space-8);
+}
+
 .sectionTitle {
   font-size: var(--text-caption);
   font-weight: var(--weight-semibold);
   color: var(--color-text-secondary);
-  margin-bottom: var(--space-8);
 }
 
-.emptyNotice {
-  padding: var(--space-16);
-  background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
+.editToggle {
   font-size: var(--text-caption);
-  color: var(--color-text-tertiary);
-  line-height: 1.5;
-}
-
-.dailyList {
-  list-style: none;
-  background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  overflow: hidden;
-}
-
-.dailyRow {
-  display: flex;
-  align-items: center;
-  gap: var(--space-12);
-  padding: var(--space-12) var(--space-16);
-}
-
-.dailyRow + .dailyRow {
-  border-top: 1px solid var(--color-border);
-}
-
-.dailyDate {
-  font-size: var(--text-caption);
-  color: var(--color-text-secondary);
-  min-width: 84px;
-}
-
-.dailyValue {
-  flex: 1;
-  text-align: right;
-  font-size: var(--text-caption);
-  font-weight: var(--weight-semibold);
-  color: var(--color-text-primary);
-}
-
-.dailyRate {
-  min-width: 72px;
-  text-align: right;
-  font-size: var(--text-micro);
   font-weight: var(--weight-medium);
+  color: var(--color-primary);
+  text-decoration: none;
 }
 
-.addForm {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
+.editToggle:hover {
+  text-decoration: underline;
+}
+
+.editList {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+}
+
+.editItem {
+  display: flex;
+  flex-direction: column;
   gap: var(--space-8);
   padding: var(--space-16);
   background-color: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
+}
+
+.editForm {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-8);
+}
+
+.editField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.editLabel {
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
 }
 
 .input {
@@ -170,111 +174,111 @@
   border-color: var(--color-primary);
 }
 
-.primaryButton {
+.secondaryButton {
   grid-column: 1 / -1;
   padding: var(--space-8) var(--space-16);
-  background-color: var(--color-primary);
-  border: none;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   font-size: var(--text-caption);
   font-weight: var(--weight-semibold);
-  color: #ffffff;
+  color: var(--color-text-primary);
   cursor: pointer;
 }
 
-.primaryButton:hover {
-  background-color: var(--color-primary-pressed);
+.secondaryButton:hover {
+  background-color: var(--color-bg);
 }
 
-.holdingList {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
+.dangerButton {
+  width: 100%;
+  padding: var(--space-8) var(--space-16);
+  background-color: transparent;
+  border: 1px solid var(--color-rise);
+  border-radius: var(--radius-md);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-semibold);
+  color: var(--color-rise);
+  cursor: pointer;
+}
+
+.dangerButton:hover {
+  background-color: var(--color-surface);
+}
+
+.emptyNotice {
+  padding: var(--space-16);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-caption);
+  color: var(--color-text-tertiary);
+  line-height: 1.5;
+}
+
+.infoGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
   gap: var(--space-12);
 }
 
-.holdingItem {
-  display: block;
+@media (max-width: 640px) {
+  .infoGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.infoCard {
   padding: var(--space-16);
   background-color: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
-  text-decoration: none;
-  color: inherit;
 }
 
-.holdingItem:hover {
-  border-color: var(--color-primary);
-}
-
-.holdingHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-8);
+.infoTitle {
+  font-size: var(--text-caption);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
   margin-bottom: var(--space-12);
 }
 
-.holdingName {
-  font-size: var(--text-caption);
-  font-weight: var(--weight-semibold);
-  color: var(--color-text-primary);
-}
-
-.holdingCode {
-  margin-left: var(--space-8);
-  font-size: var(--text-micro);
-  font-weight: var(--weight-medium);
-  color: var(--color-text-tertiary);
-}
-
-.holdingReturn {
-  font-size: var(--text-caption);
-  font-weight: var(--weight-bold);
-}
-
-.holdingStats {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: var(--space-8);
-  margin-bottom: var(--space-8);
-}
-
-.holdingStat {
+.infoRows {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.infoRow {
+  display: flex;
+  align-items: baseline;
   justify-content: space-between;
   gap: var(--space-8);
 }
 
-.holdingStat dt {
+.infoRow dt {
   font-size: var(--text-micro);
   color: var(--color-text-tertiary);
 }
 
-.holdingStat dd {
+.infoRow dd {
   font-size: var(--text-micro);
   font-weight: var(--weight-semibold);
   color: var(--color-text-primary);
-}
-
-.holdingDetailCue {
-  display: block;
   text-align: right;
+}
+
+.infoSub {
+  margin-left: var(--space-8);
   font-size: var(--text-micro);
-  font-weight: var(--weight-medium);
+  font-weight: 400;
   color: var(--color-text-tertiary);
 }
 
-.holdingItem:hover .holdingDetailCue {
-  color: var(--color-primary);
-}
-
-.formHint {
-  margin-top: var(--space-8);
+.infoEmpty {
   font-size: var(--text-micro);
   color: var(--color-text-tertiary);
+  line-height: 1.5;
 }
 
 .rise {

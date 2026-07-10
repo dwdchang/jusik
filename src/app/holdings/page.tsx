@@ -18,11 +18,7 @@ import {
 } from "@/lib/holdings/valuation";
 import { resolveDirection } from "@/lib/indices/kisMapper";
 import type { PortfolioValuation } from "@/types/holdings";
-import {
-  addHoldingAction,
-  deleteHoldingAction,
-  updateHoldingAction,
-} from "./actions";
+import { addHoldingAction } from "./actions";
 import styles from "./page.module.css";
 
 export const metadata: Metadata = {
@@ -32,11 +28,12 @@ export const metadata: Metadata = {
 
 const ERROR_MESSAGES: Record<string, string> = {
   invalid_code: "종목코드는 숫자 6자리여야 합니다.",
-  invalid_name: "종목명을 1~50자로 입력해주세요.",
   invalid_quantity: "수량은 1 이상의 정수여야 합니다.",
-  invalid_price: "매입가는 0보다 큰 숫자여야 합니다.",
-  price_check_failed:
-    "종목 현재가를 조회하지 못했습니다. 종목코드를 확인해주세요.",
+  invalid_total_cost: "총 매입금액은 0보다 큰 숫자여야 합니다.",
+  duplicate_code:
+    "이미 등록된 종목입니다. 수량 변경은 종목 상세 페이지에서 해주세요.",
+  stock_lookup_failed:
+    "종목 정보를 조회하지 못했습니다. 종목코드를 확인해주세요.",
   not_found: "대상 종목을 찾지 못했습니다. 새로고침 후 다시 시도해주세요.",
 };
 
@@ -208,13 +205,6 @@ export default async function HoldingsPage({
               required
             />
             <input
-              name="name"
-              className={styles.input}
-              placeholder="종목명"
-              maxLength={50}
-              required
-            />
-            <input
               name="quantity"
               className={styles.input}
               placeholder="수량"
@@ -224,9 +214,9 @@ export default async function HoldingsPage({
               required
             />
             <input
-              name="avgPrice"
+              name="totalCost"
               className={styles.input}
-              placeholder="매입가(원)"
+              placeholder="총 매입금액(원)"
               type="number"
               min={1}
               step="any"
@@ -236,6 +226,9 @@ export default async function HoldingsPage({
               추가
             </button>
           </form>
+          <p className={styles.formHint}>
+            종목명은 저장 시 자동으로 조회됩니다.
+          </p>
         </section>
 
         <section className={styles.section} aria-label="보유종목 목록">
@@ -253,99 +246,62 @@ export default async function HoldingsPage({
                   (v) => v.holding.id === holding.id
                 );
                 return (
-                  <li key={holding.id} className={styles.holdingItem}>
-                    <div className={styles.holdingHead}>
-                      <span className={styles.holdingName}>
-                        {holding.name}
-                        <span className={styles.holdingCode}>
-                          {holding.symbolCode}
+                  <li key={holding.id}>
+                    <Link
+                      href={`/holdings/${holding.symbolCode}`}
+                      className={styles.holdingItem}
+                    >
+                      <div className={styles.holdingHead}>
+                        <span className={styles.holdingName}>
+                          {holding.name}
+                          <span className={styles.holdingCode}>
+                            {holding.symbolCode}
+                          </span>
                         </span>
-                      </span>
-                      {item ? (
-                        <span
-                          className={`${styles.holdingReturn} numeric ${
-                            styles[resolveDirection(item.returnRate)]
-                          }`}
-                        >
-                          {formatChangeRate(item.returnRate)}
-                        </span>
-                      ) : null}
-                    </div>
-
-                    {item ? (
-                      <dl className={styles.holdingStats}>
-                        <div className={styles.holdingStat}>
-                          <dt>현재가</dt>
-                          <dd className="numeric">
-                            {formatKrw(item.currentPrice)}
-                          </dd>
-                        </div>
-                        <div className={styles.holdingStat}>
-                          <dt>평가금액</dt>
-                          <dd className="numeric">{formatKrw(item.value)}</dd>
-                        </div>
-                        <div className={styles.holdingStat}>
-                          <dt>매입금액</dt>
-                          <dd className="numeric">{formatKrw(item.cost)}</dd>
-                        </div>
-                        <div className={styles.holdingStat}>
-                          <dt>평가손익</dt>
-                          <dd
-                            className={`numeric ${
-                              styles[resolveDirection(item.profit)]
+                        {item ? (
+                          <span
+                            className={`${styles.holdingReturn} numeric ${
+                              styles[resolveDirection(item.returnRate)]
                             }`}
                           >
-                            {formatKrw(item.profit)}
-                          </dd>
-                        </div>
-                      </dl>
-                    ) : null}
+                            {formatChangeRate(item.returnRate)}
+                          </span>
+                        ) : null}
+                      </div>
 
-                    <div className={styles.holdingForms}>
-                      <form
-                        action={updateHoldingAction}
-                        className={styles.editForm}
-                      >
-                        <input type="hidden" name="id" value={holding.id} />
-                        <input
-                          name="name"
-                          className={styles.input}
-                          defaultValue={holding.name}
-                          maxLength={50}
-                          required
-                          aria-label="종목명"
-                        />
-                        <input
-                          name="quantity"
-                          className={styles.input}
-                          defaultValue={holding.quantity}
-                          type="number"
-                          min={1}
-                          step={1}
-                          required
-                          aria-label="수량"
-                        />
-                        <input
-                          name="avgPrice"
-                          className={styles.input}
-                          defaultValue={holding.avgPrice}
-                          type="number"
-                          min={1}
-                          step="any"
-                          required
-                          aria-label="매입가(원)"
-                        />
-                        <button type="submit" className={styles.secondaryButton}>
-                          수정
-                        </button>
-                      </form>
-                      <form action={deleteHoldingAction}>
-                        <input type="hidden" name="id" value={holding.id} />
-                        <button type="submit" className={styles.dangerButton}>
-                          삭제
-                        </button>
-                      </form>
-                    </div>
+                      {item ? (
+                        <dl className={styles.holdingStats}>
+                          <div className={styles.holdingStat}>
+                            <dt>현재가</dt>
+                            <dd className="numeric">
+                              {formatKrw(item.currentPrice)}
+                            </dd>
+                          </div>
+                          <div className={styles.holdingStat}>
+                            <dt>평가금액</dt>
+                            <dd className="numeric">{formatKrw(item.value)}</dd>
+                          </div>
+                          <div className={styles.holdingStat}>
+                            <dt>매입금액</dt>
+                            <dd className="numeric">{formatKrw(item.cost)}</dd>
+                          </div>
+                          <div className={styles.holdingStat}>
+                            <dt>평가손익</dt>
+                            <dd
+                              className={`numeric ${
+                                styles[resolveDirection(item.profit)]
+                              }`}
+                            >
+                              {formatKrw(item.profit)}
+                            </dd>
+                          </div>
+                        </dl>
+                      ) : null}
+
+                      <span className={styles.holdingDetailCue}>
+                        상세 보기 →
+                      </span>
+                    </Link>
                   </li>
                 );
               })}

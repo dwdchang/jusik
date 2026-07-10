@@ -14,8 +14,10 @@ const HoldingsChart = dynamic(
 
 export function HoldingsChartClient({
   points,
+  title,
 }: {
   points: HoldingsChartPoint[];
+  title?: string;
 }) {
-  return <HoldingsChart points={points} />;
+  return <HoldingsChart points={points} title={title} />;
 }

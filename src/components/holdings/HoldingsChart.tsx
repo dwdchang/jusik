@@ -52,14 +52,20 @@ function ChartTooltipContent({
   );
 }
 
-/** 연초 이후 추이 차트 — 수익률(%) ↔ 원 단위(M/B) 토글 */
-export function HoldingsChart({ points }: { points: HoldingsChartPoint[] }) {
+/** 보유종목 추이 차트 — 수익률(%) ↔ 원 단위(M/B) 토글 */
+export function HoldingsChart({
+  points,
+  title = "연초 이후 추이",
+}: {
+  points: HoldingsChartPoint[];
+  title?: string;
+}) {
   const [mode, setMode] = useState<ChartMode>("rate");
 
   return (
     <div className={styles.chart}>
       <div className={styles.toolbar}>
-        <h3 className={styles.title}>연초 이후 추이</h3>
+        <h3 className={styles.title}>{title}</h3>
         <div className={styles.toggle} role="group" aria-label="차트 단위 전환">
           <button
             type="button"
