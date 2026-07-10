@@ -5,6 +5,7 @@ import { KIS_CACHE_TAGS } from "@/lib/api/kis/constants";
 import { getAllowedEmails } from "@/lib/auth/allowedEmails";
 import { todayKstDate } from "@/lib/date/kst";
 import { getHoldings, upsertPortfolioHistory } from "@/lib/holdings/store";
+import { refreshStockHistory } from "@/lib/holdings/stockHistory";
 import { getPortfolioValuation } from "@/lib/holdings/valuation";
 import {
   computeVolatilityRecords,
@@ -81,8 +82,54 @@ async function recordHoldingsHistory(): Promise<
 }
 
 /**
+ * 허용 이메일 전체의 보유 종목코드(중복 제거) → stock:{code}:history 확정 종가 upsert.
+ * 공용 키라 사용자 수와 무관하게 종목당 1회만 갱신한다 (plan.md §13.3).
+ */
+async function refreshStockHistories(): Promise<
+  Array<{ symbolCode: string; ok: boolean; count?: number; error?: string }>
+> {
+  const holdingsPerEmail = await Promise.all(
+    getAllowedEmails().map(async (email) => {
+      try {
+        return await getHoldings(email);
+      } catch (error) {
+        console.error(`[cron] holdings read failed for ${email}:`, error);
+        return [];
+      }
+    })
+  );
+
+  const symbolCodes = [
+    ...new Set(
+      holdingsPerEmail.flat().map((holding) => holding.symbolCode)
+    ),
+  ];
+
+  // KIS 호출 부하를 고려해 종목별 순차 갱신
+  const results: Array<{
+    symbolCode: string;
+    ok: boolean;
+    count?: number;
+    error?: string;
+  }> = [];
+
+  for (const symbolCode of symbolCodes) {
+    try {
+      const { count } = await refreshStockHistory(symbolCode);
+      results.push({ symbolCode, ok: true, count });
+    } catch (error) {
+      console.error(`[cron] stock history refresh failed (${symbolCode}):`, error);
+      results.push({ symbolCode, ok: false, error: errorMessage(error) });
+    }
+  }
+
+  return results;
+}
+
+/**
  * Vercel Cron — 평일 18:15 KST 단일 실행:
  * 지수 캐시 무효화 → 코스피 변동성 히스토리 upsert → 보유종목 일별 기록 upsert
+ * → 종목별 종가 히스토리 upsert (Phase 11 착수 시 갱신 잡으로 이관 예정)
  * @see vercel.json crons
  */
 export async function GET(request: Request) {
@@ -105,7 +152,12 @@ export async function GET(request: Request) {
     recordHoldingsHistory(),
   ]);
 
-  const ok = volatility.ok && holdings.every((result) => result.ok);
+  const stockHistories = await refreshStockHistories();
+
+  const ok =
+    volatility.ok &&
+    holdings.every((result) => result.ok) &&
+    stockHistories.every((result) => result.ok);
 
   return Response.json(
     {
@@ -114,6 +166,7 @@ export async function GET(request: Request) {
       tags: [...KIS_CACHE_TAGS],
       volatility,
       holdings,
+      stockHistories,
     },
     { status: ok ? 200 : 500 }
   );

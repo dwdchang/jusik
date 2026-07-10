@@ -22,6 +22,19 @@ export const KIS_ENDPOINTS = {
     "/uapi/overseas-price/v1/quotations/inquire-daily-chartprice",
   /** 국내주식 현재가 시세 */
   STOCK_PRICE: "/uapi/domestic-stock/v1/quotations/inquire-price",
+  /** 주식기본조회 — 종목명 (plan.md §13.2 실측 확정) */
+  STOCK_BASIC_INFO: "/uapi/domestic-stock/v1/quotations/search-stock-info",
+  /** 국내주식 기간별시세 (일/주/월/년) — 1회 최대 100거래일 (plan.md §13.3 실측) */
+  STOCK_DAILY_CHART:
+    "/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice",
+  /** 시가총액 상위 랭킹 — 1회 상위 30건 (plan.md §13.4 실측) */
+  MARKET_CAP_RANKING: "/uapi/domestic-stock/v1/ranking/market-cap",
+  /** 예탁원 배당일정 */
+  DIVIDEND: "/uapi/domestic-stock/v1/ksdinfo/dividend",
+  /** 손익계산서 — 분기값은 연중 누적(YTD), 단위 억원 (plan.md §13.4 실측) */
+  INCOME_STATEMENT: "/uapi/domestic-stock/v1/finance/income-statement",
+  /** 재무비율 — 증가율은 전년 동기 대비 직접 제공 */
+  FINANCIAL_RATIO: "/uapi/domestic-stock/v1/finance/financial-ratio",
 } as const;
 
 export const KIS_TR_ID = {
@@ -29,7 +42,28 @@ export const KIS_TR_ID = {
   INDEX_DAILY_PRICE: "FHPUP02120000",
   OVERSEAS_DAILY_CHART: "FHKST03030100",
   STOCK_PRICE: "FHKST01010100",
+  STOCK_BASIC_INFO: "CTPF1002R",
+  STOCK_DAILY_CHART: "FHKST03010100",
+  MARKET_CAP_RANKING: "FHPST01740000",
+  DIVIDEND: "HHKDB669102C0",
+  INCOME_STATEMENT: "FHKST66430200",
+  FINANCIAL_RATIO: "FHKST66430300",
 } as const;
+
+/** 시가총액 랭킹 1회 응답 건수 — 이 밖의 순위는 "30위권 밖"으로 표시 */
+export const KIS_MARKET_CAP_RANKING_SIZE = 30;
+
+/** 배당 정보 집계 범위 — 최근 1년 주당배당금 합계로 시가배당률을 계산 */
+export const DIVIDEND_LOOKBACK_DAYS = 365;
+
+/** 주식기본조회 상품유형코드 — 300: 국내주식 */
+export const KIS_STOCK_PRDT_TYPE_CD = "300";
+
+/** 종목별 일별 히스토리 저장 범위 — 최근 2년 (plan.md §13.3 확정) */
+export const STOCK_HISTORY_WINDOW_DAYS = 730;
+
+/** 기간별시세 1회 응답 최대 거래일 수 (2026-07-10 실측) */
+export const STOCK_DAILY_CHART_PAGE_SIZE = 100;
 
 /** 국내주식(현재가 조회) 시장 분류 코드 */
 export const KIS_STOCK_MARKET_DIV_CODE = "J";

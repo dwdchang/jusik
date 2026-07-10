@@ -3,9 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { fetchKisStockPrice } from "@/lib/api/kis/client";
+import { fetchKisStockName, fetchKisStockPrice } from "@/lib/api/kis/client";
 import { isEmailAllowed } from "@/lib/auth/allowedEmails";
 import { getHoldings, saveHoldings } from "@/lib/holdings/store";
+import { backfillStockHistoryIfMissing } from "@/lib/holdings/stockHistory";
 
 async function requireEmail(): Promise<string> {
   const session = await auth();
@@ -18,30 +19,29 @@ async function requireEmail(): Promise<string> {
   return email;
 }
 
-function fail(code: string): never {
-  redirect(`/holdings?error=${code}`);
+function fail(code: string, basePath = "/holdings"): never {
+  redirect(`${basePath}?error=${code}`);
 }
 
-function parseEditableFields(formData: FormData): {
-  name: string;
+/** 수량·총 매입금액 — 1주당 평균 매입가는 저장하지 않는다 (plan.md §13.1) */
+function parseEditableFields(
+  formData: FormData,
+  basePath: string
+): {
   quantity: number;
-  avgPrice: number;
+  totalCost: number;
 } {
-  const name = String(formData.get("name") ?? "").trim();
   const quantity = Number(String(formData.get("quantity") ?? "").trim());
-  const avgPrice = Number(String(formData.get("avgPrice") ?? "").trim());
+  const totalCost = Number(String(formData.get("totalCost") ?? "").trim());
 
-  if (name.length === 0 || name.length > 50) {
-    fail("invalid_name");
-  }
   if (!Number.isInteger(quantity) || quantity <= 0) {
-    fail("invalid_quantity");
+    fail("invalid_quantity", basePath);
   }
-  if (!Number.isFinite(avgPrice) || avgPrice <= 0) {
-    fail("invalid_price");
+  if (!Number.isFinite(totalCost) || totalCost <= 0) {
+    fail("invalid_total_cost", basePath);
   }
 
-  return { name, quantity, avgPrice };
+  return { quantity, totalCost };
 }
 
 export async function addHoldingAction(formData: FormData): Promise<void> {
@@ -52,30 +52,52 @@ export async function addHoldingAction(formData: FormData): Promise<void> {
     fail("invalid_code");
   }
 
-  const { name, quantity, avgPrice } = parseEditableFields(formData);
+  const { quantity, totalCost } = parseEditableFields(formData, "/holdings");
 
-  // 실존 여부 검증 — 현재가 조회 실패 시 저장하지 않는다
+  const holdings = await getHoldings(email);
+
+  // 상세 페이지가 종목코드 단위이므로 동일 종목 중복 등록은 막는다 (plan.md §13.3)
+  if (holdings.some((holding) => holding.symbolCode === symbolCode)) {
+    fail("duplicate_code");
+  }
+
+  // 실존 검증(현재가) + 종목명 자동 조회 — 어느 쪽이든 실패하면 저장하지 않는다
+  let name: string;
   try {
-    await fetchKisStockPrice(symbolCode);
+    const [, fetchedName] = await Promise.all([
+      fetchKisStockPrice(symbolCode),
+      fetchKisStockName(symbolCode),
+    ]);
+    name = fetchedName;
   } catch (error) {
-    console.error(`[addHoldingAction] price check failed (${symbolCode}):`, error);
-    fail("price_check_failed");
+    console.error(`[addHoldingAction] stock lookup failed (${symbolCode}):`, error);
+    fail("stock_lookup_failed");
   }
 
   const now = new Date().toISOString();
-  const holdings = await getHoldings(email);
 
   holdings.push({
     id: crypto.randomUUID(),
     symbolCode,
     name,
     quantity,
-    avgPrice,
+    totalCost,
     createdAt: now,
     updatedAt: now,
   });
 
   await saveHoldings(email, holdings);
+
+  // 종목별 히스토리 백필 — 이미 저장된 종목은 재사용, 실패해도 등록 자체는 유지 (plan.md §13.3)
+  try {
+    await backfillStockHistoryIfMissing(symbolCode);
+  } catch (error) {
+    console.error(
+      `[addHoldingAction] history backfill failed (${symbolCode}):`,
+      error
+    );
+  }
+
   revalidatePath("/holdings");
   redirect("/holdings");
 }
@@ -83,7 +105,6 @@ export async function addHoldingAction(formData: FormData): Promise<void> {
 export async function updateHoldingAction(formData: FormData): Promise<void> {
   const email = await requireEmail();
   const id = String(formData.get("id") ?? "");
-  const { name, quantity, avgPrice } = parseEditableFields(formData);
 
   const holdings = await getHoldings(email);
   const target = holdings.find((holding) => holding.id === id);
@@ -92,14 +113,17 @@ export async function updateHoldingAction(formData: FormData): Promise<void> {
     fail("not_found");
   }
 
-  target.name = name;
+  const detailPath = `/holdings/${target.symbolCode}`;
+  const { quantity, totalCost } = parseEditableFields(formData, detailPath);
+
   target.quantity = quantity;
-  target.avgPrice = avgPrice;
+  target.totalCost = totalCost;
   target.updatedAt = new Date().toISOString();
 
   await saveHoldings(email, holdings);
   revalidatePath("/holdings");
-  redirect("/holdings");
+  revalidatePath(detailPath);
+  redirect(detailPath);
 }
 
 export async function deleteHoldingAction(formData: FormData): Promise<void> {
