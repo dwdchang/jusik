@@ -18,7 +18,11 @@
 | 5 — KIS 마이그레이션 문서화·레거시 정리 | ✅ 완료 |
 | 6 — KIS 토큰 캐시 외부 저장소(Upstash Redis) 전환 | ⚠️ 6-1~6-5 완료, **6-6 남음** |
 | 7 — Google OAuth 로그인 및 접근 제한 | ✅ 완료 (실제 Google 로그인 플로우 검증 완료, 2026-07-04) |
-| 8 — 시간대별 캐시 최적화 (KIS 마감 후 갱신 패턴 반영) | ⚠️ 8-1~8-5 로컬 구현·검증 완료, **8-6 프로덕션 배포 후 확인 남음** |
+| 8 — 시간대별 캐시 최적화 (KIS 마감 후 갱신 패턴 반영) | ⚠️ 8-1~8-5 로컬 구현·검증 완료, 8-6 프로덕션 확인 남음 — **Phase 11 승인 시 구조 자체가 대체되어 8-6은 폐기** |
+| 9 — 홈 화면 지표 확장 및 보유종목 관리 | ✅ 그룹 1~7 구현·로컬 검증 완료 (2026-07-09) — 배포 후 cron 확인은 Phase 11로 대체 |
+| 10 — 보유종목 알림 기능 (Web Push) | 📋 조사·설계 완료, 구현 미착수 — **호출 방식(맥미니 crontab)은 Phase 11로 대체**, Web Push·조건 판정 설계는 유효 |
+| 11 — 데이터 갱신 구조 전면 재설계 (QStash Scheduled Push) | ✅ **설계 최종 확정(2026-07-10, 확정 지시문 + 같은 날 배지 정책 2차 개정 — 장중 한정·경고/심각 2단계)**, 구현 미착수 — **Phase 12 완료 후 착수(순서 확정)**. Phase 8 캐시 구조·Phase 9 cron·Phase 10 호출 방식을 전면 대체 |
+| 12 — 보유종목 데이터 암호화 저장 (AES-256-GCM) | ⚠️ **구현·로컬 검증 완료(2026-07-10, 12건 실측 PASS)** — 남은 작업: Vercel env 등록·키 백업(사용자), 배포 후 화면 확인·즉시 마이그레이션. **Phase 11보다 먼저 진행** |
 
 **남은 작업 (6-6):** 프로덕션(Vercel) 배포 후 다중 인스턴스 환경에서 토큰 발급 횟수가 실제로 줄었는지 Vercel 로그로 확인.
 **참고 (2026-07-04):** KIS 서버가 7/4~7/5 전산 점검 중이라 이 기간 대시보드에서 "fetch failed"(KIS API 연결 실패)가 발생할 수 있음 — 코드 문제 아님, 점검 종료 후 재확인.
@@ -1337,6 +1341,543 @@ export const config = {
 
 ---
 
+### Phase 9 — 홈 화면 지표 확장 및 보유종목 관리
+
+**목표:** 홈 화면을 "KOSPI/KOSDAQ 카드+차트 직결" 구조에서 **요약 카드 6개 그리드 + 지표별 상세 페이지** 구조로 재구성하고, 원달러 환율·미국 10년물 국채금리·(로그인 사용자별) 보유종목 수익률·코스피 변동성 지수 4종을 신규 지표로 추가한다. **최종 통합 확정(2026-07-09) — 이전의 모든 개정판(2026-07-08 최초안, 07-09 1차/2차/3차 수정)을 전부 대체하는 최종 버전. 구현은 승인 후 시작 — 이 문서 갱신 시점까지 소스 파일은 생성하지 않음.**
+
+#### 9.1 조사 결과 (2026-07-08, 실제 KIS API 라이브 호출로 검증 완료)
+
+**결론: 환율·금리 모두 KIS API만으로 가능 — FRED 등 외부 API 불필요.**
+
+기존에 쓰던 국내지수 엔드포인트(`/uapi/domestic-stock/v1/quotations/inquire-index-daily-price`)와는 별도로, KIS가 "해외주식 종목_지수_환율기간별시세" 엔드포인트를 제공한다. `FID_COND_MRKT_DIV_CODE`로 4개 카테고리(N: 해외지수, X: 환율, I: 국채, S: 금선물)를 구분하고, 같은 엔드포인트로 원달러 환율과 미국 국채금리를 둘 다 조회할 수 있다.
+
+| 항목 | 값 |
+|---|---|
+| 엔드포인트 | `/uapi/overseas-price/v1/quotations/inquire-daily-chartprice` |
+| TR_ID | `FHKST03030100` |
+| 파라미터 | `FID_COND_MRKT_DIV_CODE`, `FID_INPUT_ISCD`, `FID_INPUT_DATE_1`(시작일), `FID_INPUT_DATE_2`(종료일), `FID_PERIOD_DIV_CODE`(D/W/M/Y) |
+| 응답 | `output1`(현재 스냅샷, 국내지수 API의 `output1`과 구조 유사) + `output2`(기간별 배열) |
+
+종목코드는 KIS가 공개 배포하는 해외지수 마스터 파일(`https://new.real.download.dws.co.kr/common/master/frgn_code.mst.zip`, `koreainvestment/open-trading-api` 저장소의 `stocks_info/overseas_index_code.py`가 이 파일을 내려받아 정제하는 스크립트)에서 확인:
+
+| 지표 | `FID_COND_MRKT_DIV_CODE` | `FID_INPUT_ISCD` | 마스터 파일 상 한글명 |
+|---|---|---|---|
+| 원/달러 환율 | `X` | `FX@KRW` | 원/달러(KMB) |
+| 미국 10년물 국채(수익률) | `I` | `Y0202` | 미국 10년T-NOTE 수익률 |
+
+**실측 검증 (App Key/Secret으로 실제 라이브 호출, 2026-07-08):**
+
+```
+=== 원/달러 환율 (mrktDivCode=X, iscd=FX@KRW) ===
+HTTP 200, output1.ovrs_nmix_prpr = "1500.8000" (오늘), ovrs_nmix_prdy_vrss = "-15.0000"
+
+=== 미국 10년물 국채 (mrktDivCode=I, iscd=Y0202) ===
+HTTP 200, output1.ovrs_nmix_prpr = "4.5500" (%), ovrs_nmix_prdy_vrss = "0.0700"
+
+=== 대조군: 다우존스 (mrktDivCode=N, iscd=.DJI) ===
+HTTP 200, output1.ovrs_nmix_prpr = "52925.15" — 기존에 알려진 사용 예와 결과 일치, 엔드포인트 신뢰도 확인
+```
+
+두 응답 모두 필드 구조(`ovrs_nmix_prpr`, `ovrs_nmix_prdy_vrss`, `prdy_ctrt`, `ovrs_prod_oprc/hgpr/lwpr`)가 국내지수 API의 `bstp_nmix_*` 필드와 거의 1:1 대응 — 기존 `mapKisSnapshot`/`mapKisHistory` 패턴을 그대로 확장해서 재사용 가능할 것으로 보인다(필드명만 다름).
+
+**보유종목 현재가 조회 (기존과 동일 패턴, 실측 확인):**
+
+| 항목 | 값 |
+|---|---|
+| 엔드포인트 | `/uapi/domestic-stock/v1/quotations/inquire-price` |
+| TR_ID | `FHKST01010100` |
+| 파라미터 | `FID_COND_MRKT_DIV_CODE=J`(주식), `FID_INPUT_ISCD=종목코드`(6자리) |
+| 현재가 필드 | `output.stck_prpr` |
+
+실측: 삼성전자(`005930`) 조회 → HTTP 200, `stck_prpr: "277500"` 정상 반환.
+
+#### 9.2 홈 화면 재구성 — 카드 6개 그리드 (2026-07-09 최종 확정)
+
+기존에는 KOSPI/KOSDAQ 카드에 차트가 바로 붙어있었으나(§4장 `IndexChartsSection`), 이를 전부 "요약 카드"로 통일하고 차트는 상세 페이지로 분리한다. **홈 화면에는 차트를 표시하지 않는다** — 모든 차트는 지표별 상세 페이지(§9.3)로 이동.
+
+**카드 6개 (2열 그리드, 반응형), 각 카드는 클릭/터치 시 해당 상세 페이지로 이동:**
+
+| # | 카드 | 표시 값 | 이동 상세 페이지 |
+|---|---|---|---|
+| 1 | 코스피 | 현재가, 전일 대비 등락률 | `/indices/kospi` |
+| 2 | 코스닥 | 현재가, 전일 대비 등락률 | `/indices/kosdaq` |
+| 3 | 원달러 환율 | 현재가, 전일 대비 등락률 | `/indices/usdkrw` |
+| 4 | 미국 10년물 국채금리 | 현재가, 전일 대비 등락률 | `/indices/us10y` |
+| 5 | 보유종목 수익률 | 총 수익률(%), 전일 대비 변동률(%) | `/holdings` |
+| 6 | 코스피 변동성 지수 | 당월 평균 변동성(%), 전월 대비 증감(%p) | `/indices/kospi-volatility` |
+
+- 레이아웃은 기존 다크모드/디자인 토큰 시스템(`tokens.css`)을 그대로 활용.
+- 기존 `IndexDashboard`/`IndexChartsSection`(§4.4, §4.6)의 차트 렌더링 부분은 홈에서 제거하고 각 상세 페이지로 이전한다.
+
+#### 9.3 상세 페이지 라우트 구조
+
+| 지표 | 라우트 | 로그인 필요 |
+|---|---|---|
+| 코스피 | `/indices/kospi` | 불필요 |
+| 코스닥 | `/indices/kosdaq` | 불필요 |
+| 원달러 환율 | `/indices/usdkrw` | 불필요 |
+| 미국 10년물 국채금리 | `/indices/us10y` | 불필요 |
+| 보유종목 수익률 | `/holdings` | **필요** |
+| 코스피 변동성 지수 | `/indices/kospi-volatility` | 불필요 |
+
+#### 9.4 지표별 상세 설계
+
+##### 9.4.1 코스피/코스닥
+
+- 기존 구현(§2~§4의 mapper·`getDashboard`·`IndexLineChart`) 로직은 그대로 유지하되, 렌더링 위치만 홈(`page.tsx`)에서 상세 페이지(`/indices/kospi`, `/indices/kosdaq`)로 이전한다.
+- 구성: 차트(상단, 기존 7거래일 유지 — 기간 확장은 이번 범위 밖) + 일별 수치 리스트(하단).
+
+##### 9.4.2 원달러 환율 / 미국 10년물 금리
+
+- 9.1에서 조사·실측 검증 완료한 KIS 엔드포인트(`/uapi/overseas-price/v1/quotations/inquire-daily-chartprice`, TR_ID `FHKST03030100`) 사용.
+- 코스피/코스닥과 동일한 패턴(`mapKisSnapshot`/`mapKisHistory` 등 재사용)으로 스냅샷 + 히스토리(7거래일) 구현.
+- 구성: 차트(상단) + 일별 수치 리스트(하단) — 코스피/코스닥 상세 페이지와 동일 형식.
+
+##### 9.4.3 보유종목 수익률
+
+**입력 방식 범위 (유지):** 수동 입력만 지원한다. CSV 업로드, 이미지 인식, 오픈뱅킹/마이데이터 연동, 웹 스크래핑 등 자동 연동 방식은 이번 범위에서 전부 제외하고, 필요해지면 별도 Phase로 검토한다.
+
+**데이터 모델 (유지):**
+
+```ts
+// 설계 스니펫 — 아직 파일 생성 안 함
+interface Holding {
+  id: string;            // crypto.randomUUID()
+  symbolCode: string;     // 종목코드 6자리, 예: "005930"
+  name: string;           // 종목명(표시용, 사용자가 직접 입력 — 조회 API로 검증하지 않음)
+  quantity: number;       // 수량
+  avgPrice: number;       // 매입가(원)
+  createdAt: string;
+  updatedAt: string;
+}
+```
+
+**저장 — Upstash Redis, 로그인 이메일 기준:**
+
+- 키: `holdings:{email}` (예: `holdings:dwdchang@gmail.com`) — 현재 보유 목록, `Holding[]` JSON 배열 하나를 통째로 저장/치환. `ALLOWED_EMAILS`가 소수 인원 화이트리스트라 배열 통짜 read/write로 충분, 개별 필드 단위 Redis 자료구조(Hash 등)는 과설계.
+- 키: `holdings:{email}:history` — 일별 시계열, `PortfolioDailyRecord[]` 배열(날짜 오름차순), 그해 1월 1일부터 누적. 같은 날짜에 이미 기록이 있으면 덮어쓴다(upsert, 재실행 안전).
+
+```ts
+// 설계 스니펫 — 아직 파일 생성 안 함
+interface PortfolioDailyRecord {
+  date: string;       // "YYYY-MM-DD" (KST 기준)
+  totalCost: number;  // 그날의 총 매입금액(원)
+  totalValue: number; // 그날의 총 평가금액(원)
+}
+```
+
+- 기존 `lib/redis/client.ts`의 `getRedis()` 싱글턴 그대로 재사용.
+- 신규 모듈 후보: `src/lib/holdings/store.ts` — `getHoldings(email)`, `saveHoldings(email, holdings)`, `getPortfolioHistory(email)`, `upsertPortfolioHistory(email, record)`.
+
+**현재가 조회 (9.1의 엔드포인트 재사용):**
+
+- 각 holding의 `symbolCode`로 `/uapi/domestic-stock/v1/quotations/inquire-price`(TR_ID `FHKST01010100`) 호출 → `stck_prpr`.
+- 종목별 계산: 평가금액 = 현재가 × 수량, 매입금액 = 매입가 × 수량, 평가손익 = 평가금액 − 매입금액, 수익률(%) = 평가손익 / 매입금액 × 100.
+
+**홈 카드에 표시:**
+
+1. **총 수익률(%)**: (총평가금액 − 총매입금액) / 총매입금액 × 100 — 오늘 기록의 `totalCost`/`totalValue` 기준.
+2. **일일 변동률(전일 대비, %)**: (오늘 총평가금액 − 전일 총평가금액) / 전일 총평가금액 × 100 — 시계열의 최근 2개 기록(오늘·전일) 비교.
+
+**상세 페이지 (`/holdings`, 로그인 필요 — 기존 `page.tsx`와 동일하게 `auth()` 세션 확인 + `isEmailAllowed`):**
+
+- 차트: 그해 1/1부터 오늘까지, 토글 버튼으로 두 모드 전환. 두 모드 모두 같은 저장 데이터(`totalCost`, `totalValue`)를 화면에서 계산해 그리며, 모드별 데이터를 별도로 중복 저장하지 않는다.
+
+  | 모드 | y축 | 비고 |
+  |---|---|---|
+  | 수익률 모드(기본값) | 그날의 수익률(%) = `(totalValue-totalCost)/totalCost×100` | 지수화 없이 값 그대로 표시(0%면 0, +100%면 100) |
+  | 원 단위 모드 | 그날의 `totalValue` | M(백만원)/B(십억원) 영어 축약 단위로 표기 (예: 12,000,000원 → 12M, 1,000,000,000원 → 1B) |
+
+- 차트 하단: 일별 수치 리스트(`date`, `totalCost`, `totalValue`, 수익률%).
+- 보유종목 CRUD(추가/수정/삭제) UI도 이 페이지에 포함 — Server Actions로 처리(로그인 페이지의 `signIn` 서버 액션 패턴과 동일하게 `"use client"` 최소화). 입력 필드: 종목코드(6자리, 형식 검증만 — 실존 여부는 저장 시 KIS 현재가 조회로 자연스럽게 검증됨), 종목명, 수량, 매입가.
+
+**cron:** Phase 8에서 신설한 15:40 KST 평일 cron 시점에 맞춰 그날의 `totalCost`/`totalValue`를 `holdings:{email}:history`에 upsert한다. 기존 `/api/cron/revalidate-indices` 라우트에 얹을지 별도 라우트로 분리할지는 **구현 단계에서 판단**한다(§9.6 그룹 6 cron 통합 참고). → **구현 확정(2026-07-09, 사용자 결정):** 기존 라우트를 확장하고, cron 스케줄을 15:40/18:15 두 개에서 **평일 18:15 KST 단일**로 통합(`vercel.json` cron 1개). 캐시 무효화 후 KIS 확정치로 보유종목·변동성 히스토리를 upsert한다.
+
+**단순화 원칙(유지):** 종목 추가/매도로 인한 자금 유출입은 정밀 보정(TWR 등)하지 않는다 — 개인 프로젝트 규모에 맞는 단순화이며, 리밸런싱 보정 로직은 이번 범위에 없음.
+
+##### 9.4.4 코스피 변동성 지수 (신규)
+
+- **정의:** 코스피의 일일 (최고가 − 최저가) / 최저가 × 100 (%)를 매일 계산해서 저장.
+- **저장:** `kospiVolatility:history` — `{ date, dailyGapPercent }[]` 일별 시계열, 평일 18:15 KST cron 시점에 함께 기록(§9.4.3 cron 구현 확정 참고). KIS 일자별 응답(output2)의 고가·저가가 있는 거래일 전부를 upsert하므로 최초 실행 시 약 100거래일(≈5개월) 백필된다.
+
+```ts
+// 설계 스니펫 — 아직 파일 생성 안 함
+interface KospiVolatilityRecord {
+  date: string;           // "YYYY-MM-DD" (KST 기준)
+  dailyGapPercent: number; // (고가-저가)/저가 × 100
+}
+```
+
+- **홈 카드 표시:** 당월 평균 변동성(%) — 당월은 오늘까지의 일수만으로 평균 계산, 전월 대비 증감(%p).
+- **상세 페이지 (`/indices/kospi-volatility`):** 최근 6개월 월별 평균 변동성 차트 **하나만** 표시(당월 포함, 당월은 진행분까지 평균). 토글 버튼 없음, 차트 하단 목록 없음 — 참고용 지표이므로 최대한 단순하게 유지한다.
+
+#### 9.5 공통 사항
+
+- **보안:** 코스피/코스닥/환율/금리/변동성 지수는 로그인 불필요(기존과 동일, 공개 데이터). 보유종목만 로그인 필요(`session.user.email` + 기존 `isEmailAllowed()`) — 새 인증 로직 불필요, 기존 패턴 재사용.
+- **캐시:** 기존 Phase 8 정책(10분 자동 재검증 + 확정 시각 cron) 유지 — 단, cron은 구현 시 평일 18:15 KST 단일로 통합(§9.4.3). 종목별 현재가는 사용자마다 다른 보유종목을 조회하므로 KOSPI/KOSDAQ와 같은 `unstable_cache` 단일 키 방식은 맞지 않음 — 종목코드별 fetch 레벨 캐시 전략은 **구현 단계에서 설계**(방향성만: `next.tags`에 종목코드를 포함해 종목 단위로 무효화 가능하게).
+- **단순화 원칙 유지:** 보유종목 자금 유출입 정밀 보정(TWR 등) 안 함.
+- **레이아웃:** 홈 화면 카드 레이아웃은 기존 다크모드/디자인 토큰 시스템(`tokens.css`) 그대로 활용.
+- Redis 키에 이메일을 평문으로 쓰는 것에 대해: 현재 `ALLOWED_EMAILS`가 1~소수 인원이라 즉시 위험은 없으나, 필요 시 이메일 해시(sha256 등)로 키를 만드는 방안도 구현 단계에서 검토.
+
+#### 9.6 작업 목록 (홈 화면 재구성 포함 — 그룹 재편)
+
+| 그룹 | 작업 | 파일(예정) | 상태 |
+|---|---|---|---|
+| 1. 홈 화면 리팩토링 | 카드 6개 그리드로 재구성, 기존 `IndexChartsSection` 차트 렌더링을 홈에서 제거하고 카드→상세 페이지 링크 연결 | `components/indices/IndexDashboard.tsx`, `SummaryCard.tsx` (신규) | ✅ 완료 (2026-07-09) |
+| 2. 코스피/코스닥 상세 페이지 신설 | 기존 차트+로직을 `/indices/kospi`, `/indices/kosdaq` 상세 페이지로 이전(기존 로직 재사용) | `app/indices/kospi/page.tsx`, `app/indices/kosdaq/page.tsx` (신규) | ✅ 완료 (2026-07-09) |
+| 3. 환율/금리 스냅샷+히스토리 | `KIS_ENDPOINTS`/`KIS_TR_ID`에 해외가격 엔드포인트 추가, `fetchKisOverseasPriceDaily(market)` 클라이언트, 도메인 타입/매퍼 확장, 상세 페이지(`/indices/usdkrw`, `/indices/us10y`) 신설 | `lib/api/kis/constants.ts`, `lib/api/kis/client.ts`, `types/indices.ts`, `lib/indices/kisOverseasMapper.ts` (신규), `app/indices/usdkrw/page.tsx`, `app/indices/us10y/page.tsx` (신규) | ✅ 완료 (2026-07-09, 라이브 검증 포함) |
+| 4. 보유종목 CRUD+수익률 계산+히스토리 저장 | `Holding`/`PortfolioDailyRecord` 타입, Redis 저장소(`holdings:{email}`, `holdings:{email}:history`), 종목별 현재가 조회+평가금액/수익률 계산, `/holdings` 상세 페이지(CRUD+차트+토글+일별 리스트) | `lib/holdings/store.ts`, `lib/holdings/valuation.ts` (신규), `app/holdings/page.tsx` (신규) | ✅ 완료 (2026-07-09) |
+| 5. 변동성 지수 계산+히스토리 저장+상세 페이지 | 일일 변동성(`dailyGapPercent`) 계산 로직, `kospiVolatility:history` 저장소, 당월/전월 집계, `/indices/kospi-volatility` 상세 페이지(최근 6개월 월별 평균 막대 차트) | `lib/indices/volatility.ts`, `lib/date/kst.ts`, `components/indices/VolatilityChart(Client).tsx`, `app/indices/kospi-volatility/page.tsx` (신규) | ✅ 완료 (2026-07-09) |
+| 6. cron 통합 | 기존 라우트 확장으로 확정(사용자 결정) — 평일 18:15 KST 단일 cron에서 캐시 재검증 → 변동성 `history` upsert → 허용 이메일별 보유종목 `history` upsert. `vercel.json` cron 2개→1개(`15 9 * * 1-5`) | `app/api/cron/revalidate-indices/route.ts` (확장), `vercel.json`, `getAllowedEmails()` 신설 | ✅ 완료 (2026-07-09) |
+| 7. 검증 | 로컬 `build`+`start` 통과, 전체 라우트 응답 확인(미로그인 307→/login, /login 200), cron 401(무인증)/200(인증) 및 변동성 100거래일 백필·재실행 멱등성(중복 날짜 0) Redis 실측 확인 | — | ✅ 완료 (2026-07-09, 로컬 — 배포 후 Vercel cron 실행 로그 확인 남음) |
+
+**Phase 9 완료 조건:** ☑ 홈 화면 카드 6개 그리드 및 상세 페이지 이동 동작, ☑ 코스피/코스닥 상세 페이지 이전 완료, ☑ 환율/금리 스냅샷+히스토리 상세 페이지 표시, ☑ 보유종목 CRUD·수익률·히스토리·차트 토글 동작, ☑ 코스피 변동성 지수 계산·홈 카드·상세 페이지(최근 6개월 차트) 표시, ☑ cron 통합 동작 확인(로컬), ☑ 로컬 검증. (배포 후 Vercel cron 실제 실행 확인은 별도 남은 작업)
+
+**다음 단계:** 배포 후 평일 18:15 KST Vercel cron 실행 로그 및 `holdings:{email}:history`/`kospiVolatility:history` 적재 확인.
+
+---
+
+### Phase 10 — 보유종목 알림 기능 (Web Push)
+
+**목표:** 보유종목이 하락 조건에 걸리면 Web Push로 알림을 보낸다. 종목별 신고가를 추적하고, 조건 3가지(OR) 충족 시 1회 발송 + 2시간 쿨다운 정책으로 재알림한다. 체크는 Vercel cron이 아니라 **맥미니 로컬 crontab이 10분마다 알림 체크 API를 curl로 호출**하는 방식(Vercel Hobby cron 횟수 제한과 무관). **사용자 확정(2026-07-09, phase9.request.md) — 현재는 조사·설계만 완료, 구현 미착수(소스 파일 생성 안 함).**
+
+#### 10.1 조사 결과 (2026-07-09, 저장소·번들 문서 확인)
+
+- **PWA 자산 없음:** `manifest`(정적/동적 모두)·service worker 미존재 — `public/`에는 svg 아이콘만 있음. → 신규 작성 필요.
+- **Next.js 16 컨벤션 확인** (`node_modules/next/dist/docs/01-app/02-guides/progressive-web-apps.md`, `.../01-metadata/manifest.md`):
+  - manifest는 `src/app/manifest.ts` 파일 컨벤션(`MetadataRoute.Manifest` 반환) → `/manifest.webmanifest`로 서빙. 홈 화면 설치에 192/512 PNG 아이콘 필요(`public/`).
+  - service worker는 `public/sw.js` — `push`(수신 → `showNotification`)·`notificationclick`(클릭 → 앱 열기) 리스너. `navigator.serviceWorker.register("/sw.js")`로 클라이언트에서 등록.
+  - 발송은 `web-push` 라이브러리(서버) + VAPID 키. 가이드 권장 env: `NEXT_PUBLIC_VAPID_PUBLIC_KEY`(공개키), `VAPID_PRIVATE_KEY`(서버 전용). **VAPID 공개키는 설계상 공개 값(클라이언트 구독 시 필수)이라 `NEXT_PUBLIC_` 사용이 §2 서버 전용 키 원칙과 충돌하지 않음.** 키 생성: `npx web-push generate-vapid-keys`.
+  - `sw.js`에 전용 응답 헤더 권장(`Cache-Control: no-cache`, 엄격한 CSP) — `next.config.ts` `headers()`로 설정.
+  - **iOS는 16.4+에서 홈 화면에 PWA로 설치한 경우에만 푸시 지원** — 설치 안내 UI(InstallPrompt 패턴) 필요.
+- **`web-push` 미설치:** `package.json` dependencies에 없음 → 의존성 추가 필요.
+- **proxy(미들웨어) 확인:** `src/proxy.ts` matcher가 `api/auth`·`api/cron/revalidate-indices`·`_next/*`·`favicon.ico`만 인증 예외 처리 → **`api/cron/check-alerts`, `/sw.js`, `/manifest.webmanifest`, PWA 아이콘 PNG를 예외에 추가해야 함** (manifest는 브라우저가 credentials 없이 가져갈 수 있어 미로그인 접근이 가능해야 함).
+- **KIS 현재가 API 확장 필요:** 기존 `fetchKisStockPrice`(FHKST01010100)는 `stck_prpr`만 사용. 알림 조건 3에 필요한 **당일 종목 등락률**(`prdy_ctrt`+`prdy_vrss_sign`)과 **종목 소속 시장 판별**(`rprs_mrkt_kor_name` 예상) 필드는 응답에 포함된 것으로 알려져 있으나 **구현 시작 시 라이브 실측 검증 필요**(Phase 9 §9.1과 동일한 방식).
+
+#### 10.2 확정 설계 (사용자 결정)
+
+**신고가 추적:**
+
+- 종목의 현재가가 저장된 신고가보다 높아지면, 신고가와 **그 시점의 코스피/코스닥 지수 값**을 함께 갱신. 배열(이력)이 아닌 **단일 값 덮어쓰기**.
+- 최초 체크 시(저장된 신고가 없음) 현재가로 초기화하고 그 시점 지수를 함께 저장.
+
+```ts
+// 설계 스니펫 — 아직 파일 생성 안 함
+interface StockPeak {
+  peakPrice: number;   // 신고가(원)
+  kospi: number;       // 신고가 갱신 시점 코스피
+  kosdaq: number;      // 신고가 갱신 시점 코스닥
+  updatedAt: string;   // ISO
+}
+```
+
+**알림 조건 3가지 (OR — 하나라도 충족 시 알림):**
+
+| # | 조건 | 판정 값 출처 |
+|---|---|---|
+| 1 | 매입가 대비 종목 수익률 ≤ −10% | `(현재가 − avgPrice) / avgPrice × 100` — holdings + 현재가 |
+| 2 | 종목 신고가 대비 현재가 하락률 ≥ 10% | `(peakPrice − 현재가) / peakPrice × 100` — `StockPeak` |
+| 3 | 당일 지수 등락률 ≤ −2% **AND** 당일 종목 등락률 ≤ −12% | 지수: 기존 국내지수 API `output1`(코스피/코스닥 중 **종목 소속 시장** 기준), 종목: 현재가 API `prdy_ctrt`(부호 적용) |
+
+**체크 주기 / 호출 방식:**
+
+- 10분마다 **맥미니 자체 crontab**이 알림 체크 API(`/api/cron/check-alerts` 가칭)를 curl로 호출. Vercel cron 아님(Hobby 플랜 cron 제한과 무관).
+- crontab은 장중(평일 09시~15시대)으로 제한 권장 — 장외에는 시세가 변하지 않는데 쿨다운 만료마다 같은 알림이 반복되는 것을 방지. 예시(맥미니는 KST):
+  `*/10 9-15 * * 1-5 curl -s -H "Authorization: Bearer $CRON_SECRET" https://<배포 도메인>/api/cron/check-alerts`
+- 맥미니 crontab 설정은 **Jump Desktop으로 직접 접속해서 수동 설정**해야 함(예전 poswel-menu-app 때와 동일한 제약) → 설정 절차 문서화 필요(§10.5 그룹 5).
+
+**알림 재발송 정책:**
+
+- 조건 충족 시 알림 1회 발송 → 이후 **2시간 동안 같은 종목 재알림 금지**(조건 구분 없이 종목 단위) → 2시간 경과 후에도 여전히 조건 충족이면 다시 발송.
+- 구현: 발송 시 쿨다운 키를 `EX 7200`(2시간 TTL)으로 SET — 키 존재 여부만으로 재알림 판단, 만료는 Redis가 자동 처리.
+
+#### 10.3 데이터 모델 — Upstash Redis (기존 `getRedis()` 재사용)
+
+| 키 | 값 | 비고 |
+|---|---|---|
+| `alerts:{email}:peaks` | `Record<symbolCode, StockPeak>` | 단일 객체 덮어쓰기(이력 없음) |
+| `alerts:{email}:cooldown:{symbolCode}` | 발송 시각(ISO) | `EX 7200` — 2시간 자동 만료 |
+| `push:subs:{email}` | `PushSubscription[]` | 기기별 여러 구독. 발송 시 410/404 응답 구독은 제거 |
+
+#### 10.4 알림 체크 API·발송 흐름 설계
+
+- 라우트: `GET /api/cron/check-alerts` — 기존 `CRON_SECRET` Bearer 인증 재사용(`isValidCronSecret`을 `lib/cron/auth.ts` 등 공용 모듈로 추출해 revalidate-indices와 공유).
+- 흐름: 허용 이메일별 → holdings 로드 → 종목별 현재가·당일 등락률·소속 시장 조회 → 신고가 갱신 → 조건 3종 평가 → (쿨다운 없는 종목만) Web Push 발송 → 쿨다운 키 SET. 단계별 실패 격리 + 응답 JSON에 개별 결과 포함(기존 cron 라우트와 동일한 패턴).
+- **캐시 주의:** 기존 `fetchKisStockPrice`는 600초 fetch 캐시를 쓰므로 10분 주기 체크에서는 최대 10분 지연된 가격으로 판정할 수 있음 → 체크 API 전용 조회는 `cache: "no-store"`로 실시간 조회하는 별도 함수(또는 옵션)로 설계.
+- 발송 내용(초안): 제목 "종목 알림 — {종목명}", 본문에 충족 조건·현재가·기준값(수익률/신고가 대비/지수 동반 하락), 클릭 시 `/holdings` 열기.
+
+#### 10.5 작업 목록 (구현은 승인 후)
+
+| 그룹 | 작업 | 파일(예정) | 상태 |
+|---|---|---|---|
+| 1. PWA 기반 | `manifest.ts`·`sw.js`·아이콘(192/512 PNG), `sw.js` 응답 헤더, proxy matcher 예외 추가 | `src/app/manifest.ts`, `public/sw.js`, `public/icon-*.png`, `next.config.ts`, `src/proxy.ts` | ☐ 미착수 |
+| 2. Web Push 구독 | `web-push` 설치, VAPID 키 생성·env 등록, 구독/해지 Server Actions + Redis 저장, 구독 토글·iOS 설치 안내 UI | `lib/push/store.ts`, `lib/push/send.ts`, 구독 UI(위치: `/holdings` 또는 홈 — 구현 시 확정) | ☐ 미착수 |
+| 3. 신고가 추적·조건 판정 | `StockPeak` 저장소, 조건 3종 평가 로직, KIS 현재가 응답 확장(등락률·시장 구분 — **라이브 실측 검증 포함**), no-store 실시간 조회 | `lib/alerts/store.ts`, `lib/alerts/evaluate.ts`, `lib/api/kis/client.ts`·`types.ts` (확장) | ☐ 미착수 |
+| 4. 알림 체크 API | `/api/cron/check-alerts` 라우트 — `CRON_SECRET` 인증 공용 모듈 추출, 평가→발송→쿨다운 파이프라인 | `app/api/cron/check-alerts/route.ts`, `lib/cron/auth.ts` (추출) | ☐ 미착수 |
+| 5. 맥미니 crontab 문서화 | Jump Desktop 접속 후 crontab 등록 절차, 장중 제한 스케줄 예시, `CRON_SECRET` 보관 방법 문서 | `docs/macmini-cron.md` (신규) | ☐ 미착수 |
+| 6. 검증 | 로컬 HTTPS(`next dev --experimental-https`)에서 구독·수신 테스트, 체크 API 401/200, 조건별 발송·2시간 쿨다운·신고가 갱신 확인, iOS 실기기(홈 화면 설치) 수신 확인 | — | ☐ 미착수 |
+
+**Phase 10 완료 조건:** ☐ PWA 설치 가능(manifest+아이콘+HTTPS), ☐ 푸시 구독/해지 동작 및 Redis 저장, ☐ 신고가 추적(지수 동시 저장) 동작, ☐ 조건 3종(OR) 판정 정확성, ☐ 1회 발송+2시간 쿨다운 동작, ☐ 맥미니 crontab 10분 주기 호출 동작 및 문서화, ☐ iOS 실기기 수신 확인.
+
+**다음 단계:** 이 설계에 대한 승인 후 그룹 1부터 구현 시작. 구현 시작 시 KIS 현재가 응답 필드(`prdy_ctrt`·시장 구분) 라이브 실측을 먼저 수행(§10.1).
+
+> **⚠️ Phase 11에 의한 대체 공지 (2026-07-10):** 본 Phase의 **호출 방식(맥미니 crontab + `/api/cron/check-alerts` + no-store 실시간 조회)은 Phase 11로 전면 대체**된다. Web Push 기반(PWA·VAPID·구독 저장), 신고가 추적, 알림 조건 3종, 쿨다운 정책 등 나머지 설계는 그대로 유효하며 Phase 11 갱신 잡 안에서 실행된다(§11.8.3 참고).
+
+---
+
+### Phase 11 — 데이터 갱신 구조 전면 재설계 (Pull → Scheduled Push)
+
+**목표:** `unstable_cache` 기반 "접속 시 갱신(pull)" 구조를 폐기하고, **정해진 시간에만 QStash 스케줄이 KIS를 호출해 Redis에 저장(push)하고, 화면은 저장된 값만 읽는** 구조로 전환한다. **설계 최종 확정(2026-07-10, `phase9.request.md` 확정 지시문 — §11.10의 결정 6건·갱신 상태 UI 반영, 같은 날 2차 개정: 배지 정책 대안 A+심각도 2단계). 구현 미착수(소스 파일 생성·수정 안 함) — 진행 순서 확정: Phase 12(보유종목 암호화) 완료 후 착수.**
+
+**요청 원문 요지 (`phase9.request.md`):**
+
+1. **KIS 호출 허용 시간 3종 — 이 외에는 절대 호출 금지** (밤·새벽·15:30~15:40·15:40~18:10·18:10 이후·주말 전부 금지):
+   - **평일 09:00~15:30, 10분마다:** 코스피/코스닥/환율/금리 조회 → Redis 저장. 등록된 모든 사용자의 보유종목을 **종목코드 기준 중복 제거해 한 번씩만** KIS 조회 → Redis 저장. 저장된 데이터로 **알림 조건 판정 → 필요시 발송**.
+   - **평일 15:40, 1회:** 15:35 종가 확정 반영 (동일 전체 갱신 로직 재사용).
+   - **평일 18:10, 1회:** 거래량 정정 확정 반영 (동일 전체 갱신 로직 재사용). → **확정 지시문에서 18:15로 변경** — 18:10 정정 확정치를 포함해 조회하도록 5분 여유(§11.10-A1).
+2. 대시보드/홈/상세 페이지는 KIS를 직접 호출하지 않고 **Redis에 저장된 값만 읽는다**.
+3. QStash 스케줄 3개(장중 `*/10 9-15 * * 1-5`, `40 15 * * 1-5`, `10 18 * * 1-5`)로 구성. 기존 `unstable_cache` 관련 코드는 제거 검토, **Vercel Cron(`vercel.json`)은 전부 QStash로 이전하고 cron 설정 제거**.
+
+#### 11.1 새 아키텍처 개요
+
+```
+[쓰기 경로 — QStash만 KIS를 호출]
+QStash 스케줄 (평일 09:00~15:30 10분 / 15:40 / 18:15 KST)
+        │ POST + Upstash-Signature
+        ▼
+/api/jobs/refresh-market-data (신규 Route Handler)
+        │ ① 서명 검증 ② KST 허용 시간 가드
+        ▼
+refreshMarketData() 파이프라인 (lib/jobs/, 3개 스케줄이 동일 로직 재사용)
+  1. 지수·환율·금리 4종 KIS 조회 (cache: "no-store")
+  2. 전체 허용 이메일의 보유종목 union → 종목코드 중복 제거 → 종목별 1회 KIS 조회
+  3. 1·2 결과를 Redis에 스냅샷 저장 (키별 독립 + fetchedAt)
+  4. 변동성 records upsert (1의 KOSPI 응답 재사용)
+  5. 사용자별 포트폴리오 평가(3의 저장 가격 사용) → holdings history upsert
+  6. (Phase 10 구현 후) 거래일 확인(KIS 응답 basDt == KST 오늘) 후 알림 조건 판정
+     → Web Push 발송 → 쿨다운 SET (휴장일이면 이 단계만 skip — §11.10-A5)
+
+[읽기 경로 — KIS 호출 없음]
+page.tsx / 상세 페이지 [Server] ──► lib/market/store.ts (Redis 리더)
+                                        │ 저장된 스냅샷 + fetchedAt
+                                        ▼
+                              UI (fetchedAt 기반 staleness 표시)
+```
+
+- 쓰기와 읽기가 완전히 분리된다. `unstable_cache`·`revalidateTag`·fetch `next.revalidate`는 전부 불필요해져 제거한다(§11.7).
+- 파이프라인은 **단계별 실패 격리**(기존 cron 라우트 패턴 재사용): 한 지표/종목 실패가 나머지 저장을 막지 않고, 실패 항목은 Redis의 이전 값이 유지된다.
+- 모든 저장은 **멱등**(SET 덮어쓰기 + 날짜 기준 upsert)이라 재시도·중복 실행에 안전하다.
+
+#### 11.2 Redis 데이터 모델 (신규 + 기존 유지)
+
+| 키 | 값 | 비고 |
+|---|---|---|
+| `market:detail:{kospi\|kosdaq\|usdkrw\|us10y}` | 기존 `IndexDetailData` 상당(스냅샷+히스토리+dailyRows) + `fetchedAt` | 신규 — 상세 페이지가 그대로 읽음. 홈 카드도 이 키의 스냅샷 부분만 사용 (대시보드용 별도 키는 두지 않음 — 이중 저장 방지) |
+| `market:stock:{symbolCode}` | `{ price, changeRate, marketName, fetchedAt }` | 신규 — 사용자 무관 공용. `changeRate`(당일 등락률)·`marketName`(소속 시장)은 Phase 10 알림 조건 3용으로 함께 저장(§10.1 실측 검증 항목 유지) |
+| `market:lastRefreshAt` | `{ at, trigger, ok }` | 신규 — 마지막 갱신 잡 성공 시각. staleness 판단·수동 점검용 |
+| `holdings:{email}` / `holdings:{email}:history` | 기존 그대로 | Phase 9 모델 유지 |
+| `kospiVolatility:history` | 기존 그대로 | Phase 9 모델 유지 |
+| `alerts:{email}:peaks` / `alerts:{email}:cooldown:{symbol}` / `push:subs:{email}` | 기존 Phase 10 설계 그대로 | 호출 주체만 QStash 잡으로 변경 |
+
+#### 11.3 QStash 조사 결과 (2026-07-10, 공식 문서 확인)
+
+| 항목 | 확인 내용 | 출처 |
+|---|---|---|
+| cron 타임존 | 기본 UTC, **`CRON_TZ=` 접두사로 IANA 타임존 지정 가능** → KST로 직접 표기 가능 | docs `features/schedules` |
+| 스케줄 로딩 지연 | 최초 등록 후 활성 노드 반영까지 **최대 60초** — 첫 회차가 정각보다 늦을 수 있음(수용) | docs `features/schedules` |
+| 재시도 | 실패 시 지수 백오프 `min(86400, e^(2.5n))초` ≈ 1차 12초, 2차 2분28초, 3차 30분. 최대 횟수는 플랜별 상이(기본은 플랜 최대치, `Upstash-Retries` 헤더로 하향 가능) | docs `features/retry` |
+| 재시도 소진 후 | **DLQ로 이동**(Free 플랜 3일 보존) — 수동 재발송 가능. `Upstash-Failure-Callback`으로 실패 통지 URL 지정 가능 | docs `features/retry`, `overall/pricing` |
+| 인증 | 요청마다 `Upstash-Signature` 헤더(JWT). `QSTASH_CURRENT_SIGNING_KEY`/`QSTASH_NEXT_SIGNING_KEY` 2개로 검증(키 로테이션 대응). TS SDK `@upstash/qstash`의 `Receiver` 제공 — **raw body 문자열 그대로** 검증해야 함 | docs `howto/signature` |
+| Free 플랜 한도 | **1,000 메시지/일**(재시도도 1건씩 과금), 활성 스케줄 10개, 응답 대기 최대 15분 | docs `overall/pricing` |
+
+**용량 검토:** 장중 40회(09:00~15:30, 10분 간격) + 15:40 + 18:15 = **평일 42메시지/일**. 확정 재시도 정책(§11.4: 장중 1회·15:40 0회·18:15 1회)상 최악에도 +41건 = 83건 — Free 한도(1,000/일)의 9% 이내. 스케줄도 4개로 한도(10개) 내. **Free 플랜으로 충분.**
+
+**의존성:** `@upstash/qstash` 미설치 → 추가 필요. env 추가: `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY` (스케줄은 Upstash 콘솔에서 생성하므로 `QSTASH_TOKEN`은 앱 코드에 불필요).
+
+#### 11.4 스케줄 설계 — 요청서 cron 표현식의 문제와 수정안
+
+**요청서의 `*/10 9-15 * * 1-5`는 15:40·15:50 실행을 포함한다** (`9-15`시 × `*/10`분 = 09:00~15:50). 이는 ① 허용 시간(09:00~15:30) 밖 호출이라 요청서 자신의 "절대 금지" 원칙과 모순되고, ② 15:40 전용 스케줄과 중복 실행된다. 따라서 장중 표현식을 둘로 나눠 **스케줄 4개**로 등록한다:
+
+| # | 스케줄 (QStash, `CRON_TZ=Asia/Seoul`) | 실행 시각 (KST) | 목적 |
+|---|---|---|---|
+| 1 | `CRON_TZ=Asia/Seoul */10 9-14 * * 1-5` | 09:00~14:50, 10분마다 | 장중 갱신 + 알림 판정 |
+| 2 | `CRON_TZ=Asia/Seoul 0,10,20,30 15 * * 1-5` | 15:00~15:30, 10분마다 | 장중 갱신 마지막 구간 |
+| 3 | `CRON_TZ=Asia/Seoul 40 15 * * 1-5` | 15:40 | 종가 확정 반영 |
+| 4 | `CRON_TZ=Asia/Seoul 15 18 * * 1-5` | **18:15 (확정 — §11.10-A1)** | 거래량 정정 확정 반영 (18:10 정정치 포함 조회, 5분 여유) |
+
+- 4개 모두 **같은 엔드포인트**를 호출한다(로직 재사용 — 요청서 명시).
+- **재시도 정책 (확정 — §11.10-A2·A3):**
+  - 스케줄 1·2 (장중): `Upstash-Retries: 1` — 1차 재시도 +12초(창 내). 그 이상은 10분 뒤 다음 회차가 자연 복구하므로 불필요.
+  - 스케줄 3 (15:40): `Upstash-Retries: 0` — **실패 시 재시도 없이 포기.** 18:15 회차가 최종 확정치를 커버하므로 문제없음.
+  - 스케줄 4 (18:15): `Upstash-Retries: 1` + `Upstash-Retry-Delay` **고정 5분** — 실패 시 **약 18:20에 전체(부분 아님) 1회 재실행.** 그래도 실패하면 포기하고 **다음 영업일 09:00 정규 스케줄까지 대기**(별도 부분 재시도 로직 없음). `Upstash-Retry-Delay` 값 단위(ms 기준 300000 예상)는 구현 시 QStash 문서로 재확인.
+- **KST 허용 시간 가드(이중 방어):** 잡 시작부에서 "KST 평일 && 09:00~18:40" 밖이면 KIS를 호출하지 않고 no-op 200을 반환한다(200이어야 QStash가 재시도하지 않음). 스케줄 오설정·수동 오호출로 밤·주말에 KIS가 호출되는 것을 코드 레벨에서 차단한다. 상한 18:40은 18:15 회차의 확정 재시도(≈18:20 + 처리 여유)를 가드가 막지 않기 위한 값.
+
+#### 11.5 엔드포인트·인증·미들웨어
+
+- **신규 라우트:** `POST /api/jobs/refresh-market-data` (QStash publish는 POST — 기존 cron GET과 다름).
+- **인증(권장): QStash 서명 검증** — `@upstash/qstash` `Receiver`로 `Upstash-Signature` JWT 검증. Bearer 시크릿 단일 비교보다 스푸핑에 강하고(요청 URL·body 해시·만료가 JWT claim에 포함) 키 로테이션을 지원한다.
+- **`CRON_SECRET` Bearer 경로 병행 유지:** 로컬 검증·최초 시딩·장애 시 수동 재실행용(서명 검증 실패 시 Bearer 검사로 폴백). 수동 트리거도 §11.4의 KST 가드를 동일하게 통과해야 한다.
+- **`src/proxy.ts` matcher 수정:** 인증 예외에서 `api/cron/revalidate-indices`를 제거하고 `api/jobs/refresh-market-data`를 추가 (Phase 8 보안 검토 방침대로 라우트 단위 최소 예외 유지).
+
+#### 11.6 읽기 경로 변경 — `unstable_cache` 제거
+
+| 대상 | 현재 | 변경 후 |
+|---|---|---|
+| `lib/indices/getDashboard.ts` | `unstable_cache` + KIS 4종 직접 호출 | `market:detail:*` 4키 Redis 읽기로 대체 (`unstable_cache` 제거) |
+| `lib/indices/getIndexDetail.ts` / `getOverseasDetail.ts` | `unstable_cache` + KIS 직접 호출 | `market:detail:{indicator}` Redis 읽기로 대체 |
+| `lib/holdings/valuation.ts` `getPortfolioValuation` | 종목별 `fetchKisStockPrice` 직접 호출 (사용자 접속·홈 카드 렌더마다) | `market:stock:{symbol}` Redis 읽기로 대체 — **접속 시 KIS 호출 완전 제거** |
+| `lib/api/kis/client.ts` | `next: { revalidate: 600, tags }` fetch 캐시 | `cache: "no-store"` — 호출 주체가 갱신 잡뿐이므로 캐시 불필요. `KIS_CACHE_REVALIDATE_SECONDS`·`KIS_CACHE_TAGS` 상수 제거 |
+| `app/page.tsx` | `export const revalidate = 600` | 제거 (`auth()` 사용으로 이미 dynamic — Redis를 매 요청 읽음) |
+| `app/api/cron/revalidate-indices/route.ts` | 18:15 Vercel Cron: `revalidateTag` + 변동성/보유종목 upsert | **라우트 삭제** — upsert 로직은 `lib/jobs/` 파이프라인으로 이전, `revalidateTag`는 소멸 |
+| `vercel.json` | crons 1개 (`15 9 * * 1-5`) | **crons 설정 제거** (요청서 명시) |
+| `asOf` 의미 | "캐시 miss로 KIS를 호출한 시각" | "QStash 잡이 KIS에서 받아온 시각(`fetchedAt`)" — 표시 방식은 **§11.10-B(확정·2차 개정)**: 홈 카드 2단계 배지(장중 한정, 경고 20분~1시간/심각 1시간+) + 상세 페이지 「마지막 갱신: YYYY-MM-DD HH:mm」 상시 표시 |
+
+#### 11.7 기존 Phase 8/9/10과의 충돌 지점 정리
+
+**Phase 8 (시간대별 캐시 최적화) — 구조 전체가 대체됨:**
+
+| 충돌 지점 | Phase 8 설계 | Phase 11 |
+|---|---|---|
+| 갱신 트리거 | 접속 시 10분 `unstable_cache` 자동 재검증 + 확정 시각 `revalidateTag` cron | 접속과 무관한 QStash 스케줄 push. **접속 시 갱신은 "밤·주말에도 캐시 miss면 KIS 호출"이라 새 원칙(허용 시간 외 절대 금지)과 정면 충돌** — 폐기 |
+| cron 인프라 | Vercel Cron + `CRON_SECRET` Bearer | QStash + 서명 검증 (`CRON_SECRET`은 수동 트리거용으로만 잔존) |
+| `revalidateTag(tag, { expire: 0 })` (8-2에서 검증한 핵심 메커니즘) | 확정 시각 강제 무효화 | Next 캐시 자체가 없어져 소멸 |
+| 8-6 (배포 후 cron 확인) | 남은 작업 | **폐기** — Phase 11 배포 확인으로 대체 |
+| 정정 반영 시각 | **18:15** (실측 "18:10경 정정"에 5분 여유) | **18:15로 확정**(§11.10-A1 — Phase 8과 동일 근거 유지, 충돌 해소) |
+
+**Phase 9 (지표 확장·보유종목) — 데이터·UI 설계는 유지, 갱신·캐시 부분만 대체:**
+
+| 충돌 지점 | Phase 9 설계 | Phase 11 |
+|---|---|---|
+| cron 통합 (§9.4.3·그룹 6, 사용자 결정) | 평일 18:15 단일 cron에서 revalidate + 변동성/보유종목 upsert | QStash 스케줄 4개로 분산, upsert는 매 회차 실행(멱등이라 안전 — 오히려 당일 기록이 장중에도 갱신되는 이점). **18:15 단일 통합 결정은 번복됨** |
+| 종목 현재가 조회 주체 | 사용자 접속 시 본인 보유종목만 조회 (§9.5: 종목코드 태그 fetch 캐시 전략) | 갱신 잡이 **전체 사용자 union·중복 제거 후 1회씩** 조회(요청서 명시) — 사용자별 조회·태그 캐시 전략 폐기 |
+| 보유종목 저장 시 실존 검증 (그룹 4: "저장 시 KIS 현재가 조회로 자연스럽게 검증") | 저장 액션이 KIS 즉시 호출 | **사용자 액션은 임의 시각 발생 → 허용 시간 규칙 위반.** §11.10-A4로 해소 확정 — KIS 검증 제거, 형식 검증만 |
+| 홈 `revalidate = 600` | 세그먼트 캐시 | 제거 (§11.6) |
+| 변동성 upsert 시점 | 18:15 1회 | 매 회차 (당일 고저가 장중에 갱신됨 — 홈 카드의 당월 평균이 장중에도 최신) |
+
+**Phase 10 (알림) — 호출 방식만 대체, 판정·발송 설계는 유효:**
+
+| 충돌 지점 | Phase 10 설계 | Phase 11 |
+|---|---|---|
+| 체크 트리거 | **맥미니 crontab이 10분마다 `/api/cron/check-alerts` curl** (Jump Desktop 수동 설정, §10.5 그룹 5 문서화 포함) | **폐기** — 장중 QStash 잡 6단계에 통합(요청서 명시). 맥미니 의존·수동 설정 절차 자체가 사라짐 |
+| 판정용 시세 | `cache: "no-store"` 실시간 조회 전용 함수 (§10.4) | 잡이 같은 실행에서 **방금 저장한** 데이터로 판정 — 신선도 동일, 별도 함수 불필요 |
+| 판정에 필요한 필드 | 체크 API가 그때그때 조회 | `market:stock:{symbol}` 스냅샷에 `prdy_ctrt`(등락률)·시장 구분을 **미리 포함**해야 함(§11.2) — 라이브 실측 검증 항목(§10.1)은 그대로 유효 |
+| 장외 반복 알림 방지 (§10.2 "crontab 장중 제한 권장") | crontab 시간대로 해결 | 스케줄 자체가 장중에만 존재 — 자동 해결. 단 **공휴일 문제는 잔존**(§11.9 시나리오 7) |
+| `StockPeak`·조건 3종·쿨다운·Web Push/PWA | — | **변경 없음.** Phase 10 구현 시 갱신 잡의 6단계에 끼워 넣는 방식으로 연결 |
+
+#### 11.8 KIS 호출량 비교 (근거)
+
+- **현재(pull):** 캐시 TTL 600초 기준 최악의 경우 접속 패턴에 따라 무제한 분산(밤·주말 포함) + 보유종목은 사용자·종목별 개별 캐시 miss.
+- **변경 후(push):** 평일 42회 × (지수 4 + 종목 N) 고정. 종목 10개 가정 시 **일 588콜, 밤·주말 0콜** — 호출량이 예측 가능해지고 KIS 유량 제한(계정당 초당 호출 제한) 관리도 잡 내부의 병렬도 제어(예: 종목 fetch를 청크 단위 `Promise.all`)로 일원화된다. 토큰은 기존 Redis 토큰 캐시(Phase 6)를 그대로 재사용.
+
+#### 11.9 데이터 일관성·장애 시나리오 및 대응
+
+| # | 시나리오 | 영향 | 대응 |
+|---|---|---|---|
+| 1 | **장중 회차 1회 실패** | 데이터 최대 20분 stale, 해당 회차 알림 판정 skip(알림 최대 10분 지연) | QStash 재시도 1회(+12초, `Upstash-Retries: 1` — §11.4 확정). 그래도 실패 시 **다음 회차가 자연 복구**. 모든 저장이 멱등이라 재시도 중복 실행 무해 |
+| 2 | **재시도와 정규 회차 경합** (예: 15:00 회차 재시도가 15:10 회차보다 늦게 성공) | 이론상 out-of-order 쓰기 | 재시도는 "옛 데이터 재전송"이 아니라 **잡 재실행 → KIS를 그 시점에 새로 호출**이므로 나중에 쓴 쪽이 항상 더 신선하거나 동등 — last-write-wins 수용. (동시 실행 겹침도 10분 간격·값 차이 미미로 수용, 필요 시 `fetchedAt` 비교 가드는 과설계로 미채택) |
+| 3 | **15:40 회차 실패** (종가 확정 미반영) | 15:30 장중 값이 유지 — 종가와 거의 동일하나 "확정치 아님" | **재시도 없이 포기 (확정 — §11.10-A2, `Upstash-Retries: 0`).** 18:15 회차가 최종 확정치(종가+거래량 정정)를 동일 로직으로 커버. 실패는 DLQ에만 기록 |
+| 4 | **18:15 회차 실패** (최종 확정치 미반영) | 재실행까지 실패하면 **다음 영업일 09:00까지 stale 지속** — 요청서가 우려한 최장 구간. 단 가격은 15:40 반영치와 사실상 동일, 거래량 정정만 영향이라 심각도 낮음 | **약 18:20에 전체 1회 재실행 (확정 — §11.10-A3).** 그래도 실패하면 포기하고 다음 영업일 09:00 대기(부분 재시도 없음). 실패 인지는 **DLQ**(3일 보존, 수동 재발송 가능) + **Failure Callback**(Phase 10 Web Push 구현 후 자체 알림 채널로 통지, 그 전에는 콘솔 모니터링). 배지는 장중 판정(§11.10-B1)이라 저녁 실패 자체는 표시되지 않으며, 다음 영업일 09:00 회차까지 실패가 이어지면 09:20부터 경고로 드러남 |
+| 5 | **전 회차 연속 실패** (KIS 전산 점검 — 7/4~7/5 실제 전례, 토큰 장애 등) | Redis에 마지막 성공 데이터가 계속 표시됨 — **사용자가 낡은 데이터를 최신으로 오인할 위험** (구 구조는 에러가 났고, 신 구조는 조용히 낡음) | ① 홈 카드 **2단계 배지**(§11.10-B 개정): 장중 20분 경과 = 경고, **1시간 경과 = 심각** — 정확히 이 시나리오(여러 회차 연속 실패)가 시각적으로 구분되어 드러남. + 상세 페이지 「마지막 갱신」 상시 표기. ② `market:lastRefreshAt`으로 수동 점검. ③ DLQ + Failure Callback. **"조용한 성공처럼 보이는 실패"를 UI가 반드시 드러내는 것이 이 구조의 필수 안전장치** |
+| 6 | **Redis(Upstash) 장애** | 구 구조는 KIS 직접 호출이라 화면은 살았지만(토큰 캐시 제외), 신 구조는 **읽기 경로가 Redis 단일 의존 → 화면 전체 에러** | 기존 에러 UI 재사용 + Upstash 가용성 수용. 2차 캐시(메모리 등)는 과설계로 미채택 — 단일 의존 증가는 이 재설계의 **의식적 트레이드오프**로 명기 |
+| 7 | **공휴일(평일이지만 휴장)** | 스케줄은 실행됨 → KIS가 직전 거래일 데이터 반환 → 같은 값 덮어쓰기(멱등이라 데이터는 무해). **알림은 문제**: 조건 충족 상태가 지속되면 쿨다운(2h) 만료마다 재알림 — Phase 10 맥미니 설계에도 있던 문제가 잔존 | **확정(§11.10-A5):** 별도 공휴일 API 없이, KIS 응답의 기준일(`basDt`)이 KST 오늘과 다르면 휴장으로 간주해 **알림 판정 단계만 skip** (데이터 저장·upsert는 멱등이라 그대로 수행) |
+| 8 | **최초 배포 / 빈 Redis** | 첫 갱신 회차 전까지 화면에 데이터 없음 | empty state UI + 배포 직후 **허용 시간 내 수동 1회 트리거**(`CRON_SECRET` 경로)로 시딩. 마이그레이션은 장중 배포 권장 |
+| 9 | **잡 실행 시간 초과** | 종목 수 증가 시 Vercel 함수 시간 제한(Hobby 기본 10초대) 초과 위험 | QStash는 응답을 15분(Free)까지 기다리므로 병목은 Vercel — `maxDuration` 상향 + 종목 fetch 청크 병렬화. 종목 ~수십 개 규모에선 여유 |
+| 10 | **QStash 자체 지연** | 스케줄 등록 후 반영 최대 60초(문서 명시) — 09:00 첫 회차가 수십 초 늦을 수 있음 | 수용 (10분 주기 데이터에 무의미한 오차) |
+
+#### 11.10 확정 결정사항 (2026-07-10, `phase9.request.md` 확정 지시문 반영)
+
+**A. 재시도·실패 정책 (확정):**
+
+| # | 사안 | 확정 내용 |
+|---|---|---|
+| A1 | 정정 반영 회차 | **18:15** — 기존 18:10 정정 확정치를 **포함해서** 조회하도록 5분 여유 (Phase 8 실측 근거와 동일, 요청서 초안의 18:10에서 변경) |
+| A2 | 15:40 스케줄 실패 시 | **재시도 없이 포기** (`Upstash-Retries: 0`) — 18:15가 최종 확정치를 커버하므로 문제없음 |
+| A3 | 18:15 스케줄 실패 시 | **18:20에 한 번 더 전체(부분 아님) 재실행** (`Upstash-Retries: 1` + `Upstash-Retry-Delay` 고정 5분). 그래도 실패하면 **포기하고 다음 영업일 09:00 정규 스케줄까지 대기** — 별도 부분 재시도 로직은 만들지 않음 |
+| A4 | 보유종목 등록 시 검증 | **KIS 실존 검증 제거** — 형식(숫자 6자리 등) 검증만 수행. 잘못된 코드는 다음 갱신 회차에서 해당 종목만 조회 실패 → 화면에 「시세 없음」 표기 (실패 격리로 다른 종목 무영향) |
+| A5 | 공휴일 판단 | **별도 공휴일 API 없이**, KIS 응답의 기준일(`basDt`)이 KST 오늘 날짜와 다르면 휴장으로 간주해 **알림 판정을 건너뜀** (데이터 저장·upsert는 그대로 수행 — 멱등) |
+| A6 | 부분 실패 시 응답 정책 | **지수/보유종목 데이터 갱신 실패 → 500** (QStash 재시도 트리거 — 전체 재실행되지만 멱등이라 무해). **알림 발송만 실패 → 로그만 남기고 200** (재시도 없음) |
+
+**B. 갱신 상태 표시 UI (확정 — 2026-07-10 2차 개정: 대안 A + 심각도 구분. 최초 확정안의 "상시 판정 — 장외·주말 배지 상시 표시" 동작을 대체):**
+
+| # | 사안 | 확정 내용 |
+|---|---|---|
+| B1 | 홈 카드 배지 — 판정 시간 | **장중(KST 평일 09:00~18:20, 정규+재시도 창)에만 배지 판정.** 장외(18:20~다음날 09:00, 주말 포함)에는 배지 자체를 표시하지 않음 — "밤마다 배지 상시 표시"였던 최초안의 부작용 제거 |
+| B2 | 홈 카드 배지 — 심각도 2단계 | 홈 화면 **카드 6개 각각의 아이콘 우측 상단**, `fetchedAt` 경과 기준: **경고** = 20분~1시간 미만(단순 실패 1회 이상 추정, 예: 노란색·작은 느낌표) / **심각** = 1시간 이상(장중인데 여러 회차 연속 실패 추정, 예: 빨간색·강조된 느낌표). 두 단계는 시각적으로 구분. 원천: 코스피/코스닥/환율/금리 카드는 해당 `market:detail:*`의 `fetchedAt`, 보유종목·변동성 카드는 `market:lastRefreshAt` |
+| B3 | 상세 페이지 갱신 시각 | 각 상세 페이지(`/indices/*`, `/holdings`) **상단 구석**에 「마지막 갱신: YYYY-MM-DD HH:mm」(KST, `fetchedAt`) 작게 표시 — **배지와 별개로 항상 표시(장외 포함, 개정에서도 유지)** |
+| B4 | 스타일 | 배지·갱신 시각 모두 기존 디자인 토큰(`tokens.css`) 색상 체계 안에서 매핑 — **다크/라이트 모드 모두 가독성 확보.** 경고(노랑 계열)/심각(빨강 계열)에 맞는 기존 토큰이 없으면 시맨틱 토큰 추가 |
+
+> (설계 검토 단계에서 논의했던 "창 밖 재시도 허용 범위" 쟁점은 A2·A3 확정으로 소멸 — 재시도가 +12초(장중)·+5분(18:15)뿐이라 KST 가드 envelope 09:00~18:40 안에 모두 들어온다. §11.4 참고.)
+
+#### 11.11 작업 목록 (설계 확정 완료 — 구현은 착수 지시 후, 소스 파일 생성·수정 금지 상태)
+
+| 그룹 | 작업 | 파일(예정) | 상태 |
+|---|---|---|---|
+| 1. QStash 셋업 | `@upstash/qstash` 설치, 서명 키 env 등록(로컬·Vercel), Upstash 콘솔에서 스케줄 4개(`CRON_TZ=Asia/Seoul`) 등록 — **재시도 헤더 포함(§11.4 확정: 장중 1회 / 15:40 0회 / 18:15 1회+5분 지연)**, Failure Callback 설정 검토 | `package.json`, `.env.local`, Upstash 콘솔 | ☐ 미착수 |
+| 2. Redis 스토어·잡 파이프라인 | `market:detail:*`/`market:stock:*`/`market:lastRefreshAt` 리더·라이터, `refreshMarketData()` 파이프라인(6단계, 실패 격리, KST 가드 09:00~18:40, 거래일 가드 — `basDt` 기준 §11.10-A5), 기존 변동성·holdings upsert 로직 이전 | `lib/market/store.ts`, `lib/jobs/refreshMarketData.ts` (신규) | ☐ 미착수 |
+| 3. 잡 엔드포인트 | `POST /api/jobs/refresh-market-data` — QStash 서명 검증 + `CRON_SECRET` 수동 폴백, 부분 실패 응답 정책(§11.10-A6 확정: 데이터 갱신 실패 500 / 알림 발송만 실패 로그+200) | `app/api/jobs/refresh-market-data/route.ts` (신규) | ☐ 미착수 |
+| 4. 읽기 경로 전환 | `getDashboard`/`getIndexDetail`/`getOverseasDetail`/`valuation`을 Redis 리더로 교체, `unstable_cache`·fetch 캐시 옵션·`revalidate` export 제거, KIS client `no-store` 전환, 보유종목 저장 검증 변경(§11.10-A4 확정: 형식 검증만) | `lib/indices/*`, `lib/holdings/valuation.ts`, `lib/api/kis/client.ts`·`constants.ts`, `app/page.tsx`, `app/holdings/page.tsx` | ☐ 미착수 |
+| 5. 레거시 제거 | `app/api/cron/revalidate-indices/route.ts` 삭제, `vercel.json` crons 제거, `proxy.ts` matcher 예외 교체 | 해당 파일 | ☐ 미착수 |
+| 6. 갱신 상태 UI | 홈 카드 6개 **2단계 배지** — 장중(09:00~18:20)에만 판정, 경고(20분~1시간, 노랑)/심각(1시간+, 빨강) 시각 구분, 장외·주말 미표시. 상세 페이지 상단 「마지막 갱신: YYYY-MM-DD HH:mm」 상시 표기. `tokens.css` 색상 매핑(필요 시 시맨틱 토큰 추가)·다크/라이트 대응, 빈 Redis empty state (§11.10-B 2차 개정) | `SummaryCard.tsx`, 상세 페이지 컴포넌트, `tokens.css` | ☐ 미착수 |
+| 7. 검증 | 로컬: 수동 트리거로 시딩→화면 Redis-only 렌더 확인, KST 가드(허용 시간 밖 no-op)·멱등성(연속 2회 실행 시 중복 0)·부분 실패 격리 확인. 배포: 스케줄 4개 실행 로그, 서명 검증 401(무서명)/200, 15:40·18:15 확정 반영(+18:15 실패 시 18:20 재실행 동작), DLQ 비어있음 확인 | — | ☐ 미착수 |
+| 8. (Phase 10 연동 지점) | 알림 판정·발송을 잡 6단계에 연결하는 인터페이스만 정의(빈 훅) — 실제 구현은 Phase 10 승인 후 | `lib/jobs/refreshMarketData.ts` 내 훅 | ☐ 미착수 |
+
+**Phase 11 완료 조건:** ☐ 화면(홈·상세·보유종목)이 KIS를 직접 호출하는 경로 0건(코드 검색으로 확인), ☐ KIS 호출이 QStash 잡 + 허용 시간 가드 안에서만 발생, ☐ 스케줄 4개(재시도 정책 §11.4 포함) 실 실행 및 Redis 갱신 확인, ☐ `unstable_cache`/`revalidateTag`/Vercel cron 완전 제거, ☐ 갱신 상태 UI 동작(카드 2단계 배지 — 장중 한정 판정·경고/심각 구분·장외 미표시, 상세 「마지막 갱신」 상시 표기, 다크/라이트), ☐ 장애 시나리오 핵심 3종(회차 실패 자연 복구·멱등성·빈 Redis empty state) 검증.
+
+---
+
+### Phase 12 — 보유종목 데이터 암호화 저장 (at-rest encryption)
+
+**목표:** Redis에 평문 JSON으로 저장 중인 보유종목 데이터(개인 자산 정보)를 **저장 전 암호화·조회 시 복호화**로 전환한다. 위협 모델: Upstash 콘솔·백업·REST 토큰 유출 시 평문 노출 방지(심층 방어 — 서버 자체가 뚫리면 키도 같은 곳에 있으므로 그 시나리오는 범위 밖). **설계 확정 후 승인되어 구현·로컬 검증 완료(2026-07-10) — 남은 작업은 §12.5 하단 "남은 작업" 참고.**
+
+**확정사항 (사용자 결정, 2026-07-10):**
+
+- **진행 순서: Phase 12를 Phase 11보다 먼저 진행** — Phase 12 완료 후 Phase 11 착수. (Phase 12가 작고 자기완결적이며, 평문 노출은 현재진행형 리스크. Phase 11 잡 파이프라인이 처음부터 암호화된 저장소 위에서 작성됨.)
+- **암호화 대상: `holdings:{email}`(보유 목록) + `holdings:{email}:history`(일별 `totalCost`/`totalValue`) 둘 다** — history의 총 자산 평가액이 사실상 가장 민감한 값.
+- Phase 10의 `alerts:{email}:peaks` 등 이후 추가되는 개인 데이터 키는 해당 Phase 구현 시 같은 유틸을 적용.
+
+#### 12.1 조사 결과 — 암호화 방식 (2026-07-10)
+
+- **`node:crypto` AES-256-GCM 채택.** 근거: ① 대칭키 256bit ② GCM은 인증 태그(authTag)로 위·변조 감지까지 되는 인증 암호화(AEAD) — CBC 대비 권장 ③ Node 내장이라 **외부 의존성 0** ④ 관련 라우트·라이브러리가 `runtime = "nodejs"`라 사용 제약 없음.
+- **IV(nonce):** 암호화할 때마다 `crypto.randomBytes(12)` 새로 생성(GCM 권장 96bit). **같은 키로 IV 재사용 절대 금지**(GCM 보안 전제).
+- **저장 포맷:** `enc:v1:{iv(base64)}:{authTag(base64)}:{ciphertext(base64)}` **단일 문자열.** 버전 프리픽스 `enc:v1:`이 두 가지를 동시에 해결: ① 평문/암호문 구분(마이그레이션, §12.4) ② 향후 키 로테이션(v2) 확장점.
+- **Upstash 직렬화 특성:** 기존 평문 값은 `@upstash/redis`가 JSON 배열로 파싱해 반환하고, 새 값은 문자열 — **반환 타입만으로 신·구 데이터를 구분**할 수 있다.
+
+#### 12.2 키 관리
+
+- **`HOLDINGS_ENCRYPTION_KEY`** — 32바이트를 base64로 인코딩(`openssl rand -base64 32`). **서버 전용, `NEXT_PUBLIC_` 접두사 절대 금지**(§2 헌법과 동일 원칙). `.env.local`과 Vercel env **양쪽** 등록.
+- **키 분실 = 암호화된 데이터 영구 복구 불가** — 키를 패스워드 매니저 등 배포 환경 밖에 별도 백업하는 것을 완료 조건에 포함.
+- 키 로테이션: 이번 범위 밖 — 필요해지면 `enc:v2:` 프리픽스 + 이중 키 읽기로 별도 진행.
+
+#### 12.3 설계 — `store.ts` 경계 캡슐화
+
+- 신규 유틸 `src/lib/crypto/secureJson.ts`(가칭): `encryptJson(value): string` / `decryptJson<T>(stored): T` / 프리픽스 판별 함수. 도메인 무관 범용 — Phase 10 키에도 재사용.
+- **적용 지점은 `lib/holdings/store.ts`의 4개 함수뿐** (`getHoldings`/`saveHoldings`/`getPortfolioHistory`/`upsertPortfolioHistory`) — 현재 모든 보유종목 읽기/쓰기가 이 4개를 경유하므로, 호출부(홈 카드 summary, `/holdings` 페이지·Server Actions, valuation, cron 및 향후 Phase 11 잡 파이프라인)는 **한 줄도 변경 없음**.
+- **복호화 실패 시(키 불일치·값 손상): throw** — 기존 에러 처리 경로(카드 null/에러 UI)로 흐르게 한다. 조용히 빈 배열을 반환하면 사용자에게 "보유종목이 사라짐"으로 보이므로 하지 않는다.
+
+#### 12.4 마이그레이션 (기존 평문 데이터)
+
+- **읽기 하위호환:** 값이 배열이면 레거시 평문으로 그대로 사용, `enc:v1:` 프리픽스 문자열이면 복호화 — 양쪽 허용.
+- **쓰기는 항상 암호화.**
+- **자연 마이그레이션:** 두 키 모두 "배열 통짜 재저장" 패턴이므로 — `holdings:{email}`은 다음 CRUD 저장 시, `history`는 다음 일일 upsert(cron) 시 자동으로 암호문으로 전환된다.
+- **즉시 완료(선택):** 허용 이메일을 순회하며 read→write 1회 수행하는 일회성 조치(임시 스크립트, 실행 후 삭제 — Phase 8의 debug-asof 임시 라우트 전례와 동일하게 처리). 완료 판정: Upstash 콘솔에서 두 키의 값이 `enc:v1:` 문자열인지 확인.
+- **롤백 주의:** 암호화 저장이 시작된 뒤 코드를 Phase 12 이전으로 롤백하면 복호화 로직이 없어 데이터를 읽지 못한다 → **즉시 마이그레이션은 배포 안정 확인 후 실행**하고, 그 전까지는 자연 전환 상태(읽기 하위호환)로 두는 것을 권장.
+
+#### 12.5 작업 목록 (구현은 착수 지시 후)
+
+| 순서 | 작업 | 파일(예정) | 상태 |
+|---|---|---|---|
+| 12-1 | `HOLDINGS_ENCRYPTION_KEY` 발급(`openssl rand -base64 32`), `.env.local`·Vercel 양쪽 등록, 키 별도 백업 | `.env.local`, Vercel env | ⚠️ 로컬 완료 (2026-07-10) — **Vercel env 등록·별도 백업은 사용자 작업 남음** (`grep HOLDINGS_ENCRYPTION_KEY .env.local`로 값 확인) |
+| 12-2 | `secureJson` 유틸 — AES-256-GCM encrypt/decrypt, `enc:v1:` 포맷 조립·판별, 키 로드·검증(없거나 길이 불일치 시 throw) | `src/lib/crypto/secureJson.ts` (신규) | ☑ 완료 (2026-07-10) |
+| 12-3 | `store.ts` 4개 함수에 적용 — 읽기 하위호환(배열=평문/문자열=복호화, 공용 `readStoredArray` 헬퍼) + 쓰기 상시 암호화. 예상 외 타입은 throw | `src/lib/holdings/store.ts` | ☑ 완료 (2026-07-10) — 호출부 변경 0건 확인 |
+| 12-4 | 기존 데이터 마이그레이션 — 자연 전환 확인 후 (선택) 일회성 재저장으로 즉시 완료, Upstash 콘솔에서 `enc:v1:` 포맷 확인 | 임시 스크립트(실행 후 삭제) | ⚠️ 자연 전환 코드 완료 — **즉시 마이그레이션은 §12.4 롤백 주의에 따라 배포 안정 확인 후 실행** (배포 전에 실데이터를 암호화하면 평문 리더인 현 배포본이 읽지 못함) |
+| 12-5 | 검증 — 로컬 `build`+`start`: 보유종목 CRUD 왕복(암호화→복호화 동일성), 레거시 평문 읽기, 잘못된 키로 기동 시 에러 UI(빈 배열 아님), cron upsert 후 저장값 암호문 확인, 홈 카드·`/holdings` 차트 정상 | — | ☑ 완료 (2026-07-10, 로컬) — lint·`tsc --noEmit`·`next build` 통과. 임시 스크립트(`npx tsx`, 실행 후 삭제)로 **12건 전부 PASS**: 왕복 동일성·암호문 평문 미노출·IV 랜덤(동일 평문 상이 암호문)·변조 시 throw·잘못된 키 throw·`isEncrypted` 판별·레거시 배열 읽기 하위호환·`saveHoldings`/`history` Redis 원시 값 `enc:v1:` 확인·upsert 멱등. 실제 Upstash에 테스트 이메일(`phase12-verify@example.com`, ALLOWED_EMAILS 밖) 키로 수행 후 삭제 — 운영 데이터 무접촉. UI(홈 카드·차트)는 Google 로그인 필요라 배포 후 확인 |
+
+**Phase 12 완료 조건:** ☑ `holdings:{email}`·`history` 신규 저장값이 전부 `enc:v1:` 포맷(실측), ☑ 레거시 평문 읽기 하위호환 동작(실측), ☑ CRUD·차트·홈 카드·cron 기존 기능 무손상(빌드·typecheck 통과, 스토어 왕복 실측 — UI는 배포 후 확인), ☑ 복호화 실패 시 에러로 표면화(실측), ☐ **키가 `.env.local`+Vercel+별도 백업 3곳에 존재 (Vercel 등록·백업 남음)**. **완료 후 Phase 11 착수.**
+
+**남은 작업 (배포 관련, 순서대로):** ① 사용자 — Vercel env에 `HOLDINGS_ENCRYPTION_KEY` 등록 + 키 별도 백업, ② push·배포, ③ 배포 후 홈 카드·`/holdings` 화면 확인(레거시 평문 읽기), ④ 배포 안정 확인 후 (선택) 일회성 재저장으로 즉시 마이그레이션 + Upstash 콘솔에서 `enc:v1:` 확인.
+
+---
+
 ## 7. PR 분리 권장 (선택)
 
 | PR | Phase | 리뷰 포인트 |
@@ -1348,6 +1889,10 @@ export const config = {
 | PR-5 | 6 | 토큰 캐시 외부화, 운영 안정성 |
 | PR-6 | 7 | 인증 플로우, 접근 제어, 시크릿 관리 |
 | PR-7 | 8 | 확정 시각 cron 2개(15:40/18:15 KST), `vercel.json`, `CRON_SECRET` 인증 재사용 |
+| PR-8 | 9 | 홈 화면 카드 6개 그리드 리팩토링, 코스피/코스닥/환율/금리/보유종목/변동성 지수 상세 페이지 신설, 보유종목 CRUD(수동 입력)·수익률·히스토리, 코스피 변동성 지수 계산·히스토리, cron 통합 |
+| PR-9 | 10 | PWA(manifest·sw)·Web Push(VAPID)·구독 저장, 신고가 추적·알림 조건 3종·쿨다운 — ~~`/api/cron/check-alerts`·맥미니 crontab~~(Phase 11로 대체, 갱신 잡 훅으로 연결) |
+| PR-10 | 11 | QStash 스케줄 4개(확정 재시도 정책)·서명 검증, Redis 스냅샷 스토어·갱신 잡 파이프라인, 읽기 경로 Redis 전환(`unstable_cache` 제거), Vercel cron/`vercel.json` 제거, 갱신 상태 UI(장중 한정 2단계 배지·「마지막 갱신」 표기), 허용 시간·거래일 가드 |
+| PR-11 | 12 | `secureJson` 유틸(AES-256-GCM·`enc:v1:` 포맷), `store.ts` 4함수 적용(읽기 하위호환+쓰기 암호화), 키 관리(`HOLDINGS_ENCRYPTION_KEY`), 평문 마이그레이션 — **구현·머지 순서는 PR-11(Phase 12)이 PR-10(Phase 11)보다 먼저** |
 
 ---
 
@@ -1382,4 +1927,4 @@ mkdir -p src/lib/api/data-go-kr src/lib/indices src/types src/styles
 
 ---
 
-*문서 버전: 1.4 (2026-07-08: Phase 8 구현 완료 — cron 라우트/`vercel.json` 추가, `revalidateTag`는 `{ expire: 0 }`로 즉시 만료 채택, `proxy.ts` matcher에 `api/cron` 누락 버그 수정. 8-6 프로덕션 확인만 남음) · 공공 API 국내 지수 대시보드 최종 구현 계획*
+*문서 버전: 2.4 (2026-07-10: ① Phase 12 "보유종목 데이터 암호화 저장" 신설 — `holdings:{email}`+`history`(totalValue 포함) 둘 다 `node:crypto` AES-256-GCM으로 저장 전 암호화(`enc:v1:{iv}:{authTag}:{ciphertext}` 버전 프리픽스 포맷, IV 12바이트 매회 생성), 키는 `HOLDINGS_ENCRYPTION_KEY`(32바이트, 서버 전용, .env.local+Vercel+별도 백업), 적용 지점은 `store.ts` 4개 함수 경계로 한정(호출부 무변경 — Phase 11 파이프라인에 투명), 마이그레이션은 읽기 하위호환(배열=평문/`enc:v1:`=복호화)+쓰기 상시 암호화로 자연 전환 후 선택적 일회성 재저장, 복호화 실패는 throw로 표면화. **진행 순서 확정: Phase 12 완료 후 Phase 11 착수.** ② Phase 11 배지 정책 2차 개정(대안 A+심각도 구분) — 배지 판정을 장중(KST 평일 09:00~18:20, 정규+재시도 창)으로 한정하고 장외·주말은 미표시(최초안의 "밤마다 상시 배지" 부작용 제거), 장중 판정을 경고(20분~1시간, 노랑·작은 느낌표)/심각(1시간+, 빨강·강조 느낌표) 2단계로 구분(`tokens.css` 색상 매핑, 필요 시 시맨틱 토큰 추가), 상세 페이지 「마지막 갱신」은 배지와 별개로 상시 표시 유지. 이전 2.3: Phase 11 **최종 확정** — `phase9.request.md` 확정 지시문 반영. 재시도·실패 정책 6건 확정: ① 정정 회차 18:15(18:10 정정치 포함 조회, 5분 여유) ② 15:40 실패 시 재시도 없이 포기(18:15가 커버) ③ 18:15 실패 시 18:20에 전체 1회 재실행 후 실패하면 다음 영업일 09:00 대기(부분 재시도 없음) ④ 보유종목 등록 시 KIS 실존 검증 제거(형식 검증만) ⑤ 공휴일은 KIS `basDt` ≠ KST 오늘로 판단해 알림 판정 skip ⑥ 데이터 갱신 실패 500/알림 발송만 실패 로그+200. 갱신 상태 UI 3건 확정: 홈 카드 6개 아이콘 우측 상단 「!」 배지(`fetchedAt` 20분 경과 시), 상세 페이지 「마지막 갱신: YYYY-MM-DD HH:mm」 표기, `tokens.css` 토큰으로 다크/라이트 대응. KST 가드 envelope 09:00~18:40로 조정(창 밖 재시도 쟁점 소멸). 구현 미착수 — 착수 지시 대기. 이전 2.2: Phase 11 "데이터 갱신 구조 전면 재설계" 설계 추가 — `phase9.request.md` 반영. `unstable_cache` 기반 접속 시 갱신(pull)을 폐기하고 QStash 스케줄 4개(`CRON_TZ=Asia/Seoul`, 장중 10분×2 분할 표현식 + 15:40 + 18:1x)가 KIS를 호출해 Redis(`market:detail:*`/`market:stock:*`)에 저장하는 push 구조로 전환, 화면은 Redis만 읽음. 요청서 cron 표현식(`*/10 9-15`)의 15:40/15:50 초과 문제를 표현식 분할로 수정. Phase 8(캐시+revalidateTag cron 전면 대체, 8-6 폐기), Phase 9(18:15 단일 cron 번복, 사용자별 종목 조회→전체 union 1회 조회, 저장 시 KIS 실존 검증 충돌), Phase 10(맥미니 crontab·check-alerts 폐기, 판정을 갱신 잡에 통합)과의 충돌 지점 및 장애 시나리오 10종(회차 실패·재시도 경합·연속 실패 시 staleness 표시·Redis 단일 의존·공휴일 알림·빈 Redis 등) 문서화. QStash 공식 문서 확인(CRON_TZ 지원·지수 백오프 재시도·DLQ·서명 검증·Free 1,000msg/일). 결정 필요 5건(18:10 vs 18:15, 창 밖 재시도 유예, 실존 검증 제거, 공휴일 skip, 부분 실패 응답 정책) 명시. 구현 미착수·승인 대기. 이전 2.1: Phase 10 "보유종목 알림 기능" 조사·설계 추가 — 신고가 추적(단일 값+그 시점 코스피/코스닥), 알림 조건 3종 OR, 맥미니 crontab 10분 주기 `/api/cron/check-alerts` 호출, 1회 발송+2시간 쿨다운, Web Push(VAPID)+`src/app/manifest.ts`+`public/sw.js` 신규 필요(현재 저장소에 PWA 자산 없음 확인). 구현 미착수·승인 대기. 이전 2.0: Phase 9 그룹 1~7 구현·로컬 검증 완료. cron을 15:40/18:15 두 개에서 평일 18:15 KST 단일로 통합(사용자 결정) — 기존 `/api/cron/revalidate-indices` 확장으로 캐시 재검증+변동성/보유종목 히스토리 upsert 일원화, `vercel.json` cron 1개. 이전 1.9: Phase 9 최종 통합 확정 — 이전의 모든 개정판(1.6 최초안: 지수(연초=100) 채택안 / 1.7: 지수 항목 제외·`prevValue` 단일 값 단순화안 / 1.8: 지수 재도입 없이 `history` 시계열+추이 차트·단위 토글)을 전부 대체하는 최종 버전. 홈 화면을 "KOSPI/KOSDAQ 카드+차트 직결" 구조에서 **요약 카드 6개 그리드(코스피·코스닥·원달러 환율·미국 10년물 금리·보유종목 수익률·코스피 변동성 지수) + 지표별 상세 페이지**(`/indices/kospi`, `/indices/kosdaq`, `/indices/usdkrw`, `/indices/us10y`, `/holdings`, `/indices/kospi-volatility`) 구조로 재구성. 홈에는 차트를 두지 않고 전부 상세 페이지로 이전. 보유종목은 `holdings:{email}`(현재 보유)·`holdings:{email}:history`(일별 `{date, totalCost, totalValue}` 시계열)로 유지하되 CRUD·차트(수익률/원 단위 토글)·일별 리스트를 `/holdings` 상세 페이지 하나로 통합. 신규 "코스피 변동성 지수"(일일 (고가-저가)/저가×100)를 `kospiVolatility:history`에 시계열 저장, 홈에는 당월 평균·전월 대비 증감만, 상세 페이지에는 최근 6개월 월별 평균 차트 하나만(토글·목록 없음) 표시. 작업 목록을 홈 리팩토링→코스피/코스닥 상세→환율/금리→보유종목→변동성 지수→cron 통합→검증의 7개 그룹으로 재편. 구현은 승인 대기)·공공 API 국내 지수 대시보드 최종 구현 계획*
