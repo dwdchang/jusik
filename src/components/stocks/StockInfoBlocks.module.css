@@ -1,0 +1,64 @@
+.infoGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-12);
+}
+
+@media (max-width: 640px) {
+  .infoGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.infoCard {
+  padding: var(--space-16);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.infoTitle {
+  font-size: var(--text-caption);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+  margin-bottom: var(--space-12);
+}
+
+.infoRows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.infoRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-8);
+}
+
+.infoRow dt {
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+}
+
+.infoRow dd {
+  font-size: var(--text-micro);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+  text-align: right;
+}
+
+.infoSub {
+  margin-left: var(--space-8);
+  font-size: var(--text-micro);
+  font-weight: 400;
+  color: var(--color-text-tertiary);
+}
+
+.infoEmpty {
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+  line-height: 1.5;
+}
