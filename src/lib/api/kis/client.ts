@@ -273,6 +273,32 @@ export async function fetchKisStockName(symbolCode: string): Promise<string> {
 }
 
 /**
+ * 국내주식 기간별시세 (FHKST03010100, 월 단위) — 범위 내 각 월 마지막 거래일의
+ * 종가를 최신순으로 반환, 1회 최대 100행 (plan.md §14.1 실측).
+ * FID_INPUT_DATE_2를 월말로 주면 진행 중인 달은 포함되지 않는다.
+ * 핫종목 갱신 잡 전용 — 종목당 1콜로 구간 4종 수익률을 계산한다 (§14.2).
+ */
+export async function fetchKisStockMonthlyChart(
+  symbolCode: string,
+  fromYyyyMmDd: string,
+  toYyyyMmDd: string
+): Promise<KisStockDailyChartResponse> {
+  return fetchKisJson<KisStockDailyChartResponse>(
+    "stock monthly chart",
+    KIS_ENDPOINTS.STOCK_DAILY_CHART,
+    KIS_TR_ID.STOCK_DAILY_CHART,
+    {
+      FID_COND_MRKT_DIV_CODE: KIS_STOCK_MARKET_DIV_CODE,
+      FID_INPUT_ISCD: symbolCode,
+      FID_INPUT_DATE_1: fromYyyyMmDd,
+      FID_INPUT_DATE_2: toYyyyMmDd,
+      FID_PERIOD_DIV_CODE: "M",
+      FID_ORG_ADJ_PRC: "0",
+    }
+  );
+}
+
+/**
  * 국내주식 기간별시세 (FHKST03010100, 일 단위) — 1회 최대 100거래일 (최신순).
  * 백필·갱신 잡 전용 (plan.md §13.3).
  */
