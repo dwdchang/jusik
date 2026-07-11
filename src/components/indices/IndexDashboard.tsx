@@ -8,6 +8,7 @@ import {
 } from "@/lib/format/change";
 import { formatIndex } from "@/lib/format/index";
 import { resolveDirection } from "@/lib/indices/kisMapper";
+import type { StalenessLevel } from "@/lib/market/staleness";
 import type { HoldingsCardSummary } from "@/types/holdings";
 import type {
   IndexDashboardData,
@@ -18,7 +19,17 @@ import { DataAsOfFooter } from "./DataAsOfFooter";
 import styles from "./IndexDashboard.module.css";
 import { SummaryCard } from "./SummaryCard";
 
-function indexSummaryProps(snapshot: IndexSnapshot, href: string) {
+/** 카드 6개 배지 판정 결과 — 장중(09:00~18:20 KST)에만 non-null (§11.10-B) */
+export type DashboardStaleness = Record<
+  "kospi" | "kosdaq" | "usdkrw" | "us10y" | "holdings" | "volatility",
+  StalenessLevel | null
+>;
+
+function indexSummaryProps(
+  snapshot: IndexSnapshot,
+  href: string,
+  staleness: StalenessLevel | null
+) {
   return {
     title: snapshot.name,
     href,
@@ -28,6 +39,7 @@ function indexSummaryProps(snapshot: IndexSnapshot, href: string) {
       direction: snapshot.direction,
     },
     footnote: `기준일 ${formatBasDtDisplay(snapshot.basDt)}`,
+    staleness,
   };
 }
 
@@ -35,10 +47,12 @@ export function IndexDashboard({
   data,
   holdingsSummary,
   volatilitySummary,
+  staleness,
 }: {
   data: IndexDashboardData;
   holdingsSummary: HoldingsCardSummary | null;
   volatilitySummary: VolatilityCardSummary | null;
+  staleness: DashboardStaleness;
 }) {
   return (
     <div className={styles.dashboard}>
@@ -56,16 +70,35 @@ export function IndexDashboard({
       </header>
 
       <section className={styles.cards} aria-label="지표 요약">
-        <SummaryCard {...indexSummaryProps(data.kospi, "/indices/kospi")} />
-        <SummaryCard {...indexSummaryProps(data.kosdaq, "/indices/kosdaq")} />
-        <SummaryCard {...indexSummaryProps(data.usdKrw, "/indices/usdkrw")} />
         <SummaryCard
-          {...indexSummaryProps(data.usTreasury10y, "/indices/us10y")}
+          {...indexSummaryProps(data.kospi, "/indices/kospi", staleness.kospi)}
+        />
+        <SummaryCard
+          {...indexSummaryProps(
+            data.kosdaq,
+            "/indices/kosdaq",
+            staleness.kosdaq
+          )}
+        />
+        <SummaryCard
+          {...indexSummaryProps(
+            data.usdKrw,
+            "/indices/usdkrw",
+            staleness.usdkrw
+          )}
+        />
+        <SummaryCard
+          {...indexSummaryProps(
+            data.usTreasury10y,
+            "/indices/us10y",
+            staleness.us10y
+          )}
         />
         {holdingsSummary !== null ? (
           <SummaryCard
             title="보유종목 수익률"
             href="/holdings"
+            staleness={staleness.holdings}
             value={formatChangeRate(holdingsSummary.totalReturnRate)}
             valueDirection={resolveDirection(holdingsSummary.totalReturnRate)}
             change={
@@ -93,6 +126,7 @@ export function IndexDashboard({
           <SummaryCard
             title="코스피 변동성 지수"
             href="/indices/kospi-volatility"
+            staleness={staleness.volatility}
             value={`${volatilitySummary.currentMonthAvg.toFixed(2)}%`}
             change={
               volatilitySummary.monthOverMonthDiff !== null

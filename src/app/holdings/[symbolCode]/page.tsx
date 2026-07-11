@@ -5,6 +5,7 @@ import { HoldingsChartClient } from "@/components/holdings/HoldingsChartClient";
 import type { HoldingsChartPoint } from "@/components/holdings/HoldingsChart";
 import { ensureAllowedSession } from "@/lib/auth/ensureAllowedSession";
 import { formatChangeRate } from "@/lib/format/change";
+import { formatKstDateTime } from "@/lib/format/datetime";
 import { formatAvgPrice, formatEokwon, formatKrw } from "@/lib/format/krw";
 import { getHoldings } from "@/lib/holdings/store";
 import { getStockHistory } from "@/lib/holdings/stockHistory";
@@ -76,7 +77,8 @@ export default async function HoldingDetailPage({
     redirect("/holdings");
   }
 
-  const name = holdings[0].name;
+  // 등록 직후엔 종목명이 비어 있음 — 다음 갱신 회차에 잡이 채운다 (§11.10-A4)
+  const name = holdings[0].name || symbolCode;
   const totalQuantity = holdings.reduce((sum, h) => sum + h.quantity, 0);
   const totalCost = holdings.reduce((sum, h) => sum + h.totalCost, 0);
 
@@ -117,6 +119,11 @@ export default async function HoldingDetailPage({
             {name}
             <span className={styles.titleCode}>{symbolCode}</span>
           </h1>
+          {info.fetchedAt !== null ? (
+            <span className={styles.lastRefresh}>
+              마지막 갱신: {formatKstDateTime(info.fetchedAt)}
+            </span>
+          ) : null}
         </header>
 
         {errorMessage !== null ? (
@@ -126,8 +133,8 @@ export default async function HoldingDetailPage({
         ) : null}
         {info.currentPrice === null ? (
           <p className={styles.errorBanner} role="alert">
-            현재가 조회에 실패해 평가금액을 계산하지 못했습니다. 잠시 후 다시
-            시도해주세요.
+            아직 저장된 시세가 없어 평가금액을 계산하지 못했습니다. 다음 갱신
+            회차(평일 09:00~15:30 KST, 10분 간격)에 반영됩니다.
           </p>
         ) : null}
 
@@ -454,8 +461,9 @@ export default async function HoldingDetailPage({
 
         <footer className={styles.footer}>
           <p className={styles.notice}>
-            현재가·투자지표는 한국투자증권 OpenAPI 기준이며 약 10분 간격으로
-            갱신됩니다. 종가 히스토리는 평일 18:15(KST)에 저장되고, 실적은 분기
+            현재가·투자지표는 한국투자증권 OpenAPI 기준으로 평일
+            09:00~15:30(KST) 10분 간격 갱신 회차에 저장된 값입니다. 종가
+            히스토리·배당·실적은 15:40·18:15 확정 회차에 갱신되며, 실적은 분기
             누적값을 차감한 분기 단독 기준(억원)입니다.
           </p>
         </footer>

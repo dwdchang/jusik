@@ -19,6 +19,11 @@
   margin-bottom: var(--space-16);
 }
 
+.lastRefresh {
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+}
+
 .backLink {
   font-size: var(--text-caption);
   font-weight: var(--weight-medium);

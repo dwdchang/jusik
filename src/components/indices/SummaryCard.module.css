@@ -1,4 +1,5 @@
 .card {
+  position: relative;
   display: block;
   min-width: 0;
   padding: var(--space-20);
@@ -8,6 +9,33 @@
   box-shadow: var(--shadow-sm);
   text-decoration: none;
   transition: border-color 0.15s ease;
+}
+
+/* staleness 배지 — 카드 우측 상단, 경고/심각 2단계 (§11.10-B2) */
+.badge {
+  position: absolute;
+  top: var(--space-8);
+  right: var(--space-8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  font-size: var(--text-micro);
+  font-weight: var(--weight-bold);
+  line-height: 1;
+  color: #ffffff;
+}
+
+.badgeWarn {
+  background-color: var(--color-warning);
+}
+
+.badgeCritical {
+  background-color: var(--color-critical);
+  box-shadow: 0 0 0 2px
+    color-mix(in srgb, var(--color-critical) 30%, transparent);
 }
 
 .card:hover,

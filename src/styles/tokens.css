@@ -13,6 +13,10 @@
   --color-fall: #3182f6;
   --color-flat: #8b95a1;
 
+  /* Staleness 배지 — 경고(20분~1시간)/심각(1시간+), plan.md §11.10-B */
+  --color-warning: #d97706;
+  --color-critical: #f04452;
+
   /* Surface */
   --color-bg: #f2f4f6;
   --color-surface: #ffffff;
@@ -69,4 +73,7 @@ html[data-theme="dark"] {
   --color-text-primary: #f2f4f6;
   --color-text-secondary: #b0b8c4;
   --color-text-tertiary: #7b8794;
+
+  /* 어두운 배경 대비 확보 (§11.10-B4) */
+  --color-warning: #f0a51c;
 }

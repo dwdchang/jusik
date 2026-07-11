@@ -16,7 +16,9 @@ import {
   getPortfolioValuation,
   latestRecordBefore,
 } from "@/lib/holdings/valuation";
+import { formatKstDateTime } from "@/lib/format/datetime";
 import { resolveDirection } from "@/lib/indices/kisMapper";
+import { getLastRefreshRecord } from "@/lib/market/store";
 import type { PortfolioValuation } from "@/types/holdings";
 import { addHoldingAction } from "./actions";
 import styles from "./page.module.css";
@@ -32,8 +34,6 @@ const ERROR_MESSAGES: Record<string, string> = {
   invalid_total_cost: "총 매입금액은 0보다 큰 숫자여야 합니다.",
   duplicate_code:
     "이미 등록된 종목입니다. 수량 변경은 종목 상세 페이지에서 해주세요.",
-  stock_lookup_failed:
-    "종목 정보를 조회하지 못했습니다. 종목코드를 확인해주세요.",
   not_found: "대상 종목을 찾지 못했습니다. 새로고침 후 다시 시도해주세요.",
 };
 
@@ -52,9 +52,10 @@ export default async function HoldingsPage({
   const { error } = await searchParams;
   const errorMessage = error ? (ERROR_MESSAGES[error] ?? null) : null;
 
-  const [holdings, history] = await Promise.all([
+  const [holdings, history, lastRefresh] = await Promise.all([
     getHoldings(email),
     getPortfolioHistory(email),
+    getLastRefreshRecord().catch(() => null),
   ]);
 
   let valuation: PortfolioValuation | null = null;
@@ -99,6 +100,11 @@ export default async function HoldingsPage({
             ← 홈으로
           </Link>
           <h1 className={styles.title}>보유종목</h1>
+          {lastRefresh !== null ? (
+            <span className={styles.lastRefresh}>
+              마지막 갱신: {formatKstDateTime(lastRefresh.at)}
+            </span>
+          ) : null}
         </header>
 
         {errorMessage !== null ? (
@@ -109,6 +115,13 @@ export default async function HoldingsPage({
         {valuationError !== null ? (
           <p className={styles.errorBanner} role="alert">
             {valuationError}
+          </p>
+        ) : null}
+        {valuation !== null && valuation.missingPriceSymbols.length > 0 ? (
+          <p className={styles.errorBanner} role="alert">
+            시세 없음: {valuation.missingPriceSymbols.join(", ")} — 다음 갱신
+            회차(평일 09:00~15:30 KST, 10분 간격)에 반영되며, 종목코드가
+            잘못됐다면 계속 비어 있습니다. 합계에서는 제외됩니다.
           </p>
         ) : null}
 
@@ -227,7 +240,8 @@ export default async function HoldingsPage({
             </button>
           </form>
           <p className={styles.formHint}>
-            종목명은 저장 시 자동으로 조회됩니다.
+            종목명·시세는 다음 갱신 회차(평일 09:00~15:30 KST, 10분 간격)에
+            자동으로 채워집니다.
           </p>
         </section>
 
@@ -253,12 +267,12 @@ export default async function HoldingsPage({
                     >
                       <div className={styles.holdingHead}>
                         <span className={styles.holdingName}>
-                          {holding.name}
+                          {holding.name || holding.symbolCode}
                           <span className={styles.holdingCode}>
                             {holding.symbolCode}
                           </span>
                         </span>
-                        {item ? (
+                        {item && item.returnRate !== null ? (
                           <span
                             className={`${styles.holdingReturn} numeric ${
                               styles[resolveDirection(item.returnRate)]
@@ -274,12 +288,16 @@ export default async function HoldingsPage({
                           <div className={styles.holdingStat}>
                             <dt>현재가</dt>
                             <dd className="numeric">
-                              {formatKrw(item.currentPrice)}
+                              {item.currentPrice !== null
+                                ? formatKrw(item.currentPrice)
+                                : "시세 없음"}
                             </dd>
                           </div>
                           <div className={styles.holdingStat}>
                             <dt>평가금액</dt>
-                            <dd className="numeric">{formatKrw(item.value)}</dd>
+                            <dd className="numeric">
+                              {item.value !== null ? formatKrw(item.value) : "-"}
+                            </dd>
                           </div>
                           <div className={styles.holdingStat}>
                             <dt>매입금액</dt>
@@ -289,10 +307,14 @@ export default async function HoldingsPage({
                             <dt>평가손익</dt>
                             <dd
                               className={`numeric ${
-                                styles[resolveDirection(item.profit)]
+                                item.profit !== null
+                                  ? styles[resolveDirection(item.profit)]
+                                  : ""
                               }`}
                             >
-                              {formatKrw(item.profit)}
+                              {item.profit !== null
+                                ? formatKrw(item.profit)
+                                : "-"}
                             </dd>
                           </div>
                         </dl>
@@ -311,8 +333,9 @@ export default async function HoldingsPage({
 
         <footer className={styles.footer}>
           <p className={styles.notice}>
-            현재가는 한국투자증권 OpenAPI 기준이며 약 10분 간격으로 갱신됩니다.
-            일별 기록은 평일 18:15(KST)에 저장됩니다.
+            현재가는 한국투자증권 OpenAPI 기준으로 평일 09:00~15:30(KST) 10분
+            간격 갱신 회차에 저장된 값입니다. 일별 기록은 장중 갱신되고
+            15:40·18:15 회차에서 확정됩니다.
           </p>
         </footer>
       </div>

@@ -53,6 +53,9 @@ export async function IndexDetailScreen({ market }: { market: IndicatorId }) {
           <Link href="/" className={styles.backLink}>
             ← 홈으로
           </Link>
+          <span className={styles.lastRefresh}>
+            마지막 갱신: {formatKstDateTime(data.asOf)}
+          </span>
         </header>
 
         <section
@@ -74,7 +77,7 @@ export async function IndexDetailScreen({ market }: { market: IndicatorId }) {
         <footer className={styles.footer}>
           <p className={styles.notice}>{data.dataNotice}</p>
           <p className={styles.asOf}>
-            화면 데이터 조회 시각 (KST): {formatKstDateTime(data.asOf)}
+            마지막 갱신 (KST): {formatKstDateTime(data.asOf)}
           </p>
           <p className={styles.basDt}>
             기준일 {formatBasDtDisplay(data.snapshot.basDt)}
