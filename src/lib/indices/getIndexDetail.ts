@@ -1,35 +1,32 @@
-import { fetchKisIndexDaily } from "@/lib/api/kis/client";
 import {
-  KIS_CACHE_REVALIDATE_SECONDS,
-  KIS_CACHE_TAGS,
-} from "@/lib/api/kis/constants";
-import { unstable_cache } from "next/cache";
+  getMarketDetail,
+  INDICATOR_TO_DETAIL_KEY,
+} from "@/lib/market/store";
+import { MARKET_DATA_EMPTY_MESSAGE } from "./getDashboard";
 import {
   KIS_DATA_NOTICE,
   type IndexDetailData,
   type MarketIndex,
 } from "@/types/indices";
-import { mapKisDailyRows, mapKisHistory, mapKisSnapshot } from "./kisMapper";
 
-async function loadIndexDetailUncached(
+/**
+ * 국내 지수 상세 — QStash 갱신 잡이 저장한 `market:detail:{key}`를 읽는다.
+ * KIS 직접 호출 없음 (Phase 11 §11.6).
+ */
+export async function getIndexDetail(
   market: MarketIndex
 ): Promise<IndexDetailData> {
-  const raw = await fetchKisIndexDaily(market);
+  const stored = await getMarketDetail(INDICATOR_TO_DETAIL_KEY[market]);
+
+  if (stored === null) {
+    throw new Error(MARKET_DATA_EMPTY_MESSAGE);
+  }
 
   return {
-    asOf: new Date().toISOString(),
+    asOf: stored.fetchedAt,
     dataNotice: KIS_DATA_NOTICE,
-    snapshot: mapKisSnapshot(raw, market),
-    history: mapKisHistory(raw, market),
-    dailyRows: mapKisDailyRows(raw, market),
+    snapshot: stored.snapshot,
+    history: stored.history,
+    dailyRows: stored.dailyRows,
   };
 }
-
-export const getIndexDetail = unstable_cache(
-  loadIndexDetailUncached,
-  ["index-detail-kis-v1"],
-  {
-    revalidate: KIS_CACHE_REVALIDATE_SECONDS,
-    tags: [...KIS_CACHE_TAGS],
-  }
-);

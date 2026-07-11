@@ -9,8 +9,6 @@ import {
 import type { VolatilityMonthlyPoint } from "@/types/indices";
 import styles from "./page.module.css";
 
-export const revalidate = 600;
-
 export const metadata: Metadata = {
   title: "코스피 변동성 지수 — jusik",
   description: "코스피 일중 변동성 — 최근 6개월 월별 평균 차트",
@@ -68,7 +66,7 @@ export default async function KospiVolatilityPage() {
           <p className={styles.notice}>
             코스피 변동성 지수는 일중 (고가 − 저가) ÷ 저가 × 100(%)의 월별
             평균입니다. 당월은 오늘까지의 진행분 평균이며, 일별 기록은 평일
-            18:15(KST)에 저장됩니다.
+            장중 갱신 회차(09:00~15:30 KST, 10분 간격)마다 저장됩니다.
           </p>
         </footer>
       </div>

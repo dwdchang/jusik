@@ -2,8 +2,6 @@ import type { MarketIndex, OverseasIndicator } from "@/types/indices";
 import { getKisAccessToken } from "./auth";
 import {
   KIS_BASE_URL,
-  KIS_CACHE_REVALIDATE_SECONDS,
-  KIS_CACHE_TAGS,
   KIS_ENDPOINTS,
   KIS_FETCH_TIMEOUT_MS,
   KIS_INDEX_CODE,
@@ -38,15 +36,14 @@ interface KisBaseResponse {
 }
 
 /**
- * KIS GET 공통 처리 — 표준 헤더 + 10분 캐시(revalidate) + rt_cd 검증.
- * 같은 URL·옵션 호출은 Next fetch 캐시로 중복 제거된다.
+ * KIS GET 공통 처리 — 표준 헤더 + rt_cd 검증.
+ * 호출 주체가 QStash 갱신 잡뿐이므로 캐시하지 않는다 (plan.md §11.6).
  */
 async function fetchKisJson<T extends KisBaseResponse>(
   label: string,
   endpoint: string,
   trId: string,
-  params: Record<string, string>,
-  cacheTags: string[]
+  params: Record<string, string>
 ): Promise<T> {
   const token = await getKisAccessToken();
   const appKey = process.env.KIS_APP_KEY?.trim() ?? "";
@@ -64,10 +61,7 @@ async function fetchKisJson<T extends KisBaseResponse>(
       tr_id: trId,
       custtype: "P",
     },
-    next: {
-      revalidate: KIS_CACHE_REVALIDATE_SECONDS,
-      tags: cacheTags,
-    },
+    cache: "no-store",
     signal: AbortSignal.timeout(KIS_FETCH_TIMEOUT_MS),
   });
 
@@ -109,52 +103,17 @@ function todayKstYyyyMmDd(): string {
 export async function fetchKisIndexDaily(
   market: MarketIndex
 ): Promise<KisIndexDailyResponse> {
-  const token = await getKisAccessToken();
-  const appKey = process.env.KIS_APP_KEY?.trim() ?? "";
-  const appSecret = process.env.KIS_APP_SECRET?.trim() ?? "";
-
-  const params = new URLSearchParams({
-    FID_COND_MRKT_DIV_CODE: KIS_MARKET_DIV_CODE,
-    FID_INPUT_ISCD: KIS_INDEX_CODE[market],
-    FID_INPUT_DATE_1: todayKstYyyyMmDd(),
-    FID_PERIOD_DIV_CODE: "D",
-  });
-
-  const url = `${KIS_BASE_URL}${KIS_ENDPOINTS.INDEX_DAILY_PRICE}?${params.toString()}`;
-
-  const response = await fetch(url, {
-    method: "GET",
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      authorization: `Bearer ${token}`,
-      appkey: appKey,
-      appsecret: appSecret,
-      tr_id: KIS_TR_ID.INDEX_DAILY_PRICE,
-      custtype: "P",
-    },
-    next: {
-      revalidate: KIS_CACHE_REVALIDATE_SECONDS,
-      tags: [...KIS_CACHE_TAGS],
-    },
-    signal: AbortSignal.timeout(KIS_FETCH_TIMEOUT_MS),
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`KIS index daily HTTP ${response.status}: ${text}`);
-  }
-
-  const data = (await response.json()) as KisIndexDailyResponse;
-
-  if (data.rt_cd !== "0") {
-    throw new Error(
-      `KIS index daily error [${data.msg_cd ?? "?"}] ${
-        data.msg1 ?? "unknown error"
-      }`
-    );
-  }
-
-  return data;
+  return fetchKisJson<KisIndexDailyResponse>(
+    "index daily",
+    KIS_ENDPOINTS.INDEX_DAILY_PRICE,
+    KIS_TR_ID.INDEX_DAILY_PRICE,
+    {
+      FID_COND_MRKT_DIV_CODE: KIS_MARKET_DIV_CODE,
+      FID_INPUT_ISCD: KIS_INDEX_CODE[market],
+      FID_INPUT_DATE_1: todayKstYyyyMmDd(),
+      FID_PERIOD_DIV_CODE: "D",
+    }
+  );
 }
 
 /**
@@ -164,95 +123,38 @@ export async function fetchKisIndexDaily(
 export async function fetchKisOverseasDaily(
   indicator: OverseasIndicator
 ): Promise<KisOverseasDailyResponse> {
-  const token = await getKisAccessToken();
-  const appKey = process.env.KIS_APP_KEY?.trim() ?? "";
-  const appSecret = process.env.KIS_APP_SECRET?.trim() ?? "";
   const { marketDivCode, code } = KIS_OVERSEAS_INDICATOR[indicator];
 
-  const params = new URLSearchParams({
-    FID_COND_MRKT_DIV_CODE: marketDivCode,
-    FID_INPUT_ISCD: code,
-    FID_INPUT_DATE_1: kstYyyyMmDd(KIS_OVERSEAS_LOOKBACK_DAYS),
-    FID_INPUT_DATE_2: todayKstYyyyMmDd(),
-    FID_PERIOD_DIV_CODE: "D",
-  });
-
-  const url = `${KIS_BASE_URL}${KIS_ENDPOINTS.OVERSEAS_DAILY_CHART}?${params.toString()}`;
-
-  const response = await fetch(url, {
-    method: "GET",
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      authorization: `Bearer ${token}`,
-      appkey: appKey,
-      appsecret: appSecret,
-      tr_id: KIS_TR_ID.OVERSEAS_DAILY_CHART,
-      custtype: "P",
-    },
-    next: {
-      revalidate: KIS_CACHE_REVALIDATE_SECONDS,
-      tags: [...KIS_CACHE_TAGS],
-    },
-    signal: AbortSignal.timeout(KIS_FETCH_TIMEOUT_MS),
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`KIS overseas daily HTTP ${response.status}: ${text}`);
-  }
-
-  const data = (await response.json()) as KisOverseasDailyResponse;
-
-  if (data.rt_cd !== "0") {
-    throw new Error(
-      `KIS overseas daily error [${data.msg_cd ?? "?"}] ${
-        data.msg1 ?? "unknown error"
-      }`
-    );
-  }
-
-  return data;
+  return fetchKisJson<KisOverseasDailyResponse>(
+    "overseas daily",
+    KIS_ENDPOINTS.OVERSEAS_DAILY_CHART,
+    KIS_TR_ID.OVERSEAS_DAILY_CHART,
+    {
+      FID_COND_MRKT_DIV_CODE: marketDivCode,
+      FID_INPUT_ISCD: code,
+      FID_INPUT_DATE_1: kstYyyyMmDd(KIS_OVERSEAS_LOOKBACK_DAYS),
+      FID_INPUT_DATE_2: todayKstYyyyMmDd(),
+      FID_PERIOD_DIV_CODE: "D",
+    }
+  );
 }
 
-/** 국내주식 현재가 시세 원본 응답 — 현재가·스냅샷이 같은 캐시 항목을 공유한다 */
-async function fetchKisStockPriceResponse(
+/**
+ * 국내주식 현재가 전체 필드 (FHKST01010100) — 현재가·시가총액·PER/PBR·52주 최고/최저 등.
+ * Phase 11부터 갱신 잡이 종목당 1회 호출해 `market:stock:{code}`에 저장한다.
+ */
+export async function fetchKisStockSnapshot(
   symbolCode: string
-): Promise<KisStockPriceResponse> {
-  return fetchKisJson<KisStockPriceResponse>(
+): Promise<KisStockPriceOutput> {
+  const data = await fetchKisJson<KisStockPriceResponse>(
     "stock price",
     KIS_ENDPOINTS.STOCK_PRICE,
     KIS_TR_ID.STOCK_PRICE,
     {
       FID_COND_MRKT_DIV_CODE: KIS_STOCK_MARKET_DIV_CODE,
       FID_INPUT_ISCD: symbolCode,
-    },
-    [...KIS_CACHE_TAGS, `stock:${symbolCode}`]
+    }
   );
-}
-
-/**
- * 국내주식 현재가 조회 (FHKST01010100) → 현재가(원).
- * 종목코드가 유효하지 않으면 throw — 보유종목 저장 시 실존 검증에도 사용된다.
- */
-export async function fetchKisStockPrice(symbolCode: string): Promise<number> {
-  const data = await fetchKisStockPriceResponse(symbolCode);
-  const price = Number(data.output?.stck_prpr);
-
-  if (!Number.isFinite(price) || price <= 0) {
-    throw new Error(`KIS stock price invalid for ${symbolCode}`);
-  }
-
-  return price;
-}
-
-/**
- * 국내주식 현재가 전체 필드 (FHKST01010100) — 시가총액·PER/PBR·52주 최고/최저 등.
- * fetchKisStockPrice와 같은 요청이라 추가 KIS 호출 없이 캐시를 공유한다 (plan.md §13.4).
- */
-export async function fetchKisStockSnapshot(
-  symbolCode: string
-): Promise<KisStockPriceOutput> {
-  const data = await fetchKisStockPriceResponse(symbolCode);
 
   if (!data.output) {
     throw new Error(`KIS stock snapshot missing output for ${symbolCode}`);
@@ -279,8 +181,7 @@ export async function fetchKisMarketCapRanking(): Promise<
       fid_input_price_1: "",
       fid_input_price_2: "",
       fid_vol_cnt: "",
-    },
-    [...KIS_CACHE_TAGS]
+    }
   );
 
   return data.output ?? [];
@@ -303,8 +204,7 @@ export async function fetchKisDividends(
       T_DT: toYyyyMmDd,
       SHT_CD: symbolCode,
       HIGH_GB: "",
-    },
-    [...KIS_CACHE_TAGS, `stock:${symbolCode}`]
+    }
   );
 
   return data.output1 ?? [];
@@ -322,8 +222,7 @@ export async function fetchKisIncomeStatement(
       FID_DIV_CLS_CODE: "1",
       fid_cond_mrkt_div_code: KIS_STOCK_MARKET_DIV_CODE,
       fid_input_iscd: symbolCode,
-    },
-    [...KIS_CACHE_TAGS, `stock:${symbolCode}`]
+    }
   );
 
   return data.output ?? [];
@@ -341,8 +240,7 @@ export async function fetchKisFinancialRatio(
       FID_DIV_CLS_CODE: "1",
       fid_cond_mrkt_div_code: KIS_STOCK_MARKET_DIV_CODE,
       fid_input_iscd: symbolCode,
-    },
-    [...KIS_CACHE_TAGS, `stock:${symbolCode}`]
+    }
   );
 
   return data.output ?? [];
@@ -351,51 +249,18 @@ export async function fetchKisFinancialRatio(
 /**
  * 주식기본조회 (CTPF1002R) → 종목명.
  * 현재가 응답(FHKST01010100)에는 종목명이 없어(2026-07-10 실측) 이 엔드포인트를 쓴다.
- * 종목 추가 시 1회 호출해 저장한다 — plan.md §13.2.
+ * Phase 11부터 갱신 잡이 종목명 미확정 보유종목에 대해 호출해 채운다 (§11.10-A4).
  */
 export async function fetchKisStockName(symbolCode: string): Promise<string> {
-  const token = await getKisAccessToken();
-  const appKey = process.env.KIS_APP_KEY?.trim() ?? "";
-  const appSecret = process.env.KIS_APP_SECRET?.trim() ?? "";
-
-  const params = new URLSearchParams({
-    PRDT_TYPE_CD: KIS_STOCK_PRDT_TYPE_CD,
-    PDNO: symbolCode,
-  });
-
-  const url = `${KIS_BASE_URL}${KIS_ENDPOINTS.STOCK_BASIC_INFO}?${params.toString()}`;
-
-  const response = await fetch(url, {
-    method: "GET",
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      authorization: `Bearer ${token}`,
-      appkey: appKey,
-      appsecret: appSecret,
-      tr_id: KIS_TR_ID.STOCK_BASIC_INFO,
-      custtype: "P",
-    },
-    next: {
-      revalidate: KIS_CACHE_REVALIDATE_SECONDS,
-      tags: [...KIS_CACHE_TAGS, `stock:${symbolCode}`],
-    },
-    signal: AbortSignal.timeout(KIS_FETCH_TIMEOUT_MS),
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`KIS stock basic info HTTP ${response.status}: ${text}`);
-  }
-
-  const data = (await response.json()) as KisStockBasicInfoResponse;
-
-  if (data.rt_cd !== "0") {
-    throw new Error(
-      `KIS stock basic info error [${data.msg_cd ?? "?"}] ${
-        data.msg1 ?? "unknown error"
-      }`
-    );
-  }
+  const data = await fetchKisJson<KisStockBasicInfoResponse>(
+    "stock basic info",
+    KIS_ENDPOINTS.STOCK_BASIC_INFO,
+    KIS_TR_ID.STOCK_BASIC_INFO,
+    {
+      PRDT_TYPE_CD: KIS_STOCK_PRDT_TYPE_CD,
+      PDNO: symbolCode,
+    }
+  );
 
   const name =
     data.output?.prdt_abrv_name?.trim() || data.output?.prdt_name?.trim();
@@ -409,56 +274,24 @@ export async function fetchKisStockName(symbolCode: string): Promise<string> {
 
 /**
  * 국내주식 기간별시세 (FHKST03010100, 일 단위) — 1회 최대 100거래일 (최신순).
- * 백필·cron 갱신 전용이라 캐시하지 않는다 (plan.md §13.3).
+ * 백필·갱신 잡 전용 (plan.md §13.3).
  */
 export async function fetchKisStockDailyChart(
   symbolCode: string,
   fromYyyyMmDd: string,
   toYyyyMmDd: string
 ): Promise<KisStockDailyChartResponse> {
-  const token = await getKisAccessToken();
-  const appKey = process.env.KIS_APP_KEY?.trim() ?? "";
-  const appSecret = process.env.KIS_APP_SECRET?.trim() ?? "";
-
-  const params = new URLSearchParams({
-    FID_COND_MRKT_DIV_CODE: KIS_STOCK_MARKET_DIV_CODE,
-    FID_INPUT_ISCD: symbolCode,
-    FID_INPUT_DATE_1: fromYyyyMmDd,
-    FID_INPUT_DATE_2: toYyyyMmDd,
-    FID_PERIOD_DIV_CODE: "D",
-    FID_ORG_ADJ_PRC: "0",
-  });
-
-  const url = `${KIS_BASE_URL}${KIS_ENDPOINTS.STOCK_DAILY_CHART}?${params.toString()}`;
-
-  const response = await fetch(url, {
-    method: "GET",
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      authorization: `Bearer ${token}`,
-      appkey: appKey,
-      appsecret: appSecret,
-      tr_id: KIS_TR_ID.STOCK_DAILY_CHART,
-      custtype: "P",
-    },
-    cache: "no-store",
-    signal: AbortSignal.timeout(KIS_FETCH_TIMEOUT_MS),
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`KIS stock daily chart HTTP ${response.status}: ${text}`);
-  }
-
-  const data = (await response.json()) as KisStockDailyChartResponse;
-
-  if (data.rt_cd !== "0") {
-    throw new Error(
-      `KIS stock daily chart error [${data.msg_cd ?? "?"}] ${
-        data.msg1 ?? "unknown error"
-      }`
-    );
-  }
-
-  return data;
+  return fetchKisJson<KisStockDailyChartResponse>(
+    "stock daily chart",
+    KIS_ENDPOINTS.STOCK_DAILY_CHART,
+    KIS_TR_ID.STOCK_DAILY_CHART,
+    {
+      FID_COND_MRKT_DIV_CODE: KIS_STOCK_MARKET_DIV_CODE,
+      FID_INPUT_ISCD: symbolCode,
+      FID_INPUT_DATE_1: fromYyyyMmDd,
+      FID_INPUT_DATE_2: toYyyyMmDd,
+      FID_PERIOD_DIV_CODE: "D",
+      FID_ORG_ADJ_PRC: "0",
+    }
+  );
 }

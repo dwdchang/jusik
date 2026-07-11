@@ -2,8 +2,6 @@ import {
   fetchKisDividends,
   fetchKisFinancialRatio,
   fetchKisIncomeStatement,
-  fetchKisMarketCapRanking,
-  fetchKisStockSnapshot,
 } from "@/lib/api/kis/client";
 import { DIVIDEND_LOOKBACK_DAYS } from "@/lib/api/kis/constants";
 import type {
@@ -13,10 +11,16 @@ import type {
   KisMarketCapRankingRow,
   KisStockPriceOutput,
 } from "@/lib/api/kis/types";
+import {
+  getStockInfoBlocks,
+  getStockSnapshot,
+  type StoredStockInfoBlocks,
+} from "@/lib/market/store";
 
 /**
- * 종목 상세 페이지 정보 블록 4종 집계 — plan.md §13.4 (2026-07-10 실측·사용자 승인).
- * KIS 호출은 병렬로 수행하고, 블록별로 실패해도 나머지는 표시한다(null 강등).
+ * 종목 상세 페이지 정보 블록 4종 — plan.md §13.4 + Phase 11 전환.
+ * KIS 조회·계산(쓰기)은 QStash 갱신 잡이 수행해 `market:stockInfo:{code}`에 저장하고,
+ * 화면(읽기)은 저장된 블록과 `market:stock:{code}` 스냅샷을 조합만 한다 — KIS 호출 0건.
  */
 
 export interface StockMarketCapInfo {
@@ -68,10 +72,12 @@ export interface StockIndicatorsInfo {
 }
 
 export interface StockInfo {
-  /** 현재가(원) — 조회 실패 시 null (평가·시가배당률 계산 불가) */
+  /** 현재가(원) — 저장된 스냅샷이 없으면 null (평가·시가배당률 계산 불가) */
   currentPrice: number | null;
   /** 전일 대비율(%) */
   changeRate: number | null;
+  /** 스냅샷을 잡이 KIS에서 받아온 시각 (ISO) — 「마지막 갱신」 표기용 */
+  fetchedAt: string | null;
   marketCap: StockMarketCapInfo | null;
   dividend: StockDividendInfo | null;
   earnings: StockEarningsInfo | null;
@@ -106,35 +112,11 @@ function kstYyyyMmDd(daysAgo: number): string {
   return `${year}${month}${day}`;
 }
 
-function buildMarketCap(
-  snapshot: KisStockPriceOutput | null,
-  ranking: KisMarketCapRankingRow[] | null,
-  symbolCode: string
-): StockMarketCapInfo | null {
-  const marketCapEokwon = toNumber(snapshot?.hts_avls);
+// ---------- 쓰기 경로 (갱신 잡 전용 — KIS 호출 포함) ----------
 
-  if (marketCapEokwon === null || marketCapEokwon <= 0) {
-    return null;
-  }
-
-  let rankLabel: string | null = null;
-  if (ranking !== null) {
-    const matched = ranking.find((row) => row.mksc_shrn_iscd === symbolCode);
-    const rank = toNumber(matched?.data_rank);
-    rankLabel = rank !== null ? `${rank}위` : "30위권 밖";
-  }
-
-  return { marketCapEokwon, rankLabel };
-}
-
-function buildDividend(
-  rows: KisDividendRow[] | null,
-  currentPrice: number | null
-): StockDividendInfo | null {
-  if (rows === null) {
-    return null;
-  }
-
+function buildDividendBlock(
+  rows: KisDividendRow[]
+): StoredStockInfoBlocks["dividend"] {
   // 주당배당금 0원은 미확정 회차 — 확정분만 집계 (plan.md §13.4 실측)
   const confirmed = rows.filter(
     (row) => (toNumber(row.per_sto_divi_amt) ?? 0) > 0
@@ -158,10 +140,6 @@ function buildDividend(
   return {
     kindLabel: latest?.divi_kind?.trim() || null,
     annualDividendPerShare,
-    yieldRate:
-      currentPrice !== null && currentPrice > 0 && annualDividendPerShare > 0
-        ? (annualDividendPerShare / currentPrice) * 100
-        : null,
     lastPayDate: toIsoDate(lastPayDate),
   };
 }
@@ -208,14 +186,10 @@ function qoqRate(current: number | null, previous: number | null): number | null
   return ((current - previous) / Math.abs(previous)) * 100;
 }
 
-function buildEarnings(
-  incomeRows: KisIncomeStatementRow[] | null,
-  ratioRows: KisFinancialRatioRow[] | null
+function buildEarningsBlock(
+  incomeRows: KisIncomeStatementRow[],
+  ratioRows: KisFinancialRatioRow[]
 ): StockEarningsInfo | null {
-  if (incomeRows === null || incomeRows.length === 0) {
-    return null;
-  }
-
   const byYymm = new Map(
     incomeRows
       .filter((row) => row.stac_yymm && /^\d{6}$/.test(row.stac_yymm))
@@ -234,9 +208,7 @@ function buildEarnings(
   const prevRevenue = standaloneQuarterValue(byYymm, prevYymm, "sale_account");
   const prevOperatingProfit = standaloneQuarterValue(byYymm, prevYymm, "bsop_prti");
 
-  const latestRatio = (ratioRows ?? []).find(
-    (row) => row.stac_yymm === latestYymm
-  );
+  const latestRatio = ratioRows.find((row) => row.stac_yymm === latestYymm);
 
   return {
     quarterLabel: `${latestYymm.slice(0, 4)}.${latestYymm.slice(4, 6)}`,
@@ -248,6 +220,76 @@ function buildEarnings(
     operatingProfitQoqRate: qoqRate(operatingProfit, prevOperatingProfit),
   };
 }
+
+/** 시총 랭킹(상위 30)에서 순위 라벨 — 랭킹 데이터 자체가 없으면 null */
+export function resolveRankLabel(
+  ranking: KisMarketCapRankingRow[] | null,
+  symbolCode: string
+): string | null {
+  if (ranking === null) {
+    return null;
+  }
+  const matched = ranking.find((row) => row.mksc_shrn_iscd === symbolCode);
+  const rank = toNumber(matched?.data_rank);
+  return rank !== null ? `${rank}위` : "30위권 밖";
+}
+
+/**
+ * 갱신 잡 전용 — 가격 무관 정보 블록(배당·실적·순위)을 KIS에서 조회해 계산한다.
+ * 랭킹은 회차당 1회만 조회해 인자로 받는다.
+ */
+export async function fetchStockInfoBlocks(
+  symbolCode: string,
+  ranking: KisMarketCapRankingRow[] | null
+): Promise<StoredStockInfoBlocks> {
+  const [dividendResult, incomeResult, ratioResult] = await Promise.allSettled([
+    fetchKisDividends(
+      symbolCode,
+      kstYyyyMmDd(DIVIDEND_LOOKBACK_DAYS),
+      kstYyyyMmDd(0)
+    ),
+    fetchKisIncomeStatement(symbolCode),
+    fetchKisFinancialRatio(symbolCode),
+  ]);
+
+  if (dividendResult.status === "rejected") {
+    console.error(
+      `[stockInfo] dividends failed (${symbolCode}):`,
+      dividendResult.reason
+    );
+  }
+  if (incomeResult.status === "rejected") {
+    console.error(
+      `[stockInfo] income statement failed (${symbolCode}):`,
+      incomeResult.reason
+    );
+  }
+  if (ratioResult.status === "rejected") {
+    console.error(
+      `[stockInfo] financial ratio failed (${symbolCode}):`,
+      ratioResult.reason
+    );
+  }
+
+  return {
+    symbolCode,
+    rankLabel: resolveRankLabel(ranking, symbolCode),
+    dividend:
+      dividendResult.status === "fulfilled"
+        ? buildDividendBlock(dividendResult.value)
+        : null,
+    earnings:
+      incomeResult.status === "fulfilled"
+        ? buildEarningsBlock(
+            incomeResult.value,
+            ratioResult.status === "fulfilled" ? ratioResult.value : []
+          )
+        : null,
+    fetchedAt: new Date().toISOString(),
+  };
+}
+
+// ---------- 읽기 경로 (화면 전용 — Redis만 읽음) ----------
 
 function buildIndicators(
   snapshot: KisStockPriceOutput | null
@@ -268,47 +310,37 @@ function buildIndicators(
   };
 }
 
-/** allSettled 결과 → 값 또는 null (실패는 로그만 남기고 블록 강등) */
-function settledOrNull<T>(
-  result: PromiseSettledResult<T>,
-  label: string,
-  symbolCode: string
-): T | null {
-  if (result.status === "fulfilled") {
-    return result.value;
-  }
-  console.error(`[stockInfo] ${label} failed (${symbolCode}):`, result.reason);
-  return null;
-}
-
+/** 저장된 스냅샷 + 정보 블록 조합 — KIS 호출 없음 (Phase 11 §11.6) */
 export async function getStockInfo(symbolCode: string): Promise<StockInfo> {
-  const [snapshotResult, rankingResult, dividendResult, incomeResult, ratioResult] =
-    await Promise.allSettled([
-      fetchKisStockSnapshot(symbolCode),
-      fetchKisMarketCapRanking(),
-      fetchKisDividends(
-        symbolCode,
-        kstYyyyMmDd(DIVIDEND_LOOKBACK_DAYS),
-        kstYyyyMmDd(0)
-      ),
-      fetchKisIncomeStatement(symbolCode),
-      fetchKisFinancialRatio(symbolCode),
-    ]);
+  const [snap, blocks] = await Promise.all([
+    getStockSnapshot(symbolCode),
+    getStockInfoBlocks(symbolCode),
+  ]);
 
-  const snapshot = settledOrNull(snapshotResult, "snapshot", symbolCode);
-  const ranking = settledOrNull(rankingResult, "market cap ranking", symbolCode);
-  const dividends = settledOrNull(dividendResult, "dividends", symbolCode);
-  const income = settledOrNull(incomeResult, "income statement", symbolCode);
-  const ratio = settledOrNull(ratioResult, "financial ratio", symbolCode);
-
-  const currentPrice = toNumber(snapshot?.stck_prpr);
+  const raw = snap?.raw ?? null;
+  const currentPrice = snap !== null && snap.price > 0 ? snap.price : null;
+  const marketCapEokwon = toNumber(raw?.hts_avls ?? undefined);
 
   return {
-    currentPrice: currentPrice !== null && currentPrice > 0 ? currentPrice : null,
-    changeRate: toNumber(snapshot?.prdy_ctrt),
-    marketCap: buildMarketCap(snapshot, ranking, symbolCode),
-    dividend: buildDividend(dividends, currentPrice),
-    earnings: buildEarnings(income, ratio),
-    indicators: buildIndicators(snapshot),
+    currentPrice,
+    changeRate: snap?.changeRate ?? null,
+    fetchedAt: snap?.fetchedAt ?? null,
+    marketCap:
+      marketCapEokwon !== null && marketCapEokwon > 0
+        ? { marketCapEokwon, rankLabel: blocks?.rankLabel ?? null }
+        : null,
+    dividend:
+      blocks?.dividend != null
+        ? {
+            ...blocks.dividend,
+            yieldRate:
+              currentPrice !== null &&
+              blocks.dividend.annualDividendPerShare > 0
+                ? (blocks.dividend.annualDividendPerShare / currentPrice) * 100
+                : null,
+          }
+        : null,
+    earnings: blocks?.earnings ?? null,
+    indicators: buildIndicators(raw),
   };
 }

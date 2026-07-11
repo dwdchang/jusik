@@ -1,4 +1,4 @@
-import { fetchKisStockPrice } from "@/lib/api/kis/client";
+import { getStockSnapshots } from "@/lib/market/store";
 import type {
   Holding,
   PortfolioDailyRecord,
@@ -6,25 +6,37 @@ import type {
 } from "@/types/holdings";
 
 /**
- * 보유종목 평가 — 종목별 현재가 조회 후 평가금액/손익/수익률 계산.
- * @see plan.md §9.4.3
+ * 보유종목 평가 — QStash 갱신 잡이 저장한 `market:stock:{code}` 스냅샷으로 계산한다.
+ * 접속 시 KIS 호출 없음 (Phase 11 §11.6). 스냅샷이 없는 종목(방금 등록·잘못된 코드)은
+ * null 평가로 격리하고 합계에서 제외한다 (§11.10-A4).
  */
 export async function getPortfolioValuation(
   holdings: Holding[]
 ): Promise<PortfolioValuation> {
-  const prices = await Promise.all(
-    holdings.map((holding) => fetchKisStockPrice(holding.symbolCode))
-  );
+  const symbolCodes = [...new Set(holdings.map((h) => h.symbolCode))];
+  const snapshots = await getStockSnapshots(symbolCodes);
 
-  const items = holdings.map((holding, i) => {
-    const currentPrice = prices[i];
+  const items = holdings.map((holding) => {
+    const snapshot = snapshots.get(holding.symbolCode);
     const cost = holding.totalCost;
-    const value = currentPrice * holding.quantity;
+
+    if (snapshot === undefined) {
+      return {
+        holding,
+        currentPrice: null,
+        cost,
+        value: null,
+        profit: null,
+        returnRate: null,
+      };
+    }
+
+    const value = snapshot.price * holding.quantity;
     const profit = value - cost;
 
     return {
       holding,
-      currentPrice,
+      currentPrice: snapshot.price,
       cost,
       value,
       profit,
@@ -32,8 +44,9 @@ export async function getPortfolioValuation(
     };
   });
 
-  const totalCost = items.reduce((sum, item) => sum + item.cost, 0);
-  const totalValue = items.reduce((sum, item) => sum + item.value, 0);
+  const priced = items.filter((item) => item.value !== null);
+  const totalCost = priced.reduce((sum, item) => sum + item.cost, 0);
+  const totalValue = priced.reduce((sum, item) => sum + (item.value ?? 0), 0);
   const totalProfit = totalValue - totalCost;
 
   return {
@@ -42,6 +55,13 @@ export async function getPortfolioValuation(
     totalValue,
     totalProfit,
     totalReturnRate: totalCost > 0 ? (totalProfit / totalCost) * 100 : 0,
+    missingPriceSymbols: [
+      ...new Set(
+        items
+          .filter((item) => item.currentPrice === null)
+          .map((item) => item.holding.symbolCode)
+      ),
+    ],
   };
 }
 

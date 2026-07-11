@@ -92,9 +92,4 @@ export const KIS_INDEX_CODE = {
 /** 차트에 표시할 최근 거래일 수 */
 export const KIS_HISTORY_POINT_COUNT = 7;
 
-/** 준실시간 — 10분 단위 캐시 */
-export const KIS_CACHE_REVALIDATE_SECONDS = 600;
-
-export const KIS_CACHE_TAGS = ["indices"] as const;
-
 export const KIS_FETCH_TIMEOUT_MS = 15_000;

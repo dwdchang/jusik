@@ -3,10 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { fetchKisStockName, fetchKisStockPrice } from "@/lib/api/kis/client";
 import { isEmailAllowed } from "@/lib/auth/allowedEmails";
 import { getHoldings, saveHoldings } from "@/lib/holdings/store";
-import { backfillStockHistoryIfMissing } from "@/lib/holdings/stockHistory";
 
 async function requireEmail(): Promise<string> {
   const session = await auth();
@@ -61,25 +59,15 @@ export async function addHoldingAction(formData: FormData): Promise<void> {
     fail("duplicate_code");
   }
 
-  // 실존 검증(현재가) + 종목명 자동 조회 — 어느 쪽이든 실패하면 저장하지 않는다
-  let name: string;
-  try {
-    const [, fetchedName] = await Promise.all([
-      fetchKisStockPrice(symbolCode),
-      fetchKisStockName(symbolCode),
-    ]);
-    name = fetchedName;
-  } catch (error) {
-    console.error(`[addHoldingAction] stock lookup failed (${symbolCode}):`, error);
-    fail("stock_lookup_failed");
-  }
-
+  // KIS 실존 검증·종목명 조회·히스토리 백필은 하지 않는다 — 사용자 액션은 임의 시각에
+  // 발생해 KIS 허용 시간 규칙과 충돌하므로 형식 검증만 수행하고, 종목명·시세·히스토리는
+  // 다음 갱신 회차에서 잡이 채운다. 잘못된 코드는 「시세 없음」으로 표기된다 (§11.10-A4).
   const now = new Date().toISOString();
 
   holdings.push({
     id: crypto.randomUUID(),
     symbolCode,
-    name,
+    name: "",
     quantity,
     totalCost,
     createdAt: now,
@@ -87,17 +75,6 @@ export async function addHoldingAction(formData: FormData): Promise<void> {
   });
 
   await saveHoldings(email, holdings);
-
-  // 종목별 히스토리 백필 — 이미 저장된 종목은 재사용, 실패해도 등록 자체는 유지 (plan.md §13.3)
-  try {
-    await backfillStockHistoryIfMissing(symbolCode);
-  } catch (error) {
-    console.error(
-      `[addHoldingAction] history backfill failed (${symbolCode}):`,
-      error
-    );
-  }
-
   revalidatePath("/holdings");
   redirect("/holdings");
 }
