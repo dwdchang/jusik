@@ -25,7 +25,7 @@
 | 12 — 보유종목 데이터 암호화 저장 (AES-256-GCM) | ⚠️ **구현·로컬 검증 완료(2026-07-10, 12건 실측 PASS)** — 남은 작업: Vercel env 등록·키 백업(사용자), 배포 후 화면 확인·즉시 마이그레이션. **Phase 11보다 먼저 진행** |
 | 13 — 보유종목 페이지 개선 (`totalCost` 모델·종목명 자동 조회·종목 상세 페이지) | ✅ **구현 완료(2026-07-11, 13-1~13-6)** — `totalCost` 모델 전환(레거시 `avgPrice` 역산 하위호환), 종목명 CTPF1002R 자동 조회, `stock:{symbolCode}:history` 공용 저장소(2년 백필·cron 갱신), `/holdings/[symbolCode]` 상세 페이지(수정 모드·2년 차트·정보 블록 4종: 시가총액/배당/실적/투자지표), `/holdings` 메인 개편. lint·tsc·build·라이브 실측 통과. **다음: Phase 11 착수** |
 | 14 — 핫종목 (최근 1개월/분기/반기/연도 수익률 TOP 100) | ✅ **구현 완료(2026-07-11) — 배포·Upstash 스케줄 등록만 대기.** 완결된 달력 구간 4종(직전 월말 기준 최근 1/3/6/12개월) 수익률 랭킹, 매월 첫 평일 1회 배치(월봉 종목당 1콜 × 유니버스 2,647 실측 = 약 2,650콜), 홈 7번째 카드 + `/hot-stocks` 상세(구간 탭 4개). 2026-06 기준 전 구간 로컬 시딩 실측(3패스 이어받기·실패 0건) |
-| 15 — 관심종목 + 시장 통합 카드 | 📋 **조사·설계 완료(2026-07-11, 라이브 실측 포함) — 구현 미착수.** ① 홈의 환율·금리 카드를 "시장" 카드 1개로 통합 + 유가(WTI, `N`/`WTIF` 실측 확인) 추가, 상세 `/indices/market`. ② 관심종목 `watchlist:{email}`(암호화) — 수량 없이 등록 기준일 종가 대비 수익률, 기존 갱신 잡에 통합, `/watchlist` 목록·상세(Phase 13 정보 블록 공용 컴포넌트로 추출해 재사용) |
+| 15 — 관심종목 + 시장 통합 카드 | ✅ **구현 완료(2026-07-11, 15-1~15-9 + 로컬 실측 9건 PASS)** — ① 유가(WTI `N`/`WTIF`) 지표 추가, 홈 "시장" 통합 카드, `/indices/market`(미니 카드 3종)·`/indices/oil`. ② 관심종목 `watchlist:{email}` 암호화 저장(`enc:v1:` 실측), 갱신 잡 통합(union 합류·이름 채움·기준가 확정/잠정 승격·멱등 — 전부 로컬 실측), `/watchlist` 목록·상세, 공용 `StockInfoBlocks` 추출(보유종목 상세 리팩터). lint·tsc·build·라우트 마운트 스모크 통과. **남은 실측(배포 후·평일 — §15.5 15-10): oil 첫 갱신 회차 저장, 브라우저 CRUD, 오늘 등록→18:15 승격** |
 
 **남은 작업 (6-6):** 프로덕션(Vercel) 배포 후 다중 인스턴스 환경에서 토큰 발급 횟수가 실제로 줄었는지 Vercel 로그로 확인.
 **참고 (2026-07-04):** KIS 서버가 7/4~7/5 전산 점검 중이라 이 기간 대시보드에서 "fetch failed"(KIS API 연결 실패)가 발생할 수 있음 — 코드 문제 아님, 점검 종료 후 재확인.
@@ -2063,7 +2063,7 @@ interface Holding {
 
 ### Phase 15 — 관심종목 + 시장 통합 카드
 
-**목표:** ① 홈의 "원달러 환율"·"미국 10년물 금리" 카드 2개를 **"시장" 카드 1개로 통합**하고 유가(원유)를 추가, 상세 `/indices/market` 신설. ② 수량 없이 종목코드만 등록하는 **관심종목**(등록 기준일 종가 대비 수익률) — 목록·상세 페이지 + 기존 갱신 잡 통합. **조사·설계 완료(2026-07-11, `phase9.request.md` 지시 + 라이브 실측) — 구현 미착수(소스 파일 생성·수정 안 함).**
+**목표:** ① 홈의 "원달러 환율"·"미국 10년물 금리" 카드 2개를 **"시장" 카드 1개로 통합**하고 유가(원유)를 추가, 상세 `/indices/market` 신설. ② 수량 없이 종목코드만 등록하는 **관심종목**(등록 기준일 종가 대비 수익률) — 목록·상세 페이지 + 기존 갱신 잡 통합. **구현 완료(2026-07-11, 15-1~15-9) — lint·tsc·build·로컬 실측(암호화 왕복·기준가 확정·잠정 승격·멱등 등 9건) PASS. 남은 실측은 §15.5 15-10 비고 참조.**
 
 #### 15.1 조사 결과 A — 유가 (2026-07-11, 라이브 실측)
 
@@ -2123,22 +2123,22 @@ interface WatchItem {
   - **홈 카드(형태 제안, 확정):** "관심종목" 카드 — **개수 + 평균 수익률**(기준가 확정된 항목의 단순 평균) **+ 최고 수익률 1종목**(종목명·수익률) 미리보기. 기준가 미확정 항목은 평균에서 제외. 링크 `/watchlist`. staleness 배지는 보유종목 카드와 동일하게 `market:lastRefreshAt` 기준.
 - **경계·엣지:** 보유종목과 같은 종목 등록 허용(독립 목록, 데이터는 공용 키라 이중 비용 없음). 관심종목 삭제해도 공용 키(`market:stock:*` 등)는 건드리지 않음. 알림(Phase 10)은 보유종목 대상 설계 그대로 — 관심종목 확장은 범위 밖.
 
-#### 15.5 작업 목록 (구현은 착수 지시 후)
+#### 15.5 작업 목록 (2026-07-11 구현 완료)
 
-| 순서 | 작업 | 파일(예정) | 상태 |
+| 순서 | 작업 | 파일 | 상태 |
 |---|---|---|---|
-| 15-1 | 유가 지표 추가 — `OIL`(`N`/`WTIF`) 상수·타입·라벨, `market:detail:oil` 키, 갱신 잡 tasks에 oil 추가 | `lib/api/kis/constants.ts`, `types/indices.ts`, `lib/market/store.ts`, `lib/jobs/refreshMarketData.ts` | ☐ |
-| 15-2 | 상세 페이지 — `/indices/market`(미니 카드 3종+미니 차트) 신설, `/indices/oil` 개별 상세(기존 `IndexDetailScreen` 재사용) | `app/indices/market/page.tsx`+css (신규), `app/indices/oil/page.tsx` (신규), `lib/indices/getOverseasDetail.ts` | ☐ |
-| 15-3 | 홈 "시장" 통합 카드 — usdkrw·us10y 카드 2개 → 1개(대표값 원달러+등락률, staleness는 3종 중 최악), 링크 `/indices/market` | `app/page.tsx`, `components/indices/IndexDashboard.tsx`·`SummaryCard.tsx` | ☐ |
-| 15-4 | 관심종목 스토어 — `WatchItem` 타입, `watchlist:{email}` 리더/라이터(`secureJson` 암호화) | `types/watchlist.ts` (신규), `lib/watchlist/store.ts` (신규) | ☐ |
-| 15-5 | 관심종목 액션 — 추가/기준일 수정/삭제 (형식 검증만: 6자리·중복·기준일 오늘 이하 & 2년 이내, `priceAtRegistration` null 초기화) | `app/watchlist/actions.ts` (신규) | ☐ |
-| 15-6 | 갱신 잡 통합 — `collectWatchlists`·종목 union 합류·`fillMissingNames` 확장·`fillRegistrationPrices`(잠정→확정 승격 포함)·report 필드 | `lib/jobs/refreshMarketData.ts` | ☐ |
-| 15-7 | 정보 블록 공용 컴포넌트 추출 — `StockInfoBlocks`(+`formatRatio` 이동), 보유종목 상세를 이를 쓰도록 리팩터(동작 불변) | `components/stocks/StockInfoBlocks.tsx`+css (신규), `app/holdings/[symbolCode]/page.tsx` | ☐ |
-| 15-8 | `/watchlist` 목록 페이지 + 홈 "관심종목" 카드(개수·평균 수익률·최고 1종목) | `app/watchlist/page.tsx`+css (신규), `app/page.tsx`, `components/indices/IndexDashboard.tsx` | ☐ |
-| 15-9 | `/watchlist/[symbolCode]` 상세 — 요약·등록일 이후 추이 차트(`HoldingsChartClient` 재사용)·`StockInfoBlocks`·미등록 redirect | `app/watchlist/[symbolCode]/page.tsx`+css (신규) | ☐ |
-| 15-10 | 검증 — lint·tsc·build, 유가 3지표 `/indices/market` 표시·oil 잡 갱신 실측, 관심종목 CRUD 왕복(암호문 확인)·기준가 확정/승격 실측(오늘 등록→직전 거래일 잠정→18:15 후 당일 확정), 보유종목 상세 리팩터 무손상 확인 | — | ☐ |
+| 15-1 | 유가 지표 추가 — `OIL`(`N`/`WTIF`) 상수·타입·라벨, `market:detail:oil` 키, 갱신 잡 tasks에 oil 추가 | `lib/api/kis/constants.ts`, `types/indices.ts`, `lib/market/store.ts`, `lib/jobs/refreshMarketData.ts` | ✅ oil은 신규 키라 첫 갱신 전 null 허용(`getDashboard` — 배포 직후 홈 무중단) |
+| 15-2 | 상세 페이지 — `/indices/market`(미니 카드 3종+미니 차트) 신설, `/indices/oil` 개별 상세(기존 `IndexDetailScreen` 재사용) | `app/indices/market/page.tsx`+css (신규), `app/indices/oil/page.tsx` (신규) | ✅ `IndexDetailScreen`이 지표 제네릭이라 `getOverseasDetail` 수정 불필요 |
+| 15-3 | 홈 "시장" 통합 카드 — usdkrw·us10y 카드 2개 → 1개(대표값 원달러+등락률, staleness는 3종 중 가장 오래된 fetchedAt), 링크 `/indices/market` | `app/page.tsx`, `components/indices/IndexDashboard.tsx` | ✅ |
+| 15-4 | 관심종목 스토어 — `WatchItem` 타입, `watchlist:{email}` 리더/라이터(`secureJson` 암호화) | `types/watchlist.ts` (신규), `lib/watchlist/store.ts` (신규) | ✅ |
+| 15-5 | 관심종목 액션 — 추가/기준일 수정/삭제 (형식 검증만: 6자리·중복·기준일 오늘 이하 & 2년 이내, `priceAtRegistration` null 초기화) | `app/watchlist/actions.ts` (신규) | ✅ |
+| 15-6 | 갱신 잡 통합 — `collectWatchlists`·종목 union 합류·`fillMissingNames` 확장·`fillRegistrationPrices`(잠정→확정 승격 포함)·report 필드 | `lib/jobs/refreshMarketData.ts` | ✅ `fillRegistrationPrices`는 KIS 무호출 순수 Redis 로직이라 export(로컬 실측용) |
+| 15-7 | 정보 블록 공용 컴포넌트 추출 — `StockInfoBlocks`(+`formatRatio` 이동), 보유종목 상세를 이를 쓰도록 리팩터(동작 불변) | `components/stocks/StockInfoBlocks.tsx`+css (신규), `app/holdings/[symbolCode]/page.tsx` | ✅ |
+| 15-8 | `/watchlist` 목록 페이지 + 홈 "관심종목" 카드(개수·평균 수익률·최고 1종목) | `app/watchlist/page.tsx`+css (신규), `lib/watchlist/summary.ts` (신규), `app/page.tsx`, `components/indices/IndexDashboard.tsx` | ✅ |
+| 15-9 | `/watchlist/[symbolCode]` 상세 — 요약·등록일 이후 추이 차트(`HoldingsChartClient` 재사용)·`StockInfoBlocks`·미등록 redirect | `app/watchlist/[symbolCode]/page.tsx`+css (신규) | ✅ |
+| 15-10 | 검증 — lint·tsc·build, 관심종목 CRUD 왕복(암호문 확인)·기준가 확정/승격 실측, 보유종목 상세 리팩터 무손상 확인 | — | ◐ lint·tsc·build·라우트 스모크(신규 4라우트 마운트·인증 게이트)·로컬 실측 9건 PASS(암호화 왕복, 거래일 기준가 확정, 멱등 재실행 0건, 휴장일 잠정 확정, 수익률 계산). **남은 실측(배포 후·평일): oil 잡 갱신 저장, 브라우저 CRUD 왕복, 오늘 등록→직전 거래일 잠정→18:15 당일 승격** |
 
-**Phase 15 완료 조건:** ☐ 홈에서 환율·금리 카드가 "시장" 카드 1개로 통합되고 `/indices/market`에서 3지표(원달러/미10년/WTI) 미니 카드+차트 표시, ☐ `market:detail:oil`이 갱신 잡에서 저장(실측), ☐ 관심종목 CRUD·기준일 수정 동작 및 `watchlist:{email}` 값이 `enc:v1:` 암호문(실측), ☐ 기준가 자동 확정·잠정→확정 승격 동작(실측), ☐ 관심종목 상세가 보유종목 상세와 동일한 정보 블록 4종·차트 표시(공용 컴포넌트), ☐ 화면의 KIS 직접 호출 0건 유지, ☐ 홈 관심종목 카드(개수·평균 수익률) 표시.
+**Phase 15 완료 조건:** ☑ 홈에서 환율·금리 카드가 "시장" 카드 1개로 통합되고 `/indices/market`에서 3지표(원달러/미10년/WTI) 미니 카드+차트 표시(빌드·라우트 통과, oil은 첫 갱신 전 「준비 중」 — 화면 시각 확인은 배포 후), ☐ `market:detail:oil`이 갱신 잡에서 저장(실측 — 평일 갱신 회차 필요), ☑ 관심종목 CRUD·기준일 수정 동작 및 `watchlist:{email}` 값이 `enc:v1:` 암호문(스토어 레벨 실측 PASS — 브라우저 왕복은 배포 후), ☑ 기준가 자동 확정·잠정→확정 승격 동작(로컬 실측 — 거래일 당일 종가 확정·휴장일 직전 거래일 잠정·멱등 PASS, 18:15 실시간 승격은 평일 확인), ☑ 관심종목 상세가 보유종목 상세와 동일한 정보 블록 4종·차트 표시(공용 컴포넌트), ☑ 화면의 KIS 직접 호출 0건 유지(client import는 잡 경로 4파일뿐 — grep 확인), ☑ 홈 관심종목 카드(개수·평균 수익률) 구현(빌드 통과).
 
 ---
 
