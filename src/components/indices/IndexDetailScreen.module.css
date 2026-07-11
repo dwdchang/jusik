@@ -24,17 +24,6 @@
   color: var(--color-text-tertiary);
 }
 
-.backLink {
-  font-size: var(--text-caption);
-  font-weight: var(--weight-medium);
-  color: var(--color-text-secondary);
-  text-decoration: none;
-}
-
-.backLink:hover {
-  color: var(--color-text-primary);
-}
-
 .section {
   margin-bottom: var(--space-16);
 }

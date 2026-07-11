@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { HoldingsChartClient } from "@/components/holdings/HoldingsChartClient";
 import type { HoldingsChartPoint } from "@/components/holdings/HoldingsChart";
+import { NavIconLink } from "@/components/nav/NavIconLink";
 import { StockInfoBlocks } from "@/components/stocks/StockInfoBlocks";
 import { ensureAllowedSession } from "@/lib/auth/ensureAllowedSession";
 import { formatChangeRate } from "@/lib/format/change";
@@ -91,9 +91,11 @@ export default async function WatchItemDetailPage({
     <main className={styles.page}>
       <div className={styles.container}>
         <header className={styles.header}>
-          <Link href="/watchlist" className={styles.backLink}>
-            ← 관심종목
-          </Link>
+          <NavIconLink
+            href="/watchlist"
+            label="관심종목 목록으로"
+            icon="back"
+          />
           <h1 className={styles.title}>
             {name}
             <span className={styles.titleCode}>{symbolCode}</span>

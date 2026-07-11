@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { VolatilityChartClient } from "@/components/indices/VolatilityChartClient";
+import { NavIconLink } from "@/components/nav/NavIconLink";
 import { ensureAllowedSession } from "@/lib/auth/ensureAllowedSession";
 import {
   aggregateMonthlyAverages,
@@ -28,9 +28,7 @@ export default async function KospiVolatilityPage() {
       <main className={styles.page}>
         <div className={styles.container}>
           <header className={styles.header}>
-            <Link href="/" className={styles.backLink}>
-              ← 홈으로
-            </Link>
+            <NavIconLink href="/" label="홈으로" icon="home" />
             <h1 className={styles.title}>코스피 변동성 지수</h1>
           </header>
           <p className={styles.errorBanner} role="alert">
@@ -45,9 +43,7 @@ export default async function KospiVolatilityPage() {
     <main className={styles.page}>
       <div className={styles.container}>
         <header className={styles.header}>
-          <Link href="/" className={styles.backLink}>
-            ← 홈으로
-          </Link>
+          <NavIconLink href="/" label="홈으로" icon="home" />
           <h1 className={styles.title}>코스피 변동성 지수</h1>
         </header>
 

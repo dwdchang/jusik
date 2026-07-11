@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { HoldingsChartClient } from "@/components/holdings/HoldingsChartClient";
 import type { HoldingsChartPoint } from "@/components/holdings/HoldingsChart";
+import { NavIconLink } from "@/components/nav/NavIconLink";
 import { StockInfoBlocks } from "@/components/stocks/StockInfoBlocks";
 import { ensureAllowedSession } from "@/lib/auth/ensureAllowedSession";
 import { formatChangeRate } from "@/lib/format/change";
@@ -101,9 +102,11 @@ export default async function HoldingDetailPage({
     <main className={styles.page}>
       <div className={styles.container}>
         <header className={styles.header}>
-          <Link href="/holdings" className={styles.backLink}>
-            ← 보유종목
-          </Link>
+          <NavIconLink
+            href="/holdings"
+            label="보유종목 목록으로"
+            icon="back"
+          />
           <h1 className={styles.title}>
             {name}
             <span className={styles.titleCode}>{symbolCode}</span>

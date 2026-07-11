@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { NavIconLink } from "@/components/nav/NavIconLink";
 import { formatBasDtDisplay } from "@/lib/format/basDt";
 import { formatKstDateTime } from "@/lib/format/datetime";
 import { getIndexDetail } from "@/lib/indices/getIndexDetail";
@@ -33,9 +33,7 @@ export async function IndexDetailScreen({ market }: { market: IndicatorId }) {
       <main className={styles.page}>
         <div className={styles.container}>
           <header className={styles.header}>
-            <Link href="/" className={styles.backLink}>
-              ← 홈으로
-            </Link>
+            <NavIconLink href="/" label="홈으로" icon="home" />
           </header>
           <div className={styles.error} role="alert">
             <h1 className={styles.errorTitle}>데이터를 불러올 수 없습니다</h1>
@@ -50,9 +48,7 @@ export async function IndexDetailScreen({ market }: { market: IndicatorId }) {
     <main className={styles.page}>
       <div className={styles.container}>
         <header className={styles.header}>
-          <Link href="/" className={styles.backLink}>
-            ← 홈으로
-          </Link>
+          <NavIconLink href="/" label="홈으로" icon="home" />
           <span className={styles.lastRefresh}>
             마지막 갱신: {formatKstDateTime(data.asOf)}
           </span>

@@ -19,17 +19,6 @@
   margin-bottom: var(--space-16);
 }
 
-.backLink {
-  font-size: var(--text-caption);
-  font-weight: var(--weight-medium);
-  color: var(--color-text-secondary);
-  text-decoration: none;
-}
-
-.backLink:hover {
-  color: var(--color-text-primary);
-}
-
 .title {
   font-size: var(--text-title);
   font-weight: var(--weight-bold);
@@ -147,6 +136,35 @@
   text-align: right;
   font-size: var(--text-micro);
   font-weight: var(--weight-medium);
+}
+
+.addToggle {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-8) var(--space-16);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  user-select: none;
+  list-style: none; /* 기본 ▸ 마커 제거 (Safari는 아래 ::-webkit-details-marker) */
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.addToggle::-webkit-details-marker {
+  display: none;
+}
+
+.addToggle:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.addDetails[open] .addToggle {
+  margin-bottom: var(--space-8);
 }
 
 .addForm {

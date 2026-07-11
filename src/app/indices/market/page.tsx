@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { IndexChartClient } from "@/components/indices/IndexChartClient";
+import { NavIconLink } from "@/components/nav/NavIconLink";
 import { ensureAllowedSession } from "@/lib/auth/ensureAllowedSession";
 import { formatBasDtDisplay } from "@/lib/format/basDt";
 import { formatChange } from "@/lib/format/change";
@@ -48,9 +49,7 @@ export default async function MarketOverviewPage() {
     <main className={styles.page}>
       <div className={styles.container}>
         <header className={styles.header}>
-          <Link href="/" className={styles.backLink}>
-            ← 홈으로
-          </Link>
+          <NavIconLink href="/" label="홈으로" icon="home" />
           <h1 className={styles.title}>시장</h1>
           {oldestFetchedAt !== null ? (
             <span className={styles.lastRefresh}>

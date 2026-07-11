@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { NavIconLink } from "@/components/nav/NavIconLink";
 import { ensureAllowedSession } from "@/lib/auth/ensureAllowedSession";
 import { formatChangeRate } from "@/lib/format/change";
 import { formatKstDateTime } from "@/lib/format/datetime";
@@ -52,9 +53,7 @@ export default async function HotStocksPage({
       <main className={styles.page}>
         <div className={styles.container}>
           <header className={styles.header}>
-            <Link href="/" className={styles.backLink}>
-              ← 홈으로
-            </Link>
+            <NavIconLink href="/" label="홈으로" icon="home" />
             <h1 className={styles.title}>핫종목</h1>
           </header>
           <p className={styles.errorBanner} role="alert">
@@ -71,9 +70,7 @@ export default async function HotStocksPage({
     <main className={styles.page}>
       <div className={styles.container}>
         <header className={styles.header}>
-          <Link href="/" className={styles.backLink}>
-            ← 홈으로
-          </Link>
+          <NavIconLink href="/" label="홈으로" icon="home" />
           <h1 className={styles.title}>핫종목</h1>
           {stored !== null ? (
             <span className={styles.lastRefresh}>

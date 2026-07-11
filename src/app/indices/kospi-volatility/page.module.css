@@ -19,17 +19,6 @@
   margin-bottom: var(--space-16);
 }
 
-.backLink {
-  font-size: var(--text-caption);
-  font-weight: var(--weight-medium);
-  color: var(--color-text-secondary);
-  text-decoration: none;
-}
-
-.backLink:hover {
-  color: var(--color-text-primary);
-}
-
 .title {
   font-size: var(--text-title);
   font-weight: var(--weight-bold);

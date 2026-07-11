@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { NavIconLink } from "@/components/nav/NavIconLink";
 import { ensureAllowedSession } from "@/lib/auth/ensureAllowedSession";
 import { todayKstDate } from "@/lib/date/kst";
 import { formatChangeRate } from "@/lib/format/change";
@@ -66,9 +67,7 @@ export default async function WatchlistPage({
     <main className={styles.page}>
       <div className={styles.container}>
         <header className={styles.header}>
-          <Link href="/" className={styles.backLink}>
-            ← 홈으로
-          </Link>
+          <NavIconLink href="/" label="홈으로" icon="home" />
           <h1 className={styles.title}>관심종목</h1>
           {lastRefresh !== null ? (
             <span className={styles.lastRefresh}>
@@ -84,33 +83,36 @@ export default async function WatchlistPage({
         ) : null}
 
         <section className={styles.section} aria-label="관심종목 추가">
-          <h2 className={styles.sectionTitle}>관심종목 추가</h2>
-          <form action={addWatchItemAction} className={styles.addForm}>
-            <input
-              name="symbolCode"
-              className={styles.input}
-              placeholder="종목코드 6자리"
-              inputMode="numeric"
-              pattern="\d{6}"
-              required
-            />
-            <input
-              name="registeredAt"
-              className={styles.input}
-              type="date"
-              defaultValue={today}
-              max={today}
-              required
-            />
-            <button type="submit" className={styles.primaryButton}>
-              추가
-            </button>
-          </form>
-          <p className={styles.formHint}>
-            종목명과 기준가(등록 기준일 종가)는 다음 갱신 회차(평일
-            09:00~15:30 KST, 10분 간격)에 자동으로 채워집니다. 기준일이
-            휴장일이면 직전 거래일 종가가 기준가가 됩니다.
-          </p>
+          {/* 폼 검증 실패로 돌아온 경우엔 펼친 상태로 렌더 — 재입력 동선 유지 */}
+          <details className={styles.addDetails} open={errorMessage !== null}>
+            <summary className={styles.addToggle}>+ 종목 추가</summary>
+            <form action={addWatchItemAction} className={styles.addForm}>
+              <input
+                name="symbolCode"
+                className={styles.input}
+                placeholder="종목코드 6자리"
+                inputMode="numeric"
+                pattern="\d{6}"
+                required
+              />
+              <input
+                name="registeredAt"
+                className={styles.input}
+                type="date"
+                defaultValue={today}
+                max={today}
+                required
+              />
+              <button type="submit" className={styles.primaryButton}>
+                추가
+              </button>
+            </form>
+            <p className={styles.formHint}>
+              종목명과 기준가(등록 기준일 종가)는 다음 갱신 회차(평일
+              09:00~15:30 KST, 10분 간격)에 자동으로 채워집니다. 기준일이
+              휴장일이면 직전 거래일 종가가 기준가가 됩니다.
+            </p>
+          </details>
         </section>
 
         <section className={styles.section} aria-label="관심종목 목록">
