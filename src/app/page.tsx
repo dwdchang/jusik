@@ -11,6 +11,7 @@ import { getDashboardData } from "@/lib/indices/getDashboard";
 import { getVolatilityCardSummary } from "@/lib/indices/volatility";
 import { resolveStaleness } from "@/lib/market/staleness";
 import { getLastRefreshRecord } from "@/lib/market/store";
+import { getWatchlistCardSummary } from "@/lib/watchlist/summary";
 import styles from "./page.module.css";
 
 export default async function HomePage() {
@@ -50,18 +51,26 @@ export default async function HomePage() {
   let holdingsSummary: Awaited<ReturnType<typeof getHoldingsCardSummary>>;
   let volatilitySummary: Awaited<ReturnType<typeof getVolatilityCardSummary>>;
   let hotStocksSummary: Awaited<ReturnType<typeof getHotStocksCardSummary>>;
+  let watchlistSummary: Awaited<ReturnType<typeof getWatchlistCardSummary>>;
   let lastRefresh: Awaited<ReturnType<typeof getLastRefreshRecord>>;
 
   try {
-    // 카드 요약(보유종목·변동성·핫종목)은 실패 시 null 반환 — 홈 전체를 막지 않는다
-    [data, holdingsSummary, volatilitySummary, hotStocksSummary, lastRefresh] =
-      await Promise.all([
-        getDashboardData(),
-        getHoldingsCardSummary(email),
-        getVolatilityCardSummary(),
-        getHotStocksCardSummary(),
-        getLastRefreshRecord().catch(() => null),
-      ]);
+    // 카드 요약(보유종목·변동성·핫종목·관심종목)은 실패 시 null 반환 — 홈 전체를 막지 않는다
+    [
+      data,
+      holdingsSummary,
+      volatilitySummary,
+      hotStocksSummary,
+      watchlistSummary,
+      lastRefresh,
+    ] = await Promise.all([
+      getDashboardData(),
+      getHoldingsCardSummary(email),
+      getVolatilityCardSummary(),
+      getHotStocksCardSummary(),
+      getWatchlistCardSummary(email),
+      getLastRefreshRecord().catch(() => null),
+    ]);
   } catch (error) {
     const message =
       error instanceof Error
@@ -84,16 +93,25 @@ export default async function HomePage() {
     );
   }
 
-  // 카드 배지 — 지수 4종은 각 지표의 fetchedAt, 보유종목·변동성은 마지막
-  // 갱신 잡 성공 시각 기준. 장중(평일 09:00~18:20 KST)에만 판정된다 (§11.10-B)
+  // 카드 배지 — 지수 2종은 각 지표의 fetchedAt, 시장 카드는 환율·금리·유가
+  // 3종 중 가장 오래된 수집 시각(§15.2), 보유종목·변동성은 마지막 갱신 잡
+  // 성공 시각 기준. 장중(평일 09:00~18:20 KST)에만 판정된다 (§11.10-B)
   const lastRefreshAt = lastRefresh?.at ?? null;
+  const marketFetchedAt =
+    [
+      data.fetchedAtByKey.usdkrw,
+      data.fetchedAtByKey.us10y,
+      data.fetchedAtByKey.oil,
+    ]
+      .filter((at): at is string => at !== null)
+      .sort()[0] ?? null;
   const staleness: DashboardStaleness = {
     kospi: resolveStaleness(data.fetchedAtByKey.kospi),
     kosdaq: resolveStaleness(data.fetchedAtByKey.kosdaq),
-    usdkrw: resolveStaleness(data.fetchedAtByKey.usdkrw),
-    us10y: resolveStaleness(data.fetchedAtByKey.us10y),
+    market: resolveStaleness(marketFetchedAt),
     holdings: resolveStaleness(lastRefreshAt),
     volatility: resolveStaleness(lastRefreshAt),
+    watchlist: resolveStaleness(lastRefreshAt),
   };
 
   return (
@@ -103,6 +121,7 @@ export default async function HomePage() {
         holdingsSummary={holdingsSummary}
         volatilitySummary={volatilitySummary}
         hotStocksSummary={hotStocksSummary}
+        watchlistSummary={watchlistSummary}
         staleness={staleness}
       />
     </main>

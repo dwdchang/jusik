@@ -71,10 +71,12 @@ export const KIS_STOCK_MARKET_DIV_CODE = "J";
 /**
  * 해외지수/환율/금리 지표별 조회 코드 — plan.md §9.1 (2026-07-08 실측 검증)
  * marketDivCode: N 해외지수 / X 환율 / I 국채 / S 금선물
+ * OIL은 N/WTIF만 사용 — S/M0401 계열은 일자별(output2)이 비어 응답해 사용 금지 (§15.1 실측)
  */
 export const KIS_OVERSEAS_INDICATOR = {
   USDKRW: { marketDivCode: "X", code: "FX@KRW" },
   US10Y: { marketDivCode: "I", code: "Y0202" },
+  OIL: { marketDivCode: "N", code: "WTIF" },
 } as const;
 
 /** 해외 기간별시세 조회 기간(일) — 최근 7거래일 확보용 여유 포함 */

@@ -5,8 +5,8 @@
 
 export type MarketIndex = "KOSPI" | "KOSDAQ";
 
-/** KIS 해외지수/환율/금리 계열 지표 */
-export type OverseasIndicator = "USDKRW" | "US10Y";
+/** KIS 해외지수/환율/금리/유가 계열 지표 */
+export type OverseasIndicator = "USDKRW" | "US10Y" | "OIL";
 
 /** 홈/상세에서 다루는 전체 지표 식별자 */
 export type IndicatorId = MarketIndex | OverseasIndicator;
@@ -16,6 +16,7 @@ export const INDICATOR_NAMES: Record<IndicatorId, string> = {
   KOSDAQ: "코스닥",
   USDKRW: "원/달러 환율",
   US10Y: "미국 10년물 국채금리(%)",
+  OIL: "국제유가 WTI(USD/배럴)",
 };
 
 export type PriceDirection = "rise" | "fall" | "flat";
@@ -51,6 +52,8 @@ export interface IndexDashboardData {
   kosdaqHistory: IndexSeries;
   usdKrw: IndexSnapshot;
   usTreasury10y: IndexSnapshot;
+  /** 국제유가 WTI — Phase 15 추가 키라 첫 갱신 회차 전에는 null */
+  oil: IndexSnapshot | null;
 }
 
 /** 상세 페이지 일별 시세 리스트 행 */

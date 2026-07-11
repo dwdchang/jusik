@@ -46,7 +46,10 @@ import {
   type MarketDetailKey,
   type StoredStockSnapshot,
 } from "@/lib/market/store";
+import { getStockHistory } from "@/lib/holdings/stockHistory";
+import { getWatchlist, saveWatchlist } from "@/lib/watchlist/store";
 import type { Holding } from "@/types/holdings";
+import type { WatchItem } from "@/types/watchlist";
 
 /**
  * 시세 갱신 잡 파이프라인 — Phase 11 (plan.md §11.1).
@@ -81,6 +84,15 @@ export interface RefreshMarketDataReport {
     skipped?: true;
     error?: string;
   }>;
+  /** 관심종목 읽기 결과 — 이메일별 실패 격리 (§15.3) */
+  watchlists: Array<{ email: string; ok: boolean; error?: string }>;
+  /** 관심종목 기준가 확정·잠정→확정 승격 결과 (§15.4) */
+  registrationPriceFills: Array<{
+    email: string;
+    symbolCode: string;
+    ok: boolean;
+    error?: string;
+  }>;
   alerts: { evaluated: boolean; reason?: string };
   /** 데이터 갱신 성공 여부 — false면 잡 엔드포인트가 500을 반환(QStash 재시도, §11.10-A6) */
   ok: boolean;
@@ -98,7 +110,7 @@ async function evaluateAlertsHook(context: {
   void context; // no-op — Phase 10에서 구현
 }
 
-/** 지수·환율·금리 4종 조회 → market:detail:* 저장 (지표별 실패 격리) */
+/** 지수·환율·금리·유가 5종 조회 → market:detail:* 저장 (지표별 실패 격리) */
 async function refreshIndices(fetchedAt: string): Promise<{
   results: RefreshMarketDataReport["indices"];
   kospiRaw: KisIndexDailyResponse | null;
@@ -155,6 +167,18 @@ async function refreshIndices(fetchedAt: string): Promise<{
         });
       },
     },
+    {
+      key: "oil",
+      run: async () => {
+        const raw = await fetchKisOverseasDaily("OIL");
+        await setMarketDetail("oil", {
+          snapshot: mapKisOverseasSnapshot(raw, "OIL"),
+          history: mapKisOverseasHistory(raw, "OIL"),
+          dailyRows: mapKisOverseasDailyRows(raw, "OIL"),
+          fetchedAt,
+        });
+      },
+    },
   ];
 
   const settled = await Promise.allSettled(tasks.map((task) => task.run()));
@@ -186,6 +210,110 @@ async function collectHoldings(): Promise<Map<string, Holding[]>> {
   );
 
   return byEmail;
+}
+
+/** 허용 이메일 전체의 관심종목 조회 (이메일별 실패 격리, §15.3) */
+async function collectWatchlists(): Promise<{
+  byEmail: Map<string, WatchItem[]>;
+  results: RefreshMarketDataReport["watchlists"];
+}> {
+  const byEmail = new Map<string, WatchItem[]>();
+
+  const results = await Promise.all(
+    getAllowedEmails().map(async (email) => {
+      try {
+        byEmail.set(email, await getWatchlist(email));
+        return { email, ok: true };
+      } catch (error) {
+        console.error(`[job] watchlist read failed (${email}):`, error);
+        return { email, ok: false, error: errorMessage(error) };
+      }
+    })
+  );
+
+  return { byEmail, results };
+}
+
+/**
+ * 관심종목 기준가 확정 — KIS 직접 호출 없이 stock:{code}:history에서
+ * registeredAt 이하 마지막 종가를 사용한다 (§15.4). 잠정 확정
+ * (priceBasisDate < registeredAt — 기준일 당일 종가가 아직 없던 상태)은
+ * 이후 회차에서 당일 종가가 생겼는지 재확인해 승격한다. 멱등.
+ * KIS 호출이 없어 단독 실행 안전 — export는 로컬 실측용.
+ */
+export async function fillRegistrationPrices(
+  watchlistsByEmail: Map<string, WatchItem[]>
+): Promise<RefreshMarketDataReport["registrationPriceFills"]> {
+  const results: RefreshMarketDataReport["registrationPriceFills"] = [];
+  const historyCache = new Map<
+    string,
+    Awaited<ReturnType<typeof getStockHistory>>
+  >();
+
+  for (const [email, items] of watchlistsByEmail) {
+    let changed = false;
+
+    for (const item of items) {
+      const needsFill =
+        item.priceAtRegistration === null ||
+        (item.priceBasisDate !== null &&
+          item.priceBasisDate < item.registeredAt);
+
+      if (!needsFill) {
+        continue;
+      }
+
+      try {
+        let history = historyCache.get(item.symbolCode);
+        if (history === undefined) {
+          history = await getStockHistory(item.symbolCode);
+          historyCache.set(item.symbolCode, history);
+        }
+
+        // 히스토리는 날짜 오름차순 — 기준일 이하 마지막 종가가 기준가
+        const basis = [...history]
+          .reverse()
+          .find((row) => row.date <= item.registeredAt);
+
+        if (basis === undefined) {
+          // 히스토리 미백필(다음 회차에 채워짐) 또는 상장 전 날짜 — 이번 회차는 보류
+          continue;
+        }
+
+        if (
+          item.priceAtRegistration !== basis.close ||
+          item.priceBasisDate !== basis.date
+        ) {
+          item.priceAtRegistration = basis.close;
+          item.priceBasisDate = basis.date;
+          item.updatedAt = new Date().toISOString();
+          changed = true;
+          results.push({ email, symbolCode: item.symbolCode, ok: true });
+        }
+      } catch (error) {
+        console.error(
+          `[job] registration price fill failed (${email}/${item.symbolCode}):`,
+          error
+        );
+        results.push({
+          email,
+          symbolCode: item.symbolCode,
+          ok: false,
+          error: errorMessage(error),
+        });
+      }
+    }
+
+    if (changed) {
+      try {
+        await saveWatchlist(email, items);
+      } catch (error) {
+        console.error(`[job] watchlist price save failed (${email}):`, error);
+      }
+    }
+  }
+
+  return results;
 }
 
 /**
@@ -265,18 +393,22 @@ async function refreshStocks(
 }
 
 /**
- * 종목명 미확정(빈 문자열) 보유종목 채움 — §11.10-A4.
+ * 종목명 미확정(빈 문자열) 보유종목·관심종목 채움 — §11.10-A4, §15.3 확장.
  * 등록 액션은 형식 검증만 하므로, 종목명은 다음 갱신 회차에서 여기로 채워진다.
  */
 async function fillMissingNames(
-  holdingsByEmail: Map<string, Holding[]>
+  holdingsByEmail: Map<string, Holding[]>,
+  watchlistsByEmail: Map<string, WatchItem[]>
 ): Promise<RefreshMarketDataReport["nameFills"]> {
+  const allItems = [
+    ...[...holdingsByEmail.values()].flat(),
+    ...[...watchlistsByEmail.values()].flat(),
+  ];
   const missingCodes = [
     ...new Set(
-      [...holdingsByEmail.values()]
-        .flat()
-        .filter((holding) => holding.name.trim() === "")
-        .map((holding) => holding.symbolCode)
+      allItems
+        .filter((item) => item.name.trim() === "")
+        .map((item) => item.symbolCode)
     ),
   ];
 
@@ -297,23 +429,35 @@ async function fillMissingNames(
     return results;
   }
 
-  for (const [email, holdings] of holdingsByEmail) {
+  const applyNames = (items: Array<Holding | WatchItem>): boolean => {
     let changed = false;
-
-    for (const holding of holdings) {
-      const name = names.get(holding.symbolCode);
-      if (holding.name.trim() === "" && name !== undefined) {
-        holding.name = name;
-        holding.updatedAt = new Date().toISOString();
+    for (const item of items) {
+      const name = names.get(item.symbolCode);
+      if (item.name.trim() === "" && name !== undefined) {
+        item.name = name;
+        item.updatedAt = new Date().toISOString();
         changed = true;
       }
     }
+    return changed;
+  };
 
-    if (changed) {
+  for (const [email, holdings] of holdingsByEmail) {
+    if (applyNames(holdings)) {
       try {
         await saveHoldings(email, holdings);
       } catch (error) {
         console.error(`[job] holdings name save failed (${email}):`, error);
+      }
+    }
+  }
+
+  for (const [email, items] of watchlistsByEmail) {
+    if (applyNames(items)) {
+      try {
+        await saveWatchlist(email, items);
+      } catch (error) {
+        console.error(`[job] watchlist name save failed (${email}):`, error);
       }
     }
   }
@@ -379,7 +523,7 @@ export async function refreshMarketData(
   const startedAt = new Date().toISOString();
   const confirmedRound = isConfirmedRound();
 
-  // 1. 지수·환율·금리 4종 → market:detail:*
+  // 1. 지수·환율·금리·유가 5종 → market:detail:*
   const { results: indices, kospiRaw } = await refreshIndices(startedAt);
 
   // 4. 코스피 변동성 upsert (1의 KOSPI 응답 재사용)
@@ -397,14 +541,19 @@ export async function refreshMarketData(
     volatility = { ok: false, error: "KOSPI response unavailable" };
   }
 
-  // 2. 전체 사용자 보유종목 union → 종목코드 중복 제거
-  const holdingsByEmail = await collectHoldings();
+  // 2. 전체 사용자 보유종목+관심종목 union → 종목코드 중복 제거 (§15.3 —
+  //    겹치는 종목은 스냅샷·히스토리·정보 블록 공유, 추가 호출 0)
+  const [holdingsByEmail, { byEmail: watchlistsByEmail, results: watchlists }] =
+    await Promise.all([collectHoldings(), collectWatchlists()]);
   const symbolCodes = [
-    ...new Set(
-      [...holdingsByEmail.values()]
+    ...new Set([
+      ...[...holdingsByEmail.values()]
         .flat()
-        .map((holding) => holding.symbolCode)
-    ),
+        .map((holding) => holding.symbolCode),
+      ...[...watchlistsByEmail.values()]
+        .flat()
+        .map((item) => item.symbolCode),
+    ]),
   ];
 
   // 3. 종목별 1회 조회 → market:stock:* (+확정 회차: 히스토리·정보 블록)
@@ -414,8 +563,12 @@ export async function refreshMarketData(
     confirmedRound
   );
 
-  // 종목명 미확정 보유종목 채움 (§11.10-A4)
-  const nameFills = await fillMissingNames(holdingsByEmail);
+  // 종목명 미확정 보유종목·관심종목 채움 (§11.10-A4)
+  const nameFills = await fillMissingNames(holdingsByEmail, watchlistsByEmail);
+
+  // 관심종목 기준가 확정 — 신규 종목 백필(refreshStocks)이 먼저 실행된 상태 (§15.4)
+  const registrationPriceFills =
+    await fillRegistrationPrices(watchlistsByEmail);
 
   // 5. 사용자별 포트폴리오 평가 → holdings history upsert
   const portfolios = await refreshPortfolios(holdingsByEmail, snapshots);
@@ -471,6 +624,8 @@ export async function refreshMarketData(
     stocks,
     nameFills,
     portfolios,
+    watchlists,
+    registrationPriceFills,
     alerts,
     ok,
   };

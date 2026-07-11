@@ -1,0 +1,149 @@
+.page {
+  flex: 1;
+  width: 100%;
+  min-height: 100%;
+  background-color: var(--color-bg);
+}
+
+.container {
+  width: 100%;
+  max-width: var(--layout-max-width);
+  margin: 0 auto;
+  padding: var(--space-16);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  margin-bottom: var(--space-16);
+}
+
+.backLink {
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+}
+
+.backLink:hover {
+  color: var(--color-text-primary);
+}
+
+.title {
+  font-size: var(--text-title);
+  font-weight: var(--weight-bold);
+  color: var(--color-text-primary);
+  letter-spacing: var(--tracking-tight);
+}
+
+.lastRefresh {
+  margin-left: auto;
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+}
+
+/* 미니 카드 3종 세로 나열 (§15.2) */
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-16);
+}
+
+.card {
+  padding: var(--space-16);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.cardHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-12);
+  margin-bottom: var(--space-12);
+}
+
+.cardTitle {
+  font-size: var(--text-body);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.cardLink {
+  color: inherit;
+  text-decoration: none;
+}
+
+.cardLink:hover {
+  color: var(--color-primary);
+}
+
+.basDt {
+  margin-top: var(--space-4);
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+}
+
+.cardValues {
+  text-align: right;
+}
+
+.value {
+  font-size: var(--text-title);
+  font-weight: var(--weight-bold);
+  color: var(--color-text-primary);
+}
+
+.change {
+  margin-top: var(--space-4);
+  font-size: var(--text-caption);
+}
+
+.rise {
+  color: var(--color-rise);
+  font-weight: var(--weight-semibold);
+}
+
+.fall {
+  color: var(--color-fall);
+  font-weight: var(--weight-semibold);
+}
+
+.flat {
+  color: var(--color-flat);
+}
+
+.detailLink {
+  display: inline-block;
+  margin-top: var(--space-8);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+}
+
+.detailLink:hover {
+  color: var(--color-primary);
+}
+
+.emptyNotice {
+  font-size: var(--text-caption);
+  color: var(--color-text-tertiary);
+  line-height: 1.5;
+}
+
+.footer {
+  margin-top: var(--space-24);
+  padding: var(--space-16);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.notice {
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+  line-height: 1.5;
+}

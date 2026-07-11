@@ -14,13 +14,14 @@ import type {
  * 전부 사용자 무관 공용 시세 데이터라 암호화하지 않는다.
  */
 
-export type MarketDetailKey = "kospi" | "kosdaq" | "usdkrw" | "us10y";
+export type MarketDetailKey = "kospi" | "kosdaq" | "usdkrw" | "us10y" | "oil";
 
 export const INDICATOR_TO_DETAIL_KEY: Record<IndicatorId, MarketDetailKey> = {
   KOSPI: "kospi",
   KOSDAQ: "kosdaq",
   USDKRW: "usdkrw",
   US10Y: "us10y",
+  OIL: "oil",
 };
 
 /** market:detail:{key} — 상세 페이지가 그대로 읽는 스냅샷+차트+일별 리스트 */
