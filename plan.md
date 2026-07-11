@@ -21,7 +21,7 @@
 | 8 — 시간대별 캐시 최적화 (KIS 마감 후 갱신 패턴 반영) | ⚠️ 8-1~8-5 로컬 구현·검증 완료, 8-6 프로덕션 확인 남음 — **Phase 11 승인 시 구조 자체가 대체되어 8-6은 폐기** |
 | 9 — 홈 화면 지표 확장 및 보유종목 관리 | ✅ 그룹 1~7 구현·로컬 검증 완료 (2026-07-09) — 배포 후 cron 확인은 Phase 11로 대체 |
 | 10 — 보유종목 알림 기능 (Web Push) | 📋 조사·설계 완료, 구현 미착수 — **호출 방식(맥미니 crontab)은 Phase 11로 대체**, Web Push·조건 판정 설계는 유효 |
-| 11 — 데이터 갱신 구조 전면 재설계 (QStash Scheduled Push) | ✅ **설계 최종 확정(2026-07-10, 확정 지시문 + 같은 날 배지 정책 2차 개정 — 장중 한정·경고/심각 2단계)**, 구현 미착수 — **착수 순서 재확정(2026-07-10): Phase 12(완료) → Phase 13 → Phase 11**. Phase 8 캐시 구조·Phase 9 cron·Phase 10 호출 방식을 전면 대체 |
+| 11 — 데이터 갱신 구조 전면 재설계 (QStash Scheduled Push) | ✅ **구현 완료(2026-07-11, 그룹 1~8)** — KIS 호출을 QStash 잡(`/api/jobs/refresh-market-data`) 단일 경로로 이관(허용 시간 가드 09:00~18:40), 화면은 `market:*` Redis만 읽음(상세 정보 블록 4종 포함 — 같은 날 사용자 승인), `unstable_cache`/`revalidateTag`/Vercel cron 전부 제거, 2단계 staleness 배지·「마지막 갱신」 표기. lint·tsc·build·가드/staleness 실측 통과. **남은 작업: 배포 체크리스트(§11.11 — Vercel env·콘솔 스케줄 4개·장중 수동 시딩·첫 거래일 확인)** |
 | 12 — 보유종목 데이터 암호화 저장 (AES-256-GCM) | ⚠️ **구현·로컬 검증 완료(2026-07-10, 12건 실측 PASS)** — 남은 작업: Vercel env 등록·키 백업(사용자), 배포 후 화면 확인·즉시 마이그레이션. **Phase 11보다 먼저 진행** |
 | 13 — 보유종목 페이지 개선 (`totalCost` 모델·종목명 자동 조회·종목 상세 페이지) | ✅ **구현 완료(2026-07-11, 13-1~13-6)** — `totalCost` 모델 전환(레거시 `avgPrice` 역산 하위호환), 종목명 CTPF1002R 자동 조회, `stock:{symbolCode}:history` 공용 저장소(2년 백필·cron 갱신), `/holdings/[symbolCode]` 상세 페이지(수정 모드·2년 차트·정보 블록 4종: 시가총액/배당/실적/투자지표), `/holdings` 메인 개편. lint·tsc·build·라이브 실측 통과. **다음: Phase 11 착수** |
 
@@ -1816,16 +1816,34 @@ page.tsx / 상세 페이지 [Server] ──► lib/market/store.ts (Redis 리더
 
 | 그룹 | 작업 | 파일(예정) | 상태 |
 |---|---|---|---|
-| 1. QStash 셋업 | `@upstash/qstash` 설치, 서명 키 env 등록(로컬·Vercel), Upstash 콘솔에서 스케줄 4개(`CRON_TZ=Asia/Seoul`) 등록 — **재시도 헤더 포함(§11.4 확정: 장중 1회 / 15:40 0회 / 18:15 1회+5분 지연)**, Failure Callback 설정 검토 | `package.json`, `.env.local`, Upstash 콘솔 | ☐ 미착수 |
-| 2. Redis 스토어·잡 파이프라인 | `market:detail:*`/`market:stock:*`/`market:lastRefreshAt` 리더·라이터, `refreshMarketData()` 파이프라인(6단계, 실패 격리, KST 가드 09:00~18:40, 거래일 가드 — `basDt` 기준 §11.10-A5), 기존 변동성·holdings upsert 로직 이전 | `lib/market/store.ts`, `lib/jobs/refreshMarketData.ts` (신규) | ☐ 미착수 |
-| 3. 잡 엔드포인트 | `POST /api/jobs/refresh-market-data` — QStash 서명 검증 + `CRON_SECRET` 수동 폴백, 부분 실패 응답 정책(§11.10-A6 확정: 데이터 갱신 실패 500 / 알림 발송만 실패 로그+200) | `app/api/jobs/refresh-market-data/route.ts` (신규) | ☐ 미착수 |
-| 4. 읽기 경로 전환 | `getDashboard`/`getIndexDetail`/`getOverseasDetail`/`valuation`을 Redis 리더로 교체, `unstable_cache`·fetch 캐시 옵션·`revalidate` export 제거, KIS client `no-store` 전환, 보유종목 저장 검증 변경(§11.10-A4 확정: 형식 검증만) | `lib/indices/*`, `lib/holdings/valuation.ts`, `lib/api/kis/client.ts`·`constants.ts`, `app/page.tsx`, `app/holdings/page.tsx` | ☐ 미착수 |
-| 5. 레거시 제거 | `app/api/cron/revalidate-indices/route.ts` 삭제, `vercel.json` crons 제거, `proxy.ts` matcher 예외 교체 | 해당 파일 | ☐ 미착수 |
-| 6. 갱신 상태 UI | 홈 카드 6개 **2단계 배지** — 장중(09:00~18:20)에만 판정, 경고(20분~1시간, 노랑)/심각(1시간+, 빨강) 시각 구분, 장외·주말 미표시. 상세 페이지 상단 「마지막 갱신: YYYY-MM-DD HH:mm」 상시 표기. `tokens.css` 색상 매핑(필요 시 시맨틱 토큰 추가)·다크/라이트 대응, 빈 Redis empty state (§11.10-B 2차 개정) | `SummaryCard.tsx`, 상세 페이지 컴포넌트, `tokens.css` | ☐ 미착수 |
-| 7. 검증 | 로컬: 수동 트리거로 시딩→화면 Redis-only 렌더 확인, KST 가드(허용 시간 밖 no-op)·멱등성(연속 2회 실행 시 중복 0)·부분 실패 격리 확인. 배포: 스케줄 4개 실행 로그, 서명 검증 401(무서명)/200, 15:40·18:15 확정 반영(+18:15 실패 시 18:20 재실행 동작), DLQ 비어있음 확인 | — | ☐ 미착수 |
-| 8. (Phase 10 연동 지점) | 알림 판정·발송을 잡 6단계에 연결하는 인터페이스만 정의(빈 훅) — 실제 구현은 Phase 10 승인 후 | `lib/jobs/refreshMarketData.ts` 내 훅 | ☐ 미착수 |
+| 1. QStash 셋업 | `@upstash/qstash` 설치, 서명 키 env 등록(로컬·Vercel), Upstash 콘솔에서 스케줄 4개(`CRON_TZ=Asia/Seoul`) 등록 — **재시도 헤더 포함(§11.4 확정: 장중 1회 / 15:40 0회 / 18:15 1회+5분 지연)**, Failure Callback 설정 검토 | `package.json`, `.env.local`, Upstash 콘솔 | ◐ 코드 측 완료 (2026-07-11, `@upstash/qstash@2.11.1` 설치) — **서명 키 env 등록(로컬·Vercel)·콘솔 스케줄 4개 등록은 배포 시 사용자 작업(§11.11 하단 배포 체크리스트)** |
+| 2. Redis 스토어·잡 파이프라인 | `market:detail:*`/`market:stock:*`/`market:stockInfo:*`(추가)/`market:lastRefreshAt` 리더·라이터, staleness 판정 유틸, `refreshMarketData()` 파이프라인(6단계, 실패 격리, KST 가드 09:00~18:40, 거래일 가드 — `basDt` 기준 §11.10-A5), 변동성·holdings upsert 이전 + **종목명 채움(A4)·종목 히스토리(신규 즉시 백필/기존은 15:40·18:15 확정 회차 갱신)·정보 블록 4종(확정 회차 1일 1회) 통합** | `lib/market/store.ts`, `lib/market/staleness.ts`, `lib/jobs/refreshMarketData.ts` (신규) | ✅ 완료 (2026-07-11) |
+| 3. 잡 엔드포인트 | `POST /api/jobs/refresh-market-data` — QStash 서명 검증 + `CRON_SECRET` 수동 폴백, 부분 실패 응답 정책(§11.10-A6 확정: 데이터 갱신 실패 500 / 알림 발송만 실패 로그+200), `maxDuration = 300` | `app/api/jobs/refresh-market-data/route.ts` (신규) | ✅ 완료 (2026-07-11 — 무인증 401·KST 가드 no-op 200 실측) |
+| 4. 읽기 경로 전환 | `getDashboard`/`getIndexDetail`/`getOverseasDetail`/`valuation`/`stockInfo`(getStockInfo 읽기 전용화 — **상세 정보 블록 4종도 잡 이관, 2026-07-11 사용자 승인**)를 Redis 리더로 교체, `unstable_cache`·fetch 캐시 옵션·`revalidate` export 제거, KIS client `no-store` 전환, 보유종목 저장 검증 변경(§11.10-A4: 형식 검증만 — 종목명은 빈 값 저장 후 잡이 채움, 시세 없는 종목 「시세 없음」 표기·합계 제외) | `lib/indices/*`, `lib/holdings/valuation.ts`·`stockInfo.ts`, `lib/api/kis/client.ts`·`constants.ts`, `app/page.tsx`, `app/holdings/*`, `app/indices/*` | ✅ 완료 (2026-07-11) |
+| 5. 레거시 제거 | `app/api/cron/revalidate-indices/route.ts` 삭제, `vercel.json` 삭제(crons만 있었음), `proxy.ts` matcher 예외 교체 | 해당 파일 | ✅ 완료 (2026-07-11) |
+| 6. 갱신 상태 UI | 홈 카드 6개 **2단계 배지** — 장중(09:00~18:20)에만 판정, 경고(20분~1시간, `--color-warning`)/심각(1시간+, `--color-critical`) 시각 구분, 장외·주말 미표시. 상세 페이지(지수 4종·보유종목·종목 상세) 상단 「마지막 갱신」 상시 표기. `tokens.css` 시맨틱 토큰 추가(다크 모드 warning 별도값), 빈 Redis empty state 안내 문구 | `SummaryCard.tsx`, `IndexDashboard.tsx`, `IndexDetailScreen.tsx`, 페이지들, `tokens.css` | ✅ 완료 (2026-07-11) |
+| 7. 검증 | 로컬: lint·tsc·build 통과, KIS import가 잡 경로 3파일(`lib/jobs`·`stockHistory`·`stockInfo` 쓰기부)뿐임을 grep 확인, `unstable_cache`/`revalidateTag`/`revalidate` export 0건, 엔드포인트 무인증 401·주말 KST 가드 no-op 200 실측, staleness 경계 12케이스 단위 검증 통과. **배포 후: 시딩(장중 수동 1회), 스케줄 4개 실행 로그, 15:40·18:15 확정 반영, DLQ 확인 (§11.11 하단 체크리스트)** | — | ✅ 로컬 완료 (2026-07-11) — 배포 검증 남음 |
+| 8. (Phase 10 연동 지점) | 알림 판정·발송을 잡 6단계에 연결하는 인터페이스만 정의(빈 훅 `evaluateAlertsHook` — 거래일 가드 통과 시에만 호출, 실패 시 로그+200) | `lib/jobs/refreshMarketData.ts` 내 훅 | ✅ 완료 (2026-07-11) |
 
-**Phase 11 완료 조건:** ☐ 화면(홈·상세·보유종목)이 KIS를 직접 호출하는 경로 0건(코드 검색으로 확인), ☐ KIS 호출이 QStash 잡 + 허용 시간 가드 안에서만 발생, ☐ 스케줄 4개(재시도 정책 §11.4 포함) 실 실행 및 Redis 갱신 확인, ☐ `unstable_cache`/`revalidateTag`/Vercel cron 완전 제거, ☐ 갱신 상태 UI 동작(카드 2단계 배지 — 장중 한정 판정·경고/심각 구분·장외 미표시, 상세 「마지막 갱신」 상시 표기, 다크/라이트), ☐ 장애 시나리오 핵심 3종(회차 실패 자연 복구·멱등성·빈 Redis empty state) 검증.
+**구현 중 확정 사항 (2026-07-11):**
+
+- **종목 상세 정보 블록 4종도 잡으로 이관 (사용자 승인):** Phase 13이 상세 페이지 렌더 시 KIS 5종을 호출하던 것을 폐기 — 잡이 `market:stockInfo:{code}`(순위·배당·실적, 가격 무관 부분)를 저장하고, 화면은 `market:stock:{code}` 스냅샷(현재가·투자지표·시가총액 원천)과 조합만 한다. 시가배당률 등 가격 의존 값은 읽기 시 계산. 밤·주말에 상세 페이지를 열어도 KIS 0콜.
+- **갱신 주기 차등:** 현재가 스냅샷은 매 회차(42회/일), 종가 히스토리·정보 블록(배당·실적·순위)은 **15:40·18:15 확정 회차에만** 갱신(확정 종가 의미 유지 + 호출량 절감). 신규 등록 종목은 어느 회차든 즉시 백필·시딩.
+- **A4 구체화:** 등록 액션은 `name: ""`으로 저장 → 다음 회차에 잡이 CTPF1002R로 채움(그 전까지 화면은 종목코드 표시). 시세 스냅샷 없는 종목은 평가 null(「시세 없음」)로 격리하고 합계에서 제외(`PortfolioValuation.missingPriceSymbols`).
+- `market:lastRefreshAt`은 **성공한 실행만** 기록 — 실패가 이어지면 배지가 정확히 낡은 시각 기준으로 판정된다.
+
+**배포 체크리스트 (남은 사용자 작업):**
+
+1. Vercel env에 `QSTASH_CURRENT_SIGNING_KEY`/`QSTASH_NEXT_SIGNING_KEY` 등록 (Upstash 콘솔 → QStash → Signing Keys). 로컬 `.env.local`에도 추가(로컬 서명 검증 테스트용 — 없으면 `CRON_SECRET` 폴백으로 동작).
+2. Upstash 콘솔 → QStash → Schedules에서 4개 등록, Destination은 전부 `https://{배포 도메인}/api/jobs/refresh-market-data` (POST):
+   - `CRON_TZ=Asia/Seoul */10 9-14 * * 1-5`, Retries **1**
+   - `CRON_TZ=Asia/Seoul 0,10,20,30 15 * * 1-5`, Retries **1**
+   - `CRON_TZ=Asia/Seoul 40 15 * * 1-5`, Retries **0**
+   - `CRON_TZ=Asia/Seoul 15 18 * * 1-5`, Retries **1** + Retry Delay **300000**(5분 — 단위 ms 여부 콘솔에서 재확인, §11.10-A3)
+3. 배포 직후 **장중(평일 09:00~18:40 KST)에 수동 1회 시딩**: `curl -X POST -H "Authorization: Bearer $CRON_SECRET" https://{도메인}/api/jobs/refresh-market-data` — 그 전까지 홈·상세는 "아직 수집된 시세 데이터가 없습니다" empty state.
+4. 첫 거래일: 스케줄 실행 로그·`market:lastRefreshAt`·15:40/18:15 확정 반영·DLQ 비어있음 확인.
+
+**Phase 11 완료 조건:** ✅ 화면(홈·상세·보유종목)이 KIS를 직접 호출하는 경로 0건(코드 검색으로 확인 — KIS import는 잡 경로뿐), ✅ KIS 호출이 QStash 잡 + 허용 시간 가드 안에서만 발생(주말 no-op 200 실측), ☐ 스케줄 4개(재시도 정책 §11.4 포함) 실 실행 및 Redis 갱신 확인(**배포 후**), ✅ `unstable_cache`/`revalidateTag`/Vercel cron 완전 제거, ✅ 갱신 상태 UI 동작(카드 2단계 배지 — 장중 한정 판정·경고/심각 구분·장외 미표시, 상세 「마지막 갱신」 상시 표기, 다크/라이트), ◐ 장애 시나리오 핵심 3종 — 멱등성(저장 전부 SET/upsert)·빈 Redis empty state는 코드 확인, 회차 실패 자연 복구는 배포 후 확인.
 
 ---
 
