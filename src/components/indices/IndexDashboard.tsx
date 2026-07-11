@@ -7,6 +7,7 @@ import {
   formatPercentPoint,
 } from "@/lib/format/change";
 import { formatIndex } from "@/lib/format/index";
+import type { HotStocksCardSummary } from "@/lib/hotstocks/summary";
 import { resolveDirection } from "@/lib/indices/kisMapper";
 import type { StalenessLevel } from "@/lib/market/staleness";
 import type { HoldingsCardSummary } from "@/types/holdings";
@@ -16,6 +17,7 @@ import type {
   VolatilityCardSummary,
 } from "@/types/indices";
 import { DataAsOfFooter } from "./DataAsOfFooter";
+import { HotStocksCard } from "./HotStocksCard";
 import styles from "./IndexDashboard.module.css";
 import { SummaryCard } from "./SummaryCard";
 
@@ -47,11 +49,13 @@ export function IndexDashboard({
   data,
   holdingsSummary,
   volatilitySummary,
+  hotStocksSummary,
   staleness,
 }: {
   data: IndexDashboardData;
   holdingsSummary: HoldingsCardSummary | null;
   volatilitySummary: VolatilityCardSummary | null;
+  hotStocksSummary: HotStocksCardSummary | null;
   staleness: DashboardStaleness;
 }) {
   return (
@@ -149,6 +153,7 @@ export function IndexDashboard({
             placeholder="기록 수집 전"
           />
         )}
+        <HotStocksCard summary={hotStocksSummary} />
       </section>
 
       <DataAsOfFooter data={data} />

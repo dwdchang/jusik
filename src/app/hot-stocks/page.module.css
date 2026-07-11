@@ -1,0 +1,204 @@
+.page {
+  flex: 1;
+  width: 100%;
+  min-height: 100%;
+  background-color: var(--color-bg);
+}
+
+.container {
+  width: 100%;
+  max-width: var(--layout-max-width);
+  margin: 0 auto;
+  padding: var(--space-16);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  margin-bottom: var(--space-16);
+}
+
+.backLink {
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+}
+
+.backLink:hover {
+  color: var(--color-text-primary);
+}
+
+.title {
+  font-size: var(--text-title);
+  font-weight: var(--weight-bold);
+  color: var(--color-text-primary);
+  letter-spacing: var(--tracking-tight);
+}
+
+.lastRefresh {
+  margin-left: auto;
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+}
+
+.errorBanner {
+  margin-bottom: var(--space-16);
+  padding: var(--space-12) var(--space-16);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-rise);
+  border-radius: var(--radius-md);
+  font-size: var(--text-caption);
+  color: var(--color-rise);
+}
+
+/* 구간 전환 — searchParams 링크 탭 4개 (Server Component 유지, §14.5) */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8);
+  margin-bottom: var(--space-16);
+}
+
+.tab {
+  padding: var(--space-8) var(--space-12);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  transition: border-color 0.15s ease;
+}
+
+.tab:hover,
+.tab:focus-visible {
+  border-color: var(--color-primary);
+}
+
+.tabActive {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  font-weight: var(--weight-semibold);
+}
+
+.staleNotice {
+  margin-bottom: var(--space-12);
+  padding: var(--space-12) var(--space-16);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-warning);
+  border-radius: var(--radius-md);
+  font-size: var(--text-caption);
+  color: var(--color-warning);
+}
+
+.rangeInfo {
+  margin-bottom: var(--space-12);
+  font-size: var(--text-caption);
+  color: var(--color-text-secondary);
+}
+
+.emptyNotice {
+  padding: var(--space-16);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-caption);
+  color: var(--color-text-tertiary);
+  line-height: 1.5;
+}
+
+/* 100행 단일 테이블 — 모바일은 가로 스크롤 (§14.5) */
+.tableWrap {
+  overflow-x: auto;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  font-size: var(--text-caption);
+}
+
+.table th {
+  padding: var(--space-12);
+  border-bottom: 1px solid var(--color-border);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-tertiary);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.table td {
+  padding: var(--space-8) var(--space-12);
+  border-bottom: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.rankHead,
+.nameHead,
+.marketHead {
+  text-align: left;
+}
+
+.rankCell {
+  text-align: left;
+  color: var(--color-text-secondary);
+}
+
+.nameCell {
+  text-align: left;
+  font-weight: var(--weight-medium);
+}
+
+.code {
+  margin-left: var(--space-8);
+  font-size: var(--text-micro);
+  font-weight: 400;
+  color: var(--color-text-tertiary);
+}
+
+.marketCell {
+  text-align: left;
+  color: var(--color-text-secondary);
+}
+
+.rise {
+  color: var(--color-rise);
+  font-weight: var(--weight-semibold);
+}
+
+.fall {
+  color: var(--color-fall);
+  font-weight: var(--weight-semibold);
+}
+
+.flat {
+  color: var(--color-flat);
+}
+
+.footer {
+  margin-top: var(--space-24);
+  padding: var(--space-16);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.notice {
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+  line-height: 1.5;
+}

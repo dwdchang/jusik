@@ -6,6 +6,7 @@ import {
 } from "@/components/indices/IndexDashboard";
 import { isEmailAllowed } from "@/lib/auth/allowedEmails";
 import { getHoldingsCardSummary } from "@/lib/holdings/summary";
+import { getHotStocksCardSummary } from "@/lib/hotstocks/summary";
 import { getDashboardData } from "@/lib/indices/getDashboard";
 import { getVolatilityCardSummary } from "@/lib/indices/volatility";
 import { resolveStaleness } from "@/lib/market/staleness";
@@ -48,15 +49,17 @@ export default async function HomePage() {
   let data: Awaited<ReturnType<typeof getDashboardData>>;
   let holdingsSummary: Awaited<ReturnType<typeof getHoldingsCardSummary>>;
   let volatilitySummary: Awaited<ReturnType<typeof getVolatilityCardSummary>>;
+  let hotStocksSummary: Awaited<ReturnType<typeof getHotStocksCardSummary>>;
   let lastRefresh: Awaited<ReturnType<typeof getLastRefreshRecord>>;
 
   try {
-    // 카드 요약(보유종목·변동성)은 실패 시 null 반환 — 홈 전체를 막지 않는다
-    [data, holdingsSummary, volatilitySummary, lastRefresh] =
+    // 카드 요약(보유종목·변동성·핫종목)은 실패 시 null 반환 — 홈 전체를 막지 않는다
+    [data, holdingsSummary, volatilitySummary, hotStocksSummary, lastRefresh] =
       await Promise.all([
         getDashboardData(),
         getHoldingsCardSummary(email),
         getVolatilityCardSummary(),
+        getHotStocksCardSummary(),
         getLastRefreshRecord().catch(() => null),
       ]);
   } catch (error) {
@@ -99,6 +102,7 @@ export default async function HomePage() {
         data={data}
         holdingsSummary={holdingsSummary}
         volatilitySummary={volatilitySummary}
+        hotStocksSummary={hotStocksSummary}
         staleness={staleness}
       />
     </main>

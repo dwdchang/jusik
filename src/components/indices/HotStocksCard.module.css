@@ -1,0 +1,72 @@
+/* 홈 "핫종목" 카드 — 기본 골격은 SummaryCard와 동일, 내용만 TOP 3 리스트 */
+.card {
+  composes: card from "./SummaryCard.module.css";
+}
+
+.title {
+  composes: title from "./SummaryCard.module.css";
+}
+
+.footnote {
+  composes: footnote from "./SummaryCard.module.css";
+}
+
+.placeholder {
+  composes: placeholder from "./SummaryCard.module.css";
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  margin-bottom: var(--space-12);
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-8);
+  font-size: var(--text-caption);
+  min-width: 0;
+}
+
+.rank {
+  flex-shrink: 0;
+  color: var(--color-text-tertiary);
+  font-weight: var(--weight-semibold);
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  color: var(--color-text-primary);
+  font-weight: var(--weight-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rate {
+  flex-shrink: 0;
+  font-weight: var(--weight-semibold);
+}
+
+.rise {
+  color: var(--color-rise);
+}
+
+.fall {
+  color: var(--color-fall);
+}
+
+.flat {
+  color: var(--color-flat);
+}
+
+/* 매월 1~7일 잡이 놓쳤을 때의 안내 — staleness 배지 정책(§11.10-B) 미적용 (§14.5) */
+.staleNotice {
+  font-size: var(--text-micro);
+  color: var(--color-warning);
+  margin-bottom: var(--space-8);
+}
