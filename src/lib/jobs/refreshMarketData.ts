@@ -1,0 +1,477 @@
+import {
+  fetchKisIndexDaily,
+  fetchKisMarketCapRanking,
+  fetchKisOverseasDaily,
+  fetchKisStockName,
+  fetchKisStockSnapshot,
+} from "@/lib/api/kis/client";
+import type {
+  KisIndexDailyResponse,
+  KisMarketCapRankingRow,
+} from "@/lib/api/kis/types";
+import { getAllowedEmails } from "@/lib/auth/allowedEmails";
+import { todayKstDate } from "@/lib/date/kst";
+import {
+  getHoldings,
+  saveHoldings,
+  upsertPortfolioHistory,
+} from "@/lib/holdings/store";
+import {
+  backfillStockHistoryIfMissing,
+  refreshStockHistory,
+} from "@/lib/holdings/stockHistory";
+import { fetchStockInfoBlocks } from "@/lib/holdings/stockInfo";
+import {
+  applyKisSign,
+  mapKisDailyRows,
+  mapKisHistory,
+  mapKisSnapshot,
+  parseNum,
+} from "@/lib/indices/kisMapper";
+import {
+  mapKisOverseasDailyRows,
+  mapKisOverseasHistory,
+  mapKisOverseasSnapshot,
+} from "@/lib/indices/kisOverseasMapper";
+import {
+  computeVolatilityRecords,
+  upsertVolatilityRecords,
+} from "@/lib/indices/volatility";
+import {
+  getStockInfoBlocks,
+  setLastRefreshRecord,
+  setMarketDetail,
+  setStockInfoBlocks,
+  setStockSnapshot,
+  type MarketDetailKey,
+  type StoredStockSnapshot,
+} from "@/lib/market/store";
+import type { Holding } from "@/types/holdings";
+
+/**
+ * 시세 갱신 잡 파이프라인 — Phase 11 (plan.md §11.1).
+ * QStash 스케줄 4개(평일 09:00~15:30 10분 / 15:40 / 18:15 KST)가 동일 로직을 재사용한다.
+ * KIS를 호출하는 유일한 경로이며, 화면은 이 잡이 저장한 Redis 값만 읽는다.
+ * 모든 저장은 멱등(SET 덮어쓰기·날짜 upsert)이라 재시도·중복 실행에 안전하다.
+ */
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** KST 15:35 이후 회차 = 확정 회차(15:40·18:15) — 종가 히스토리·정보 블록을 갱신한다 */
+function isConfirmedRound(now: Date = new Date()): boolean {
+  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  return kst.getUTCHours() * 60 + kst.getUTCMinutes() >= 15 * 60 + 35;
+}
+
+export interface RefreshMarketDataReport {
+  trigger: string;
+  startedAt: string;
+  finishedAt: string;
+  /** KIS 기준일(basDt) == KST 오늘 — 휴장일이면 false, 알림 판정 skip (§11.10-A5) */
+  tradingDay: boolean;
+  indices: Array<{ key: MarketDetailKey; ok: boolean; error?: string }>;
+  volatility: { ok: boolean; upserted?: number; error?: string };
+  stocks: Array<{ symbolCode: string; ok: boolean; error?: string }>;
+  nameFills: Array<{ symbolCode: string; ok: boolean; error?: string }>;
+  portfolios: Array<{
+    email: string;
+    ok: boolean;
+    skipped?: true;
+    error?: string;
+  }>;
+  alerts: { evaluated: boolean; reason?: string };
+  /** 데이터 갱신 성공 여부 — false면 잡 엔드포인트가 500을 반환(QStash 재시도, §11.10-A6) */
+  ok: boolean;
+}
+
+/**
+ * Phase 10 알림 판정·발송 연결 지점 (§11.11 그룹 8 — 빈 훅).
+ * 갱신 잡이 방금 저장한 스냅샷으로 조건 3종을 판정해 Web Push를 발송한다.
+ * 실제 구현은 Phase 10 승인 후 — 실패해도 로그만 남기고 응답은 200 (§11.10-A6).
+ */
+async function evaluateAlertsHook(context: {
+  snapshots: Map<string, StoredStockSnapshot>;
+  holdingsByEmail: Map<string, Holding[]>;
+}): Promise<void> {
+  void context; // no-op — Phase 10에서 구현
+}
+
+/** 지수·환율·금리 4종 조회 → market:detail:* 저장 (지표별 실패 격리) */
+async function refreshIndices(fetchedAt: string): Promise<{
+  results: RefreshMarketDataReport["indices"];
+  kospiRaw: KisIndexDailyResponse | null;
+}> {
+  let kospiRaw: KisIndexDailyResponse | null = null;
+
+  const tasks: Array<{ key: MarketDetailKey; run: () => Promise<void> }> = [
+    {
+      key: "kospi",
+      run: async () => {
+        const raw = await fetchKisIndexDaily("KOSPI");
+        kospiRaw = raw;
+        await setMarketDetail("kospi", {
+          snapshot: mapKisSnapshot(raw, "KOSPI"),
+          history: mapKisHistory(raw, "KOSPI"),
+          dailyRows: mapKisDailyRows(raw, "KOSPI"),
+          fetchedAt,
+        });
+      },
+    },
+    {
+      key: "kosdaq",
+      run: async () => {
+        const raw = await fetchKisIndexDaily("KOSDAQ");
+        await setMarketDetail("kosdaq", {
+          snapshot: mapKisSnapshot(raw, "KOSDAQ"),
+          history: mapKisHistory(raw, "KOSDAQ"),
+          dailyRows: mapKisDailyRows(raw, "KOSDAQ"),
+          fetchedAt,
+        });
+      },
+    },
+    {
+      key: "usdkrw",
+      run: async () => {
+        const raw = await fetchKisOverseasDaily("USDKRW");
+        await setMarketDetail("usdkrw", {
+          snapshot: mapKisOverseasSnapshot(raw, "USDKRW"),
+          history: mapKisOverseasHistory(raw, "USDKRW"),
+          dailyRows: mapKisOverseasDailyRows(raw, "USDKRW"),
+          fetchedAt,
+        });
+      },
+    },
+    {
+      key: "us10y",
+      run: async () => {
+        const raw = await fetchKisOverseasDaily("US10Y");
+        await setMarketDetail("us10y", {
+          snapshot: mapKisOverseasSnapshot(raw, "US10Y"),
+          history: mapKisOverseasHistory(raw, "US10Y"),
+          dailyRows: mapKisOverseasDailyRows(raw, "US10Y"),
+          fetchedAt,
+        });
+      },
+    },
+  ];
+
+  const settled = await Promise.allSettled(tasks.map((task) => task.run()));
+
+  const results = tasks.map((task, i) => {
+    const outcome = settled[i];
+    if (outcome.status === "rejected") {
+      console.error(`[job] index refresh failed (${task.key}):`, outcome.reason);
+      return { key: task.key, ok: false, error: errorMessage(outcome.reason) };
+    }
+    return { key: task.key, ok: true };
+  });
+
+  return { results, kospiRaw };
+}
+
+/** 허용 이메일 전체의 보유종목 조회 (이메일별 실패 격리) */
+async function collectHoldings(): Promise<Map<string, Holding[]>> {
+  const byEmail = new Map<string, Holding[]>();
+
+  await Promise.all(
+    getAllowedEmails().map(async (email) => {
+      try {
+        byEmail.set(email, await getHoldings(email));
+      } catch (error) {
+        console.error(`[job] holdings read failed (${email}):`, error);
+      }
+    })
+  );
+
+  return byEmail;
+}
+
+/**
+ * 종목코드 중복 제거 후 종목별 1회 조회 → market:stock:{code} 저장.
+ * 확정 회차(15:40·18:15)에는 종가 히스토리·정보 블록도 갱신한다.
+ * KIS 유량 제한을 고려해 종목 단위로 순차 실행 (§11.8).
+ */
+async function refreshStocks(
+  symbolCodes: string[],
+  fetchedAt: string,
+  confirmedRound: boolean
+): Promise<{
+  results: RefreshMarketDataReport["stocks"];
+  snapshots: Map<string, StoredStockSnapshot>;
+}> {
+  const results: RefreshMarketDataReport["stocks"] = [];
+  const snapshots = new Map<string, StoredStockSnapshot>();
+
+  // 시총 랭킹은 회차당 1회 — 정보 블록 갱신이 필요할 때만 지연 조회
+  let ranking: KisMarketCapRankingRow[] | null | undefined;
+  const loadRanking = async (): Promise<KisMarketCapRankingRow[] | null> => {
+    if (ranking === undefined) {
+      try {
+        ranking = await fetchKisMarketCapRanking();
+      } catch (error) {
+        console.error("[job] market cap ranking failed:", error);
+        ranking = null;
+      }
+    }
+    return ranking;
+  };
+
+  for (const symbolCode of symbolCodes) {
+    try {
+      const raw = await fetchKisStockSnapshot(symbolCode);
+      const price = parseNum(raw.stck_prpr);
+
+      if (price <= 0) {
+        throw new Error(`invalid price for ${symbolCode}`);
+      }
+
+      const marketName = raw.rprs_mrkt_kor_name;
+      const snapshot: StoredStockSnapshot = {
+        symbolCode,
+        price,
+        changeRate: applyKisSign(parseNum(raw.prdy_ctrt), raw.prdy_vrss_sign),
+        marketName: typeof marketName === "string" ? marketName : null,
+        raw,
+        fetchedAt,
+      };
+
+      await setStockSnapshot(snapshot);
+      snapshots.set(symbolCode, snapshot);
+
+      // 종가 히스토리 — 신규 종목은 즉시 백필, 기존 종목은 확정 회차에만 갱신
+      if (confirmedRound) {
+        await refreshStockHistory(symbolCode);
+      } else {
+        await backfillStockHistoryIfMissing(symbolCode);
+      }
+
+      // 정보 블록(배당·실적·순위) — 신규 종목이거나 확정 회차면 갱신
+      if (confirmedRound || (await getStockInfoBlocks(symbolCode)) === null) {
+        await setStockInfoBlocks(
+          await fetchStockInfoBlocks(symbolCode, await loadRanking())
+        );
+      }
+
+      results.push({ symbolCode, ok: true });
+    } catch (error) {
+      console.error(`[job] stock refresh failed (${symbolCode}):`, error);
+      results.push({ symbolCode, ok: false, error: errorMessage(error) });
+    }
+  }
+
+  return { results, snapshots };
+}
+
+/**
+ * 종목명 미확정(빈 문자열) 보유종목 채움 — §11.10-A4.
+ * 등록 액션은 형식 검증만 하므로, 종목명은 다음 갱신 회차에서 여기로 채워진다.
+ */
+async function fillMissingNames(
+  holdingsByEmail: Map<string, Holding[]>
+): Promise<RefreshMarketDataReport["nameFills"]> {
+  const missingCodes = [
+    ...new Set(
+      [...holdingsByEmail.values()]
+        .flat()
+        .filter((holding) => holding.name.trim() === "")
+        .map((holding) => holding.symbolCode)
+    ),
+  ];
+
+  const results: RefreshMarketDataReport["nameFills"] = [];
+  const names = new Map<string, string>();
+
+  for (const symbolCode of missingCodes) {
+    try {
+      names.set(symbolCode, await fetchKisStockName(symbolCode));
+      results.push({ symbolCode, ok: true });
+    } catch (error) {
+      console.error(`[job] stock name fill failed (${symbolCode}):`, error);
+      results.push({ symbolCode, ok: false, error: errorMessage(error) });
+    }
+  }
+
+  if (names.size === 0) {
+    return results;
+  }
+
+  for (const [email, holdings] of holdingsByEmail) {
+    let changed = false;
+
+    for (const holding of holdings) {
+      const name = names.get(holding.symbolCode);
+      if (holding.name.trim() === "" && name !== undefined) {
+        holding.name = name;
+        holding.updatedAt = new Date().toISOString();
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      try {
+        await saveHoldings(email, holdings);
+      } catch (error) {
+        console.error(`[job] holdings name save failed (${email}):`, error);
+      }
+    }
+  }
+
+  return results;
+}
+
+/**
+ * 사용자별 포트폴리오 평가 → holdings history 오늘 기록 upsert.
+ * 방금 저장한 스냅샷 가격만 사용 — 가격이 하나라도 없으면 과소 집계 방지를 위해 skip.
+ */
+async function refreshPortfolios(
+  holdingsByEmail: Map<string, Holding[]>,
+  snapshots: Map<string, StoredStockSnapshot>
+): Promise<RefreshMarketDataReport["portfolios"]> {
+  const date = todayKstDate();
+
+  return Promise.all(
+    [...holdingsByEmail.entries()].map(async ([email, holdings]) => {
+      if (holdings.length === 0) {
+        return { email, ok: true, skipped: true as const };
+      }
+
+      const missing = holdings.filter(
+        (holding) => !snapshots.has(holding.symbolCode)
+      );
+
+      if (missing.length > 0) {
+        return {
+          email,
+          ok: false,
+          error: `price missing: ${missing
+            .map((holding) => holding.symbolCode)
+            .join(", ")}`,
+        };
+      }
+
+      try {
+        const totalCost = holdings.reduce(
+          (sum, holding) => sum + holding.totalCost,
+          0
+        );
+        const totalValue = holdings.reduce(
+          (sum, holding) =>
+            sum +
+            (snapshots.get(holding.symbolCode)?.price ?? 0) * holding.quantity,
+          0
+        );
+
+        await upsertPortfolioHistory(email, { date, totalCost, totalValue });
+        return { email, ok: true };
+      } catch (error) {
+        console.error(`[job] portfolio upsert failed (${email}):`, error);
+        return { email, ok: false, error: errorMessage(error) };
+      }
+    })
+  );
+}
+
+export async function refreshMarketData(
+  trigger: string
+): Promise<RefreshMarketDataReport> {
+  const startedAt = new Date().toISOString();
+  const confirmedRound = isConfirmedRound();
+
+  // 1. 지수·환율·금리 4종 → market:detail:*
+  const { results: indices, kospiRaw } = await refreshIndices(startedAt);
+
+  // 4. 코스피 변동성 upsert (1의 KOSPI 응답 재사용)
+  let volatility: RefreshMarketDataReport["volatility"];
+  if (kospiRaw !== null) {
+    try {
+      const records = computeVolatilityRecords(kospiRaw);
+      await upsertVolatilityRecords(records);
+      volatility = { ok: true, upserted: records.length };
+    } catch (error) {
+      console.error("[job] volatility upsert failed:", error);
+      volatility = { ok: false, error: errorMessage(error) };
+    }
+  } else {
+    volatility = { ok: false, error: "KOSPI response unavailable" };
+  }
+
+  // 2. 전체 사용자 보유종목 union → 종목코드 중복 제거
+  const holdingsByEmail = await collectHoldings();
+  const symbolCodes = [
+    ...new Set(
+      [...holdingsByEmail.values()]
+        .flat()
+        .map((holding) => holding.symbolCode)
+    ),
+  ];
+
+  // 3. 종목별 1회 조회 → market:stock:* (+확정 회차: 히스토리·정보 블록)
+  const { results: stocks, snapshots } = await refreshStocks(
+    symbolCodes,
+    startedAt,
+    confirmedRound
+  );
+
+  // 종목명 미확정 보유종목 채움 (§11.10-A4)
+  const nameFills = await fillMissingNames(holdingsByEmail);
+
+  // 5. 사용자별 포트폴리오 평가 → holdings history upsert
+  const portfolios = await refreshPortfolios(holdingsByEmail, snapshots);
+
+  // 거래일 판단 — KIS 기준일(basDt)이 KST 오늘과 다르면 휴장 (§11.10-A5)
+  const kospiBasDt = indices.find((row) => row.key === "kospi")?.ok
+    ? ((kospiRaw as KisIndexDailyResponse | null)?.output2 ?? [])
+        .map((row) => row.stck_bsop_date)
+        .filter((basDt): basDt is string => typeof basDt === "string")
+        .sort()
+        .at(-1)
+    : undefined;
+  const tradingDay = kospiBasDt === todayKstDate().replaceAll("-", "");
+
+  // 6. 알림 판정·발송 (Phase 10 연결 지점) — 휴장일이면 skip, 실패해도 200 (§11.10-A6)
+  let alerts: RefreshMarketDataReport["alerts"];
+  if (!tradingDay) {
+    alerts = { evaluated: false, reason: "not a trading day (basDt mismatch)" };
+  } else {
+    try {
+      await evaluateAlertsHook({ snapshots, holdingsByEmail });
+      alerts = { evaluated: true };
+    } catch (error) {
+      console.error("[job] alert evaluation failed:", error);
+      alerts = { evaluated: false, reason: errorMessage(error) };
+    }
+  }
+
+  const ok =
+    indices.every((row) => row.ok) &&
+    volatility.ok &&
+    stocks.every((row) => row.ok) &&
+    portfolios.every((row) => row.ok);
+
+  const finishedAt = new Date().toISOString();
+
+  // 마지막 갱신 성공 시각 — staleness 배지·수동 점검용 (§11.2)
+  if (ok) {
+    try {
+      await setLastRefreshRecord({ at: finishedAt, trigger, ok });
+    } catch (error) {
+      console.error("[job] lastRefreshAt save failed:", error);
+    }
+  }
+
+  return {
+    trigger,
+    startedAt,
+    finishedAt,
+    tradingDay,
+    indices,
+    volatility,
+    stocks,
+    nameFills,
+    portfolios,
+    alerts,
+    ok,
+  };
+}
