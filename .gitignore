@@ -42,4 +42,5 @@ next-env.d.ts
 
 # local-only notes
 email.md
+summary.md
 .env*.local
