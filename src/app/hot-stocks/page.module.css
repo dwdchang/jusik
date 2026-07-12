@@ -107,28 +107,35 @@
   border-radius: var(--radius-lg);
 }
 
+/* 컨테이너 내부 가용 폭은 --layout-max-width 480px − 좌우 padding 32px − 보더 2px ≈ 446px.
+   min-width가 이보다 크면 데스크톱에서도 스크롤이 강제되므로 그 아래(440px)로 유지 (§16 4차).
+   500px… 이하 모바일 스크롤 정책(§14.5)은 그대로 — 440px 미만 화면에서만 스크롤 */
 .table {
   width: 100%;
-  min-width: 560px;
+  min-width: 440px;
   border-collapse: collapse;
   font-size: var(--text-caption);
 }
 
+/* 헤더·값 모두 가운데 정렬 통일 — 예외는 종목명 값(.nameCell)만 (§16 추가 조정).
+   좌우 padding은 5px로 타이트하게 — 헤더 텍스트 크기(--text-micro)는 불변 (§16 4차) */
 .table th {
-  padding: var(--space-12);
+  padding: var(--space-12) 5px;
   border-bottom: 1px solid var(--color-border);
   font-size: var(--text-micro);
   font-weight: var(--weight-medium);
   color: var(--color-text-tertiary);
-  text-align: right;
+  text-align: center;
   white-space: nowrap;
 }
 
+/* 값은 12px로 축소(캡션 13px과 마이크로 11px 사이) — 열 전체가 446px 안에 들어가게 (§16 4차) */
 .table td {
-  padding: var(--space-8) var(--space-12);
+  padding: var(--space-8) 5px;
   border-bottom: 1px solid var(--color-border);
+  font-size: 12px;
   color: var(--color-text-primary);
-  text-align: right;
+  text-align: center;
   white-space: nowrap;
 }
 
@@ -136,32 +143,57 @@
   border-bottom: none;
 }
 
-.rankHead,
-.nameHead,
-.marketHead {
-  text-align: left;
-}
-
-.rankCell {
-  text-align: left;
+/* .table td(0,1,1)보다 명시도를 높여야 기본 정렬·색을 덮을 수 있음 */
+.table .rankCell {
   color: var(--color-text-secondary);
 }
 
-.nameCell {
+.table .nameCell {
   text-align: left;
   font-weight: var(--weight-medium);
 }
 
-.code {
-  margin-left: var(--space-8);
+/* 종목명 고정 최대 폭 — 초과분은 ellipsis. 위첨자 ᴷ/ᴰ가 함께 잘리지 않도록
+   셀이 아닌 이름 텍스트에만 적용, 전체 이름은 셀 title로 제공 (§16 3차).
+   120→96px — 폰트 12px 기준 한글 8자, 끝종가 노출 폭 확보(가용 446px 내 수렴) (§16 4차) */
+.nameText {
+  display: inline-block;
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+/* 시장 구분 위첨자 (ᴷ/ᴰ) — 종목명 가독성을 해치지 않는 약한 색·작은 크기 (§16) */
+.marketSup {
+  margin-left: 1px;
   font-size: var(--text-micro);
   font-weight: 400;
   color: var(--color-text-tertiary);
 }
 
-.marketCell {
-  text-align: left;
-  color: var(--color-text-secondary);
+/* 스크린리더 전용 텍스트 — 위첨자 기호만으로는 의미 전달 불가 (§16) */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* 숫자 값(수익률·시작/끝 종가) — 자릿수 비교를 위해 값만 오른쪽 정렬,
+   항목명(th)은 가운데 정렬 유지 (§16 5차) */
+.table .numCell {
+  text-align: right;
+}
+
+/* 종목코드 값 — 작은 폰트·옅은 색으로 종목명과 구분, 정렬은 .table td 기본(가운데) (§16 추가 조정) */
+.table .codeCell {
+  font-size: var(--text-micro);
+  font-weight: 400;
+  color: var(--color-text-tertiary);
 }
 
 .rise {

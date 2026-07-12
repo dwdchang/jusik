@@ -32,6 +32,12 @@ function resolvePeriod(period: string | undefined): HotStockWindowKey {
     : "1m";
 }
 
+/** 시장 구분 위첨자 — ᴷ/ᴰ는 자체 위첨자 문자라 <sup> 없이 span으로 표기 (§16) */
+const MARKET_SUP = {
+  KOSPI: { mark: "ᴷ", title: "코스피", srText: "코스피 종목" },
+  KOSDAQ: { mark: "ᴰ", title: "코스닥", srText: "코스닥 종목" },
+} as const;
+
 export default async function HotStocksPage({
   searchParams,
 }: {
@@ -124,9 +130,11 @@ export default async function HotStocksPage({
                 <table className={styles.table}>
                   <thead>
                     <tr>
-                      <th className={styles.rankHead}>순위</th>
-                      <th className={styles.nameHead}>종목명</th>
-                      <th className={styles.marketHead}>시장</th>
+                      <th>순위</th>
+                      <th>종목명</th>
+                      <th>
+                        <span className={styles.srOnly}>종목코드</span>
+                      </th>
                       <th>수익률</th>
                       <th>시작 종가</th>
                       <th>끝 종가</th>
@@ -138,22 +146,35 @@ export default async function HotStocksPage({
                         <td className={`${styles.rankCell} numeric`}>
                           {entry.rank}
                         </td>
-                        <td className={styles.nameCell}>
-                          {entry.name}
-                          <span className={`${styles.code} numeric`}>
-                            {entry.code}
+                        <td className={styles.nameCell} title={entry.name}>
+                          <span className={styles.nameText}>{entry.name}</span>
+                          <span
+                            className={styles.marketSup}
+                            title={MARKET_SUP[entry.market].title}
+                            aria-hidden="true"
+                          >
+                            {MARKET_SUP[entry.market].mark}
+                          </span>
+                          <span className={styles.srOnly}>
+                            {MARKET_SUP[entry.market].srText}
                           </span>
                         </td>
-                        <td className={styles.marketCell}>{entry.market}</td>
+                        <td className={`${styles.codeCell} numeric`}>
+                          {entry.code}
+                        </td>
                         <td
-                          className={`numeric ${
+                          className={`${styles.numCell} numeric ${
                             styles[resolveDirection(entry.returnRate)]
                           }`}
                         >
                           {formatChangeRate(entry.returnRate)}
                         </td>
-                        <td className="numeric">{formatKrw(entry.startPrice)}</td>
-                        <td className="numeric">{formatKrw(entry.endPrice)}</td>
+                        <td className={`${styles.numCell} numeric`}>
+                          {formatKrw(entry.startPrice)}
+                        </td>
+                        <td className={`${styles.numCell} numeric`}>
+                          {formatKrw(entry.endPrice)}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
