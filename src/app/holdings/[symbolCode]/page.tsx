@@ -4,8 +4,11 @@ import { redirect } from "next/navigation";
 import { HoldingsChartClient } from "@/components/holdings/HoldingsChartClient";
 import type { HoldingsChartPoint } from "@/components/holdings/HoldingsChart";
 import { NavIconLink } from "@/components/nav/NavIconLink";
+import { StockDisclosures } from "@/components/stocks/StockDisclosures";
 import { StockInfoBlocks } from "@/components/stocks/StockInfoBlocks";
 import { ensureAllowedSession } from "@/lib/auth/ensureAllowedSession";
+import { getDisclosures } from "@/lib/feeds/store";
+import type { StoredDisclosures } from "@/lib/feeds/store";
 import { formatChangeRate } from "@/lib/format/change";
 import { formatKstDateTime } from "@/lib/format/datetime";
 import { formatAvgPrice, formatKrw } from "@/lib/format/krw";
@@ -74,11 +77,18 @@ export default async function HoldingDetailPage({
   const totalQuantity = holdings.reduce((sum, h) => sum + h.quantity, 0);
   const totalCost = holdings.reduce((sum, h) => sum + h.totalCost, 0);
 
-  const [info, history] = await Promise.all([
+  const [info, history, disclosures] = await Promise.all([
     getStockInfo(symbolCode),
     getStockHistory(symbolCode).catch((err): StockDailyPrice[] => {
       console.error(`[HoldingDetailPage] history read failed (${symbolCode}):`, err);
       return [];
+    }),
+    getDisclosures(symbolCode).catch((err): StoredDisclosures | null => {
+      console.error(
+        `[HoldingDetailPage] disclosures read failed (${symbolCode}):`,
+        err
+      );
+      return null;
     }),
   ]);
 
@@ -282,6 +292,11 @@ export default async function HoldingDetailPage({
         <section className={styles.section} aria-label="종목 정보">
           <h2 className={styles.sectionTitle}>종목 정보</h2>
           <StockInfoBlocks info={info} />
+        </section>
+
+        <section className={styles.section} aria-label="공시">
+          <h2 className={styles.sectionTitle}>공시</h2>
+          <StockDisclosures disclosures={disclosures} />
         </section>
 
         <footer className={styles.footer}>

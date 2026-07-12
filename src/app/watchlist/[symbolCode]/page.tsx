@@ -3,8 +3,11 @@ import { redirect } from "next/navigation";
 import { HoldingsChartClient } from "@/components/holdings/HoldingsChartClient";
 import type { HoldingsChartPoint } from "@/components/holdings/HoldingsChart";
 import { NavIconLink } from "@/components/nav/NavIconLink";
+import { StockDisclosures } from "@/components/stocks/StockDisclosures";
 import { StockInfoBlocks } from "@/components/stocks/StockInfoBlocks";
 import { ensureAllowedSession } from "@/lib/auth/ensureAllowedSession";
+import { getDisclosures } from "@/lib/feeds/store";
+import type { StoredDisclosures } from "@/lib/feeds/store";
 import { formatChangeRate } from "@/lib/format/change";
 import { formatKstDateTime } from "@/lib/format/datetime";
 import { formatKrw } from "@/lib/format/krw";
@@ -58,7 +61,7 @@ export default async function WatchItemDetailPage({
   // 등록 직후엔 종목명이 비어 있음 — 다음 갱신 회차에 잡이 채운다 (§11.10-A4)
   const name = item.name || symbolCode;
 
-  const [info, history] = await Promise.all([
+  const [info, history, disclosures] = await Promise.all([
     getStockInfo(symbolCode),
     getStockHistory(symbolCode).catch((err): StockDailyPrice[] => {
       console.error(
@@ -66,6 +69,13 @@ export default async function WatchItemDetailPage({
         err
       );
       return [];
+    }),
+    getDisclosures(symbolCode).catch((err): StoredDisclosures | null => {
+      console.error(
+        `[WatchItemDetailPage] disclosures read failed (${symbolCode}):`,
+        err
+      );
+      return null;
     }),
   ]);
 
@@ -182,6 +192,11 @@ export default async function WatchItemDetailPage({
         <section className={styles.section} aria-label="종목 정보">
           <h2 className={styles.sectionTitle}>종목 정보</h2>
           <StockInfoBlocks info={info} />
+        </section>
+
+        <section className={styles.section} aria-label="공시">
+          <h2 className={styles.sectionTitle}>공시</h2>
+          <StockDisclosures disclosures={disclosures} />
         </section>
 
         <footer className={styles.footer}>
