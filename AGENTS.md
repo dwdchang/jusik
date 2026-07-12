@@ -15,10 +15,11 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - **Tailwind CSS 절대 금지** — 순수 CSS + CSS Modules만
 - 디자인 토큰: `src/styles/tokens.css` · 숫자 UI: `globals.css`의 `.numeric` (`tabular-nums`)
 
-## 2. API 및 보안 (공공데이터포털)
+## 2. API 및 보안 (한국투자증권 KIS OpenAPI)
 
-- `DATA_GO_KR_SERVICE_KEY` 서버 전용 · `NEXT_PUBLIC_` 금지 · 클라이언트에서 `apis.data.go.kr` 직접 호출 금지
-- `items.item` → 항상 `ensureItemsArray`로 정규화
+- `KIS_APP_KEY`/`KIS_APP_SECRET`·`HOLDINGS_ENCRYPTION_KEY`·`CRON_SECRET` 등 모든 키는 서버 전용 · `NEXT_PUBLIC_` 금지
+- KIS 호출은 QStash 갱신 잡 2종(`/api/jobs/refresh-market-data`, `/api/jobs/refresh-hot-stocks`) 경유만 허용 — 화면(Server Component)·Server Action은 KIS를 직접 호출하지 않고 Redis 스냅샷만 읽는다
+- KIS 응답의 문자열 숫자·부호 코드는 항상 `parseNum`/`applyKisSign`(`lib/indices/kisMapper.ts`) 경유
 
 ## 3. 컴포넌트 · React 19
 
@@ -27,6 +28,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 ## 4. 워크플로우
 
 - 구현 전 `research.md` + `plan.md` 필독 · 승인된 Phase만 진행 · 파일 단위로 작성·검토
+- plan.md — Phase 단위 작업 이력. research.md — 현재 코드 구조 스냅샷(§1~10, 시간 무관, 항상 최신 유지).
 
 ## 5. Push 전 검증 워크플로우
 
