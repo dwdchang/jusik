@@ -45,6 +45,7 @@
 | `GOOGLE_CLIENT_ID` / `_SECRET` | Google OAuth | `src/auth.ts` |
 | `ALLOWED_EMAILS` | 접근 허용 이메일 CSV 화이트리스트 | `lib/auth/allowedEmails.ts` |
 | `HOLDINGS_ENCRYPTION_KEY` | 개인 데이터 AES-256-GCM 키 (base64 32바이트) | `lib/crypto/secureJson.ts` |
+| `DART_API_KEY` | DART OpenAPI 인증키 (공시, Phase 17-1) | `lib/api/dart/client.ts` |
 
 ---
 
@@ -70,6 +71,7 @@
 | `api/auth/[...nextauth]/route.ts` | Auth.js 핸들러 re-export (3줄) |
 | `api/jobs/refresh-market-data/route.ts` | 시세 갱신 잡 엔드포인트 (POST, §4.1) |
 | `api/jobs/refresh-hot-stocks/route.ts` | 핫종목 갱신 잡 엔드포인트 (POST, §4.2) |
+| `api/jobs/refresh-feeds/route.ts` | 피드(공시) 갱신 잡 엔드포인트 (POST, §4.5) — KIS가 아니라 **시간창 가드 없음** |
 
 라우트별 `page.module.css` 동반. 오류 UI는 별도 error.tsx 없이 각 page의 try/catch 인라인 처리.
 
@@ -81,6 +83,8 @@
 | `api/kis/auth.ts` | KIS 토큰 발급·캐싱 — Redis 공유 캐시 + `SET NX PX` 분산 락 + 인스턴스 내 in-flight 합류 (§7.4) |
 | `api/kis/client.ts` | `fetchKisJson` 공통 래퍼(헤더·rt_cd 검증·15초 타임아웃) + 조회 함수 9종 (지수·해외·현재가·랭킹·배당·손익·재무비율·종목명·기간별시세 일/월) |
 | `api/kis/types.ts` | KIS 원본 응답 타입 (필드 전부 optional string, `[key: string]: unknown` 허용) |
+| `api/dart/client.ts` | DART OpenAPI 클라이언트 — `corpCode.xml` zip 파싱(fflate, 상장사만 매핑)·공시검색 `list.json`(status 013=빈 결과 정상 처리) |
+| `feeds/store.ts` | 피드 store — `market:disclosures:{code}`(공시 스냅샷)·`dart:corpCodeMap`(종목코드→고유번호) 리더·라이터 |
 | `auth/allowedEmails.ts` | `ALLOWED_EMAILS` 파싱(모듈 로드 시 1회) — `isEmailAllowed` / `getAllowedEmails`(잡용 전체 목록) |
 | `auth/ensureAllowedSession.ts` | 상세 페이지 공용 가드 — 미로그인→`/login`, 허용 외→`/`(access-denied) |
 | `crypto/secureJson.ts` | AES-256-GCM `enc:v1:iv:tag:ct` 포맷 — `encryptJson`/`decryptJson`(실패 시 throw)/`isEncrypted` |
@@ -106,6 +110,8 @@
 | `hotstocks/summary.ts` | 홈 핫종목 카드 요약 + 갱신 지연 판정 `isHotStocksStale` |
 | `jobs/refreshMarketData.ts` | **시세 갱신 잡 파이프라인 본체** (§4.1) |
 | `jobs/refreshHotStocks.ts` | **핫종목 갱신 잡 파이프라인 본체** (§4.2) |
+| `jobs/refreshFeeds.ts` | **피드(공시) 갱신 잡 파이프라인 본체** (§4.5) |
+| `jobs/collectTargets.ts` | 잡 공용 수집 대상 조회 — `collectHoldings`/`collectWatchlists`/`unionSymbolCodes`/`errorMessage` (시세·피드 잡 공유, Phase 17-1에서 refreshMarketData 로컬 함수를 추출) |
 | `jobs/verifyJobRequest.ts` | 잡 공용 인증 — QStash 서명 → CRON_SECRET Bearer 폴백(timingSafeEqual) |
 | `watchlist/store.ts` | 관심종목 store — 암호화 (신규 키라 평문 하위호환 없음) |
 | `watchlist/summary.ts` | `computeWatchReturnRate`(순수 함수) + 홈 카드 요약 |
@@ -124,6 +130,7 @@
 | `indices/VolatilityChartClient` → `VolatilityChart` | Client | 동일 패턴, BarChart |
 | `holdings/HoldingsChartClient` → `HoldingsChart` | Client | 동일 패턴, LineChart + 수익률%↔원단위 토글. **보유종목 홈/상세·관심종목 상세 3곳 공용** (관심종목에선 totalValue 자리에 종가를 넣어 재활용) |
 | `stocks/StockInfoBlocks` | Server | 정보 블록 4종(시총·배당·실적·투자지표) — 보유·관심 상세 공용, `formatRatio` export |
+| `stocks/StockDisclosures` | Server | 공시 섹션 — 보유·관심 상세 공용, `getDisclosures` 스냅샷을 프로프로 받아 DART 뷰어 외부 링크 리스트 렌더 (Phase 17-1) |
 | `nav/NavIconLink` | Server | 헤더 이동 아이콘 버튼(home/back) — 36px 아이콘 버튼 통일 규격 |
 | `theme/ThemeToggle` | Client | `useSyncExternalStore`로 `data-theme` 구독·토글 |
 | `auth/SignOutButton` | Server | Server Action `signOut` 폼 |
@@ -132,7 +139,7 @@
 
 - `src/types/indices.ts` `holdings.ts` `watchlist.ts` — 도메인 타입 (§6.3).
 - `src/proxy.ts` — **미들웨어에 해당** (Next 16에서 파일명 proxy). 세션 쿠키만 낙관적
-  검사, 허용 이메일 판정은 page 레벨. matcher가 `api/auth`·잡 라우트 2종·정적 자산 제외.
+  검사, 허용 이메일 판정은 page 레벨. matcher가 `api/auth`·잡 라우트 3종·정적 자산 제외.
   → **잡 라우트는 미들웨어 미보호이며 `verifyJobRequest`가 유일한 인증** — 새 잡 라우트를
   신설하면 이 matcher 제외 등록이 세트로 필요하다 (§8.13).
 - `src/styles/tokens.css` — 디자인 토큰(색·타이포·간격·radius). `html[data-theme="dark"]`
@@ -144,7 +151,8 @@
 
 ## 3. 아키텍처 대원칙 (모든 계획이 지켜야 함)
 
-1. **KIS 호출은 잡 2개만 한다.** 화면(Server Component)·Server Action은 KIS를 절대
+1. **외부 API 호출은 잡 경유만 한다.** KIS는 시세·핫종목 잡 2종, DART는 피드 잡이
+   유일한 호출 경로다. 화면(Server Component)·Server Action은 외부 API를 절대
    직접 호출하지 않고 Redis 스냅샷만 읽는다 (plan.md §11.6). 사용자 액션은 임의 시각에
    발생해 KIS 허용 시간 규칙과 충돌하므로, 등록 폼은 형식 검증만 하고 종목명·시세·
    기준가는 다음 갱신 회차에 잡이 채운다 (§11.10-A4, §15.4).
@@ -153,9 +161,10 @@
 3. **모든 저장은 멱등** — SET 덮어쓰기·날짜 upsert. 잡 재시도·중복 실행에 안전.
 4. **실패 격리** — 지표별/종목별/이메일별로 try-catch 격리, 카드 요약은 실패 시 null
    반환(홈 전체를 막지 않음), 부분 실패는 리포트에 기록.
-5. **KST 시간창 이중 방어** — QStash 스케줄 자체 + 라우트의 `isWithinKisCallWindow`
-   가드(평일 09:00~18:40 밖이면 no-op 200). 우회는 `?force=true` + CRON_SECRET 수동
-   트리거 한정.
+5. **KST 시간창 이중 방어 (KIS 한정)** — QStash 스케줄 자체 + 라우트의
+   `isWithinKisCallWindow` 가드(평일 09:00~18:40 밖이면 no-op 200). 우회는
+   `?force=true` + CRON_SECRET 수동 트리거 한정. **피드 잡(DART)은 시간창 제약이
+   없어 이 가드를 적용하지 않는다** (plan.md §17.2).
 
 ---
 
@@ -206,6 +215,25 @@ QStash 스케줄 (매월 1~7일 10:35 KST) → POST /api/jobs/refresh-hot-stocks
       → 완주 시 market:hotStocks 저장 + progress 삭제
 ```
 
+### 4.5 피드(공시) 갱신 잡 — Phase 17-1
+
+```
+QStash 스케줄 (매일 08~22시 정시 KST, CRON_TZ=Asia/Seoul 0 8-22 * * *)
+  → POST /api/jobs/refresh-feeds
+      verifyJobRequest만 — isWithinKisCallWindow 가드 없음 (KIS 아님, 공시는 장외·주말에도 발생)
+  → refreshFeeds(trigger)  [lib/jobs/refreshFeeds.ts]
+      1. collectHoldings + collectWatchlists (collectTargets.ts 공용) → 종목코드 union
+      2. ensureCorpCodeMap: dart:corpCodeMap 30일 주기 갱신
+         (+매핑에 없는 신규 종목 발견 시 1일 1회 보정 갱신 — 미매핑 코드가 매 회차
+          zip을 받지 않게 제한). corpCode.xml zip → 상장사(6자리 종목코드)만 매핑
+      3. 종목별 순차(150ms 간격): DART list.json 최근 90일 최대 10건
+         → market:disclosures:{code} SET 덮어쓰기 (종목별 실패 격리)
+  → 응답: report (실패 시 500 → QStash 재시도, 멱등)
+```
+
+- 17-2(뉴스, 네이버 검색 API)·17-3(정부자료, 관세청 API)은 이 파이프라인에 소스별로
+  증분 추가 예정 (plan.md §17.6).
+
 ### 4.3 화면 읽기 경로 (전부 Redis만)
 
 페이지가 부르는 내부 REST API는 없다 — Route Handler는 auth·잡 2종뿐이고, 모든
@@ -218,6 +246,8 @@ QStash 스케줄 (매월 1~7일 10:35 KST) → POST /api/jobs/refresh-hot-stocks
   `getPortfolioHistory`. 상세는 + `getStockInfo`(스냅샷+정보 블록 조합) + `getStockHistory`.
 - **관심종목**: `getWatchlist` + `getStockSnapshots` + `computeWatchReturnRate`.
   상세는 보유종목 상세와 동일 구성에 기준가 대비 차트.
+- **종목 상세 공통(보유·관심)**: + `getDisclosures(symbolCode)`(공시 스냅샷,
+  `.catch(() => null)` 격리) → `StockDisclosures` 섹션.
 - **핫종목**: `getHotStocks` 통짜 1건 → `?period` 탭으로 구간 선택 (검증: 알 수 없는 값→1m).
 - **변동성**: `getVolatilityHistory` → `aggregateMonthlyAverages`(최근 6개월).
 
@@ -250,6 +280,8 @@ QStash 스케줄 (매월 1~7일 10:35 KST) → POST /api/jobs/refresh-hot-stocks
 | `holdings:{email}:history` | `PortfolioDailyRecord[]` | **○** | 시세 잡 | 보유종목 화면 |
 | `watchlist:{email}` | `WatchItem[]` | **○** | Server Action + 잡(종목명·기준가) | 관심종목 화면·잡 |
 | `kis:access_token` (+`:lock`) | 토큰 캐시 (TTL=만료 시각) | ✕ | KIS auth | KIS auth |
+| `market:disclosures:{code}` | `StoredDisclosures` (최근 90일 공시 최대 10건+fetchedAt) | ✕ | 피드 잡 | 보유·관심 상세 |
+| `dart:corpCodeMap` | `StoredCorpCodeMap` (종목코드→DART 고유번호, 30일 주기) | ✕ | 피드 잡 | 피드 잡 |
 
 - 이메일 키는 항상 `normalizeEmail`(trim+lowercase) 후 사용.
 - 공용 시세는 비암호화(사용자 무관 공개 데이터), 개인 데이터 3키만 `enc:v1:` 암호화.
@@ -278,6 +310,9 @@ QStash 스케줄 (매월 1~7일 10:35 KST) → POST /api/jobs/refresh-hot-stocks
   월 단위 계산 공용.
 - `resolveStaleness`/`isWithinKisCallWindow`/`isWithinBadgeWindow` (market/staleness).
 - `verifyJobRequest` — 새 잡 라우트를 만들면 반드시 이걸로 인증 (신설 시 3곳 동기화 — §8.13).
+- `collectHoldings`/`collectWatchlists`/`unionSymbolCodes` (jobs/collectTargets) —
+  잡의 수집 대상(허용 이메일 전체 보유+관심종목) 조회는 이들 재사용.
+- `getDisclosures` (feeds/store) — 종목 공시 스냅샷 리더 (화면용).
 - `getLastRefreshRecord().catch(() => null)` — 「마지막 갱신」 표기는 이 실패 격리
   패턴으로 통일 (여러 페이지에서 반복되는 관례).
 
@@ -367,7 +402,8 @@ QStash 스케줄 (매월 1~7일 10:35 KST) → POST /api/jobs/refresh-hot-stocks
    *참고: `todayKstDate`는 `date/kst`가 정본이고 `holdings/store`가 re-export — import
    경로가 2개지만 실체는 동일 (실측 확인).*
 2. **`kstYyyyMmDd(daysAgo)` 함수가 문자 그대로 중복** — `kis/client.ts`와
-   `holdings/stockInfo.ts`에 동일 구현 2벌.
+   `holdings/stockInfo.ts`에 동일 구현 2벌. `refreshFeeds.kstYyyyMmDdDaysAgo`도
+   같은 목적(구현은 `todayKstDate` 기반이라 문자 중복은 아님).
 3. **"YYYYMMDD"→"YYYY-MM-DD" 변환(`toIsoDate`) 3벌** — `stockInfo.ts`(형식 검사 포함),
    `volatility.ts`(검사 없음), `stockHistory.parseChartRows` 인라인.
 4. **날짜 더하기 헬퍼 2벌** — `stockHistory.addDaysYyyyMmDd`(YYYYMMDD)와
@@ -381,8 +417,9 @@ QStash 스케줄 (매월 1~7일 10:35 KST) → POST /api/jobs/refresh-hot-stocks
    actions.ts에 각각 정의. ERROR_MESSAGES 맵도 page마다 부분 중복.
 8. **`getIndexDetail`과 `getOverseasDetail`이 사실상 동일 코드** — 타입 시그니처만 다름.
    `INDICATOR_TO_DETAIL_KEY`가 이미 IndicatorId 전체를 커버하므로 통합 가능.
-9. **`normalizeEmail` 2벌** (holdings/store, watchlist/store), **`sleep` 2벌**
-   (kis/auth, refreshHotStocks), **`errorMessage` 헬퍼** (refreshMarketData 로컬).
+9. **`normalizeEmail` 2벌** (holdings/store, watchlist/store), **`sleep` 3벌**
+   (kis/auth, refreshHotStocks, refreshFeeds). `errorMessage`는 Phase 17-1에서
+   collectTargets로 공용화 — refreshMarketData·refreshFeeds가 import.
 10. **「가장 오래된 fetchedAt 선택」 로직 3곳** — `getDashboard.asOf`, 홈 page의
     marketFetchedAt, market page의 oldestFetchedAt (전부 `.sort()[0]` 패턴). 또한
     staleness 판정 자체도 홈 `resolveStaleness`(장중 시간창)와 핫종목
@@ -392,8 +429,9 @@ QStash 스케줄 (매월 1~7일 10:35 KST) → POST /api/jobs/refresh-hot-stocks
 12. **차트 축·그리드·툴팁 Recharts 설정** — IndexLineChart/VolatilityChart/HoldingsChart
     3곳에 유사 코드 (tick 스타일·margin 등). 디자인 변경 시 3곳 동시 수정.
 13. **잡 라우트 신설 시 3곳 동기화** — 새 `/api/jobs/*`는 ① `proxy.ts` matcher 제외
-    추가, ② `verifyJobRequest`+`isWithinKisCallWindow` 가드 재사용, ③ QStash 스케줄
-    등록이 세트다. 기존 잡에 로직을 얹을 수 있으면 신설하지 않는 편이 구조에 맞다.
+    추가, ② `verifyJobRequest` 재사용(+KIS 호출 잡이면 `isWithinKisCallWindow` 가드),
+    ③ QStash 스케줄 등록이 세트다. 기존 잡에 로직을 얹을 수 있으면 신설하지 않는
+    편이 구조에 맞다 (refresh-feeds는 시간창 제약 차이로 신설한 예외 — plan.md §17.2).
 14. **chartPoints 매핑 3벌** — `{ fullDate, date: slice(5).replace("-","/"), totalValue,
     returnRate }` 변환이 holdings 목록·상세, watchlist 상세에서 거의 동일하게 반복 —
     새 차트 화면 추가 시 4번째 사본이 생기기 쉽다 (§8.6 수익률 산식 반복과 같은 지점).
@@ -436,6 +474,8 @@ QStash 스케줄 (매월 1~7일 10:35 KST) → POST /api/jobs/refresh-hot-stocks
 
 - KIS 호출 허용 창: **KST 평일 09:00~18:40** (`isWithinKisCallWindow`). 배지 판정 창은
   ~18:20. 확정 회차 판정은 **KST 15:35 이후** (`isConfirmedRound`).
+- 피드 잡(DART)은 시간창 제약 없음 — 스케줄은 매일 08~22시 정시
+  (`CRON_TZ=Asia/Seoul 0 8-22 * * *`), 라우트에 시간창 가드도 없다.
 - 공휴일은 미반영 — 휴장일 감지는 basDt ≠ KST 오늘 (tradingDay=false → 알림만 skip,
   데이터 갱신은 수행).
 - 핫종목 기준월 = 실행 시점 KST의 **전월**(직전 완결 월). 구간 라벨은 "최근 …"으로 통일

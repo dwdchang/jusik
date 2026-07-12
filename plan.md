@@ -2231,6 +2231,74 @@ interface WatchItem {
 
 ---
 
+### Phase 17 — 뉴스·공시·정부자료 자동 수집 (17-1 공시 / 17-2 뉴스 / 17-3 정부자료)
+
+- **요청 근거**: `phase9.request.md`(뉴스/공시/정부자료 수집 요청). 사전 조사 보고는 `summary.md`(2026-07-12)로 제출·승인 완료.
+- **사용자 승인 (2026-07-12)**: ① 정부자료 소스 **C-1(관세청 수출입실적 오픈API)** 채택, ② UI **A안**(종목 상세 페이지에 뉴스·공시 섹션 — 보유/관심 상세 공용), ③ 단계 분리 **17-1(공시) → 17-2(뉴스) → 17-3(정부자료)** 승인.
+- **뉴스 저장 전제 확인 (사용자 확정)**: 뉴스는 `market:news:{code}`에 **최신 N건 스냅샷 덮어쓰기** — 과거 뉴스 히스토리는 저장하지 않으며, 향후 "지난 뉴스 히스토리 조회" 기능 추가 계획 없음(네이버 검색 API 약관의 대량 저장·재배포 제한 대응과도 일치).
+
+#### 17.1 데이터 소스 확정 (조사 상세는 summary.md 2026-07-12판)
+
+| 단계 | 소스 | 방식 | 인증 |
+|---|---|---|---|
+| 17-1 공시 | DART OpenAPI (`opendart.fss.or.kr/api/list.json`) | 종목코드→고유번호(`corpCode.xml` zip) 매핑 후 공시검색. 일 20,000건 한도 | `DART_API_KEY` |
+| 17-2 뉴스 | 네이버 검색 API 뉴스 (`openapi.naver.com/v1/search/news.json`) | 종목명 키워드 검색, 최신 N건 스냅샷. 일 25,000콜 | `NAVER_CLIENT_ID`/`_SECRET` |
+| 17-3 정부자료 | 관세청 수출입실적 오픈API (공공데이터포털) | 월별 수출입 통계 수치 (월 1회 갱신 데이터) | `DATA_GO_KR_SERVICE_KEY` |
+
+- 세 소스 모두 **KIS 같은 호출 시간창 제약 없음** — 공시·뉴스는 장 마감 후·주말에도 발생.
+
+#### 17.2 아키텍처 — 신규 잡 `refresh-feeds` (기존 QStash→Redis→화면 패턴 준수)
+
+- **신규 잡 1개** `POST /api/jobs/refresh-feeds`: 공시(17-1)를 골격으로 만들고, 뉴스(17-2)·정부자료(17-3)를 같은 파이프라인에 소스별 실패 격리로 증분 추가.
+- **기존 `refresh-market-data`에 얹지 않는 사유**: 그 잡은 `isWithinKisCallWindow`(평일 09:00~18:40)에 묶여 저녁·주말 공시/뉴스 수집 불가 — §8.13 "얹을 수 있으면 신설 금지" 원칙의 예외 사유.
+- **잡 신설 3곳 동기화 (research.md §8.13)**: ① `proxy.ts` matcher 제외 추가 ② `verifyJobRequest` 재사용 — 단 **시간창 가드는 적용하지 않음**(KIS 아님) ③ QStash 스케줄 등록.
+- **스케줄**: `CRON_TZ=Asia/Seoul 0 8-22 * * *` (매일 08~22시 정시, 15콜/일 — QStash Free 1,000/일 내 기존 42콜+15콜 여유).
+- **수집 대상 종목** = 전체 허용 이메일의 holdings+watchlist union·중복 제거 — 기존 `refreshMarketData`의 `collectHoldings`/`collectWatchlists`를 **공용 모듈 `lib/jobs/collectTargets.ts`로 추출**해 두 잡이 공유(§8 중복 방지 원칙 — 로직 복제 대신 이동).
+- **corpCode 매핑**: `corpCode.xml`(zip, 인증키 필요) → 상장사(6자리 종목코드 보유)만 `{stockCode: corpCode}`로 `dart:corpCodeMap`에 저장. **30일 주기 저빈도 갱신** + 매핑에 없는 신규 종목 발견 시 매핑이 1일 이상 오래됐으면 1회 보정 갱신. zip 해제는 기존 의존성 fflate 재사용(신규 의존성 0).
+- 모든 저장은 멱등(SET 덮어쓰기) · 종목별 try-catch 실패 격리 · 실패 시 report `ok:false` → 500(QStash 재시도).
+
+#### 17.3 Redis 키 (신규, 전부 비암호화 — 공개 데이터)
+
+| 키 | 값 | 갱신 |
+|---|---|---|
+| `market:disclosures:{code}` | 최근 90일 공시 최대 10건 `{reportNm, rceptNo, rceptDt, flrNm, rm}` + fetchedAt | feeds 잡, SET 덮어쓰기. DART 뷰어 링크는 `rcept_no`로 조립 |
+| `dart:corpCodeMap` | `{map: {stockCode: corpCode}, fetchedAt}` | feeds 잡, 30일 주기(+신규 종목 보정) |
+| `market:news:{code}` | (17-2) 최신 기사 N건 스냅샷 | 17-2에서 설계 확정 |
+| `market:govReports` | (17-3) 수출입 통계 수치 | 17-3에서 설계 확정 |
+
+#### 17.4 신규 환경변수
+
+- 17-1: `DART_API_KEY` (opendart.fss.or.kr 발급, 서버 전용 · `NEXT_PUBLIC_` 금지).
+- Vercel Sensitive 이슈: 값 정본은 로컬 `.env.local`(및 개인 금고), Vercel 대시보드에 수동 등록 — CLI로는 `vercel env ls`로 존재만 확인.
+
+#### 17.5 UI (A안)
+
+- 공용 Server Component `components/stocks/StockDisclosures`(+ 전용 CSS Module) — 보유종목 상세·관심종목 상세의 "종목 정보"(StockInfoBlocks) 섹션 아래 "공시" 섹션으로 2곳 공용 적용.
+- 데이터는 페이지가 `getDisclosures(symbolCode)`(Redis 리더)로 읽어 프로프로 전달 — StockInfoBlocks와 동일 패턴. 실패는 `.catch(() => null)` 격리.
+- 각 공시는 DART 뷰어(`dart.fss.or.kr/dsaf001/main.do?rcptNo=…`) 외부 링크 + 출처 표기.
+- 17-3 정부자료는 시장 요약(`indices/market`) 미니 카드로 추가 예정(17-3에서 확정).
+
+#### 17.6 작업 목록
+
+**17-1 공시 (구현 완료 — 2026-07-12):**
+
+| 순서 | 작업 | 파일 | 상태 |
+|---|---|---|---|
+| 17-1-1 | DART API 클라이언트 — `corpCode.xml` zip 다운로드·파싱(fflate)·상장사 매핑, 공시검색 `list.json` 래퍼(status 000/013 처리, 15초 타임아웃) | `src/lib/api/dart/client.ts` | ☑ |
+| 17-1-2 | feeds Redis store — `market:disclosures:{code}`·`dart:corpCodeMap` 타입·리더·라이터 | `src/lib/feeds/store.ts` | ☑ |
+| 17-1-3 | 수집 대상 공용화 — `collectHoldings`/`collectWatchlists`를 `collectTargets.ts`로 추출(동작 불변), `refreshMarketData`가 import로 전환 | `src/lib/jobs/collectTargets.ts`, `src/lib/jobs/refreshMarketData.ts` | ☑ |
+| 17-1-4 | feeds 갱신 잡 파이프라인 — corpCode 매핑 확보(30일 주기+신규 종목 보정) → 종목별 순차 공시 조회(유량 제한)·저장·실패 격리·report | `src/lib/jobs/refreshFeeds.ts` | ☑ |
+| 17-1-5 | 잡 라우트 신설 — `verifyJobRequest` 재사용, 시간창 가드 미적용, `maxDuration 300` + `proxy.ts` matcher 제외 추가 | `src/app/api/jobs/refresh-feeds/route.ts`, `src/proxy.ts` | ☑ |
+| 17-1-6 | 공시 섹션 UI — `StockDisclosures` 공용 컴포넌트(+CSS Module), 보유·관심 상세 2곳에 "공시" 섹션 추가 | `src/components/stocks/StockDisclosures.tsx`·`.module.css`, `src/app/holdings/[symbolCode]/page.tsx`, `src/app/watchlist/[symbolCode]/page.tsx` | ☑ |
+| 17-1-7 | 검증 — lint·tsc·build | — | ☑ PASS |
+| 17-1-8 | 운영(사용자 액션) — ① `DART_API_KEY` 발급 후 `.env.local`+Vercel 등록 ② QStash 스케줄 `0 8-22 * * *`(Asia/Seoul) 등록 ③ `?force` 불필요(시간창 없음), CRON_SECRET 수동 트리거로 최초 시딩 | — | ☐ 사용자 대기 |
+
+**17-2 뉴스 / 17-3 정부자료:** 17-1 골격 완성 후 착수(승인된 순서). 17-2는 종목명 키워드 검색 품질(동명이의어 오탐)을 실데이터로 확인 후 보정, 17-3은 C-1 확정에 따라 관세청 API 응답 구조 실측 후 설계.
+
+**Phase 17-1 완료 조건:** ☑ KIS 외 신규 소스(DART)도 "잡만 쓰고 화면은 Redis만 읽는" 대원칙 유지, ☑ 잡 신설 3곳 동기화 중 코드 2곳(proxy matcher·verifyJobRequest) 반영 — QStash 스케줄 등록은 사용자 액션, ☑ 공시 섹션이 보유·관심 상세 2곳에 공용 적용(A안), ☑ 신규 의존성 0(fflate 재사용), ☑ lint·tsc·build 통과, ☐ `DART_API_KEY` 등록 후 수동 트리거로 실데이터 확인(사용자 대기).
+
+---
+
 ## 7. PR 분리 권장 (선택)
 
 | PR | Phase | 리뷰 포인트 |
