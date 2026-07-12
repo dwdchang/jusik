@@ -18,6 +18,6 @@ export default auth((req) => {
 
 export const config = {
   matcher: [
-    "/((?!api/auth|api/jobs/refresh-market-data|api/jobs/refresh-hot-stocks|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api/auth|api/jobs/refresh-market-data|api/jobs/refresh-hot-stocks|api/jobs/refresh-feeds|_next/static|_next/image|favicon.ico).*)",
   ],
 };
