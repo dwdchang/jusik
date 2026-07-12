@@ -20,7 +20,12 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  if (!isWithinKisCallWindow()) {
+  // 시간창 우회(디버깅·최초 시딩용) — CRON_SECRET 수동 트리거에만 허용.
+  const force =
+    trigger === "manual" &&
+    new URL(request.url).searchParams.get("force") === "true";
+
+  if (!force && !isWithinKisCallWindow()) {
     return Response.json({
       ok: true,
       skipped: "outside KIS call window (KST weekday 09:00-18:40)",

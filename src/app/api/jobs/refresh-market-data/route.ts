@@ -10,7 +10,8 @@ export const maxDuration = 300;
 /**
  * 시세 갱신 잡 엔드포인트 — QStash 스케줄 4개가 호출 (plan.md §11.5).
  * 인증은 공용 verifyJobRequest(QStash 서명 → CRON_SECRET Bearer 폴백).
- * 수동 트리거도 KST 허용 시간 가드를 동일하게 통과해야 한다.
+ * 수동 트리거도 KST 허용 시간 가드를 동일하게 통과해야 하며,
+ * 예외적으로 `?force=true`(CRON_SECRET 수동 트리거 한정)로만 우회할 수 있다.
  */
 export async function POST(request: Request) {
   const rawBody = await request.text();
@@ -20,9 +21,15 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
+  // 시간창 우회(디버깅·최초 시딩용) — CRON_SECRET 수동 트리거에만 허용.
+  // QStash 경로는 스케줄이 곧 시간 규칙이므로 force를 무시한다.
+  const force =
+    trigger === "manual" &&
+    new URL(request.url).searchParams.get("force") === "true";
+
   // KST 허용 시간 가드(이중 방어) — 평일 09:00~18:40 밖이면 KIS를 호출하지 않는다.
   // 200이어야 QStash가 재시도하지 않는다 (§11.4).
-  if (!isWithinKisCallWindow()) {
+  if (!force && !isWithinKisCallWindow()) {
     return Response.json({
       ok: true,
       skipped: "outside KIS call window (KST weekday 09:00-18:40)",
