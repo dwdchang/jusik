@@ -9,13 +9,8 @@ import type {
   KisIndexDailyResponse,
   KisMarketCapRankingRow,
 } from "@/lib/api/kis/types";
-import { getAllowedEmails } from "@/lib/auth/allowedEmails";
 import { todayKstDate } from "@/lib/date/kst";
-import {
-  getHoldings,
-  saveHoldings,
-  upsertPortfolioHistory,
-} from "@/lib/holdings/store";
+import { saveHoldings, upsertPortfolioHistory } from "@/lib/holdings/store";
 import {
   backfillStockHistoryIfMissing,
   refreshStockHistory,
@@ -47,9 +42,15 @@ import {
   type StoredStockSnapshot,
 } from "@/lib/market/store";
 import { getStockHistory } from "@/lib/holdings/stockHistory";
-import { getWatchlist, saveWatchlist } from "@/lib/watchlist/store";
+import { saveWatchlist } from "@/lib/watchlist/store";
 import type { Holding } from "@/types/holdings";
 import type { WatchItem } from "@/types/watchlist";
+import {
+  collectHoldings,
+  collectWatchlists,
+  errorMessage,
+  unionSymbolCodes,
+} from "./collectTargets";
 
 /**
  * 시세 갱신 잡 파이프라인 — Phase 11 (plan.md §11.1).
@@ -57,10 +58,6 @@ import type { WatchItem } from "@/types/watchlist";
  * KIS를 호출하는 유일한 경로이며, 화면은 이 잡이 저장한 Redis 값만 읽는다.
  * 모든 저장은 멱등(SET 덮어쓰기·날짜 upsert)이라 재시도·중복 실행에 안전하다.
  */
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 /** KST 15:35 이후 회차 = 확정 회차(15:40·18:15) — 종가 히스토리·정보 블록을 갱신한다 */
 function isConfirmedRound(now: Date = new Date()): boolean {
@@ -193,45 +190,6 @@ async function refreshIndices(fetchedAt: string): Promise<{
   });
 
   return { results, kospiRaw };
-}
-
-/** 허용 이메일 전체의 보유종목 조회 (이메일별 실패 격리) */
-async function collectHoldings(): Promise<Map<string, Holding[]>> {
-  const byEmail = new Map<string, Holding[]>();
-
-  await Promise.all(
-    getAllowedEmails().map(async (email) => {
-      try {
-        byEmail.set(email, await getHoldings(email));
-      } catch (error) {
-        console.error(`[job] holdings read failed (${email}):`, error);
-      }
-    })
-  );
-
-  return byEmail;
-}
-
-/** 허용 이메일 전체의 관심종목 조회 (이메일별 실패 격리, §15.3) */
-async function collectWatchlists(): Promise<{
-  byEmail: Map<string, WatchItem[]>;
-  results: RefreshMarketDataReport["watchlists"];
-}> {
-  const byEmail = new Map<string, WatchItem[]>();
-
-  const results = await Promise.all(
-    getAllowedEmails().map(async (email) => {
-      try {
-        byEmail.set(email, await getWatchlist(email));
-        return { email, ok: true };
-      } catch (error) {
-        console.error(`[job] watchlist read failed (${email}):`, error);
-        return { email, ok: false, error: errorMessage(error) };
-      }
-    })
-  );
-
-  return { byEmail, results };
 }
 
 /**
@@ -545,16 +503,7 @@ export async function refreshMarketData(
   //    겹치는 종목은 스냅샷·히스토리·정보 블록 공유, 추가 호출 0)
   const [holdingsByEmail, { byEmail: watchlistsByEmail, results: watchlists }] =
     await Promise.all([collectHoldings(), collectWatchlists()]);
-  const symbolCodes = [
-    ...new Set([
-      ...[...holdingsByEmail.values()]
-        .flat()
-        .map((holding) => holding.symbolCode),
-      ...[...watchlistsByEmail.values()]
-        .flat()
-        .map((item) => item.symbolCode),
-    ]),
-  ];
+  const symbolCodes = unionSymbolCodes(holdingsByEmail, watchlistsByEmail);
 
   // 3. 종목별 1회 조회 → market:stock:* (+확정 회차: 히스토리·정보 블록)
   const { results: stocks, snapshots } = await refreshStocks(
