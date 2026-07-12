@@ -1,703 +1,488 @@
-# jusik 기술 리서치 — 국내 지수 대시보드 (공공 API + Recharts)
+# jusik 코드 구조 사전 조사 (research.md)
 
-> **작성일:** 2026-05-22  
-> **앱 스펙:** KOSPI / KOSDAQ 지수 표시 · 최근 추이 라인 차트(Recharts) · 장 마감 후 일 1회 갱신 · CSS Modules  
-> **프로젝트:** Next.js 16.2.6 · React 19.2.4 · App Router (`src/app/`)  
-> **문서 목적:** 구현 전 기술 의사결정 기록 (소스 코드 작성 없음)
-
----
-
-## 요약 (현재 상태, 2026-07-03)
-
-| 구분 | 항목 | 상태 |
-|------|------|------|
-| **최종 채택** | 데이터 소스: 한국투자증권(KIS) Open API | ✅ §14 참고 — 준실시간(약 10분 간격) 시세 |
-| **최종 채택** | 캐싱: fetch 레벨 `revalidate: 600s` + `unstable_cache` (자동 재검증만 사용) | ✅ §14.2 |
-| **최종 채택** | 토큰 캐시: Upstash Redis (`SET NX PX` 분산 락) | ✅ §14.3~14.4, `plan.md` Phase 6 |
-| **폐기됨** | 데이터 소스: 공공데이터포털 금융위원회_지수시세정보 (`getStockMarketIndex`) | ❌ §1~13 원안, `lib/api/data-go-kr/` 코드 전량 삭제 |
-| **폐기됨** | 캐싱: `revalidate: 86400`(24시간) + 평일 14:00 KST cron(`revalidateTag`) | ❌ §5.3 전략 2 — cron 라우트·`vercel.json` 삭제, `plan.md` §4.7 참고 |
-| **폐기됨** | 토큰/키 캐시: 모듈 메모리 단일 캐시 | ❌ 서버리스 다중 인스턴스에서 분산 발급 위험 → Redis로 대체 |
-
-아래 §1~13은 공공데이터포털 원안(초기 리서치)을 **삭제하지 않고 그대로 보존**한 기록이며, 실제 구현은 §14의 KIS API 전환 내용을 따른다.
-
----
-
-## 1. 요약 및 핵심 권고
-
-> ⚠️ **이 섹션(§1~13)은 공공데이터포털 원안이며 현재는 KIS API로 전환되어 폐기됨 — §14 참고**
-
-| 주제 | 권고 |
-|------|------|
-| **대상 API** | 공공데이터포털 [금융위원회_지수시세정보](https://www.data.go.kr/data/15094807/openapi.do) — 주가지수 시세 오퍼레이션 (`getStockMarketIndex` 등, 활용 가이드로 최종 URL 확인) |
-| **인증키** | `DATA_GO_KR_SERVICE_KEY` 환경변수, **서버 전용**. 클라이언트·`NEXT_PUBLIC_*` 금지 |
-| **페칭 위치** | **1차: Server Component + `src/lib/` 데이터 레이어** (직접 `fetch`). BFF Route Handler는 선택(클라이언트 갱신·웹훅 시) |
-| **캐싱** | `fetch(..., { next: { revalidate: N, tags: ['indices'] } })` + **평일 14:00 KST 전후 `revalidateTag` 크론**(권장) |
-| **15:30 갱신 기대** | ⚠️ 공공 API는 **당일 15:30 직후가 아니라 T+1 영업일 13:00 이후** 반영 — UI 문구·캐시 스케줄을 API 실제 반영 시각에 맞출 것 |
-| **Recharts** | 서버에서 fetch → **직렬화 가능한 props**로 **Client 전용 차트 컴포넌트**에 전달 (`'use client'`) |
-| **스타일** | Tailwind 없음 · `tokens.css` + CSS Modules (기존 보일러플레이트와 동일 방향) |
+> **문서 목적** — 장기 개발 중에도 AI·개발자가 매번 코드 구조와 기존 로직을 정확히
+> 파악하고, 중복 구현·구조 무시를 막기 위한 사전 조사 문서다.
+> plan.md에 새 작업을 추가·갱신할 때는 이 문서를 근거 자료로 참조하고, 계획이
+> 실제 코드 구조와 어긋나지 않는지 여기 기록된 기존 로직·제약사항과 대조한다.
+> 요청이 기존 설계 의도와 맞지 않으면 plan.md 작성 전에 먼저 사용자에게 확인받는다.
+>
+> 조사 기준: 2026-07-12, `src/` 전체 파일 직접 열람. 이전 문서는 `research.legacy.md`로 보존.
+>
+> **갱신 규칙**: 앞으로 모든 새 코드 리서치는 `research.legacy.md`(수정 금지)가 아니라
+> 이 문서의 해당 절(§1~10)에 통합한다 — 새 번호 섹션을 추가하지 않는다.
+>
+> **문서 조직 원리** — 이 문서는 Phase 순서가 아니라 프로젝트 구조 기준 §1~10으로
+> 조직된다. 시간 순서와 무관하게 항상 '현재 코드 기준 최신 상태'만 담는다.
+> 새 조사 내용은 새 번호 섹션을 추가하지 않고 해당하는 기존 §1~10 절에 통합한다.
+>
+> **plan.md와의 역할 차이** — plan.md는 Phase 단위 작업 이력(시간순, 의사결정 기록)이고,
+> research.md는 현재 코드 구조 스냅샷(시간 무관, 항상 최신 유지)이다 —
+> 두 문서는 조직 원리가 다르므로 혼동하지 말 것.
 
 ---
 
-## 2. 현재 프로젝트 베이스라인
+## 1. 프로젝트 개요
 
-### 2.1 구조
+- **앱**: KOSPI/KOSDAQ 개인 지수 대시보드. 홈 카드 7종(코스피·코스닥·시장·보유종목·
+  코스피 변동성·핫종목·관심종목) + 각 상세 페이지.
+- **스택**: Next.js 16.2.6 (App Router, `src/app`) · React 19.2.4 · TypeScript Strict ·
+  Recharts 3 (차트, 유일한 Client 라이브러리) · Upstash Redis (REST) · Upstash QStash
+  (스케줄러) · Auth.js(next-auth v5 beta) Google OAuth · fflate (종목 마스터 zip 해제) ·
+  lucide-react (아이콘). **Tailwind 금지 — 순수 CSS + CSS Modules만** (AGENTS.md 헌법).
+- **배포**: Vercel (jusik-app.vercel.app). 잡 라우트는 `maxDuration = 300`.
+- **데이터 원천**: 한국투자증권(KIS) OpenAPI 단일화. ~~공공데이터포털~~은 Phase 5에서
+  마이그레이션 완료되어 **코드에 더 이상 존재하지 않는다** (§9.1 특이사항 참고).
 
-```
-src/app/
-├── layout.tsx      # Geist 폰트, globals.css
-├── globals.css
-├── page.tsx        # create-next-app 템플릿 (교체 예정)
-└── page.module.css
-```
+### 1.1 환경 변수 (전부 서버 전용 — `NEXT_PUBLIC_` 없음)
 
-- **의존성:** `next`, `react`, `react-dom`만 존재. **Recharts·axios 미설치**.
-- **path alias:** `@/*` → `./src/*` (`tsconfig.json`).
-- **라우트:** `/` 단일 정적 페이지 (빌드 시 Static prerender).
-
-### 2.2 Next.js 16 유의사항 (`AGENTS.md`)
-
-- 공식 가이드: `node_modules/next/dist/docs/` — v15/v16과 캐싱·`params` Promise 등 **breaking change** 존재.
-- 본 프로젝트는 **`cacheComponents` 플래그 미사용** → **기존 `fetch` + `revalidate` 모델** 기준으로 분석 (Cache Components는 Phase 3+ 검토).
-
----
-
-## 3. 공공 API 개요 (금융위원회 지수시세정보)
-
-### 3.1 서비스 특성
-
-| 항목 | 내용 |
-|------|------|
-| 제공 기관 | 금융위원회 (한국거래소 데이터 연계) |
-| API 유형 | REST, JSON/XML |
-| 갱신 주기 | **일 1회** (실시간 아님) |
-| 데이터 반영 시각 | 기준일 **영업일 기준 하루 뒤 오후 1시(13:00) 이후** 업데이트 (금요일 → 다음 월요일 등) |
-| 트래픽 | 개발계정 기본 10,000회/일 (운영 시 활용사례 등록으로 증설 가능) |
-| 참고 문서 | `오픈API 활용자가이드_금융위원회_지수시세정보.docx` (포털에서 다운로드) |
-
-> **스펙과의 정합성:** 요구사항 「매일 장 마감(15:30) 이후 갱신」은 **거래소 장 운영 시간** 기준이고, 공공 API는 **익영업일 13시 이후**에 전일 종가 데이터가 올라온다. 대시보드에 「최종 반영: YYYY-MM-DD (공공데이터 기준)」 표기를 권장한다.
-
-### 3.2 엔드포인트 (확인 필요)
-
-포털·커뮤니티 구현 사례 기준 **주가지수 시세** 호출 형태는 아래와 유사하다. **활용 신청 후 Swagger/가이드에서 최종 Base URL·오퍼레이션명을 반드시 재확인**한다.
-
-| 항목 | 값 (참고) |
-|------|-----------|
-| Base (사례 1) | `https://apis.data.go.kr/1160100/service/GetMarketIndexInfoService` |
-| Operation (사례) | `/getStockMarketIndex` |
-| Base (사례 2, 명칭 상이) | `GetIndexPriceInfoService` — 포털 개정 시 서비스명 변경 가능 |
-
-**요청 파라미터 (주가지수 시세, 일반적 패턴):**
-
-| 파라미터 | 설명 | KOSPI/KOSDAQ 예 |
-|----------|------|-----------------|
-| `serviceKey` | 일반 인증키 | env에서 주입 |
-| `resultType` | `json` | json |
-| `pageNo` | 페이지 | 1 |
-| `numOfRows` | 행 수 | 추이 N일이면 N 이상 |
-| `idxNm` | 지수명 | `코스피`, `코스닥` (가이드·2024.12 지수명 변경 주의) |
-| `basDt` | 기준일자 `YYYYMMDD` | 미지정 시 최신, 과거 조회 시 지정 |
-
-### 3.3 응답 구조 (JSON, 전형적 패턴)
-
-공공데이터포털 금융 API는 대부분 아래 envelope를 따른다.
-
-```json
-{
-  "response": {
-    "header": { "resultCode": "00", "resultMsg": "NORMAL SERVICE." },
-    "body": {
-      "numOfRows": 10,
-      "pageNo": 1,
-      "totalCount": 100,
-      "items": {
-        "item": [ /* 또는 단일 객체 */ ]
-      }
-    }
-  }
-}
-```
-
-**주가지수 `item` 필드 예시 (가이드·사례 기준, 필드명은 가이드로 검증):**
-
-| 필드 | 의미 | 대시보드 매핑 |
-|------|------|----------------|
-| `basDt` | 기준일자 | 차트 X축 `date` |
-| `idxNm` | 지수명 | KOSPI/KOSDAQ 라벨 |
-| `clpr` | 종가(현재 지수) | `close`, 카드 현재값 |
-| `vs` | 전일 대비 | `changeAmount` |
-| `fltRt` | 등락률(%) | `changeRate` |
-| `mkp` / `hipr` / `lopr` | 시가/고가/저가 | (선택) 상세 패널 |
-
-**`item` 단일 vs 배열:** `items.item`이 객체 1개인 경우가 많아 파서에서 **정규화 필수** (§6).
-
-### 3.4 최근 7일 추이 데이터 확보 전략
-
-단일 호출이 **하루·한 지수**만 줄 가능성이 높다. 추이 7일은 다음 중 선택:
-
-| 방식 | 설명 | 트래픽 |
-|------|------|--------|
-| **A. `basDt` 7회 병렬 fetch** | 영업일 7개 날짜 계산 후 `Promise.all` | 지수 2개 × 7 = 14 req/갱신 |
-| **B. `numOfRows` 확대 + 정렬** | API가 기간 목록 반환 시 1 req/지수 | 가이드 확인 후 우선 |
-| **C. 서버 캐시 누적** | 매일 1회 fetch 후 DB/파일 누적 | 장기 운영용 |
-
-**Phase 1 구현 권장:** A + `unstable_cache` / `fetch` revalidate로 **같은 갱신 주기에 묶기**.
+| 변수 | 용도 | 참조 위치 |
+|---|---|---|
+| `KIS_APP_KEY` / `KIS_APP_SECRET` | KIS 인증 | `lib/api/kis/auth.ts`, `client.ts` |
+| `KIS_BASE_URL` | KIS 베이스 URL (기본값 내장, 선택) | `lib/api/kis/constants.ts` |
+| `UPSTASH_REDIS_REST_URL` / `_TOKEN` | Redis REST | `lib/redis/client.ts` |
+| `QSTASH_CURRENT_SIGNING_KEY` / `QSTASH_NEXT_SIGNING_KEY` | QStash 서명 검증 | `lib/jobs/verifyJobRequest.ts` |
+| `CRON_SECRET` | 잡 수동 트리거 Bearer 폴백 | `lib/jobs/verifyJobRequest.ts` |
+| `GOOGLE_CLIENT_ID` / `_SECRET` | Google OAuth | `src/auth.ts` |
+| `ALLOWED_EMAILS` | 접근 허용 이메일 CSV 화이트리스트 | `lib/auth/allowedEmails.ts` |
+| `HOLDINGS_ENCRYPTION_KEY` | 개인 데이터 AES-256-GCM 키 (base64 32바이트) | `lib/crypto/secureJson.ts` |
 
 ---
 
-## 4. 공공 API 보안 및 페칭 전략
+## 2. 디렉토리 구조와 파일별 역할
 
-### 4.1 일반인증키 (Encoding / Decoding)
+### 2.1 `src/app` — 라우트 (전부 Server Component)
 
-| 키 종류 | 특징 | 사용 시점 |
-|---------|------|-----------|
-| **Encoding** | URL에 이미 `%2F` 등 인코딩된 문자열 | 쿼리스트링에 **수동 concat** 할 때 |
-| **Decoding** | 원본 키 | **`URLSearchParams` 사용 시** (params가 재인코딩하므로 디코딩 키 사용) |
+| 경로 | 역할 |
+|---|---|
+| `layout.tsx` | 루트 레이아웃. Geist 폰트, `tokens.css`+`globals.css` import, 테마 FOUC 방지 인라인 스크립트(`data-theme` 선결정) |
+| `page.tsx` | 홈 대시보드. 세션 검사 → 허용 외 이메일이면 access-denied 화면 → 카드 7종 데이터 병렬 조회(`Promise.all`) → `IndexDashboard` 렌더. staleness 배지 판정도 여기서 수행 |
+| `login/page.tsx` | Google 로그인 버튼 (Server Action으로 `signIn("google")`). 세션 있으면 `/` redirect, 인라인 `GoogleIcon` SVG 로컬 정의 |
+| `indices/kospi` `kosdaq` `usdkrw` `us10y` `oil/page.tsx` | 지표 상세 5종 — 전부 `ensureAllowedSession()` 후 `<IndexDetailScreen market=…>` 한 줄 위임 |
+| `indices/market/page.tsx` | 시장 요약(환율·금리·유가 미니 카드 3종). `getMarketDetails` MGET 1회 |
+| `indices/kospi-volatility/page.tsx` | 변동성 상세 — 월별 평균 막대 차트 |
+| `holdings/page.tsx` | 보유종목 목록·요약·연초 이후 추이·종목 추가 폼(`<details>` 토글) |
+| `holdings/[symbolCode]/page.tsx` | 보유종목 상세 — 평가 요약·수정/삭제(`?edit=1`)·2년 추이·정보 블록 4종 |
+| `holdings/actions.ts` | Server Actions: add/update/delete. **형식 검증만** 하고 KIS 호출 없음 (§6.4) |
+| `watchlist/page.tsx` | 관심종목 목록 — 등록 기준일 종가 대비 수익률, 기준일 변경/삭제 |
+| `watchlist/[symbolCode]/page.tsx` | 관심종목 상세 — 등록일 이후 추이·정보 블록 (보유종목 상세와 구조 동일) |
+| `watchlist/actions.ts` | Server Actions: add/update(기준일 변경 시 기준가 null 리셋)/delete |
+| `hot-stocks/page.tsx` | 핫종목 TOP 100 테이블 — `?period=1m|3m|6m|12m` 탭, 시장 위첨자(ᴷ/ᴰ) 표기(`MARKET_SUP` 로컬 상수) |
+| `api/auth/[...nextauth]/route.ts` | Auth.js 핸들러 re-export (3줄) |
+| `api/jobs/refresh-market-data/route.ts` | 시세 갱신 잡 엔드포인트 (POST, §4.1) |
+| `api/jobs/refresh-hot-stocks/route.ts` | 핫종목 갱신 잡 엔드포인트 (POST, §4.2) |
 
-**권장 서버 패턴 (예시):**
+라우트별 `page.module.css` 동반. 오류 UI는 별도 error.tsx 없이 각 page의 try/catch 인라인 처리.
 
-```ts
-// src/lib/api/data-go-kr/client.ts (구현 예정)
-const key = process.env.DATA_GO_KR_SERVICE_KEY;
-if (!key) throw new Error("DATA_GO_KR_SERVICE_KEY is not set");
+### 2.2 `src/lib` — 도메인 로직
 
-const params = new URLSearchParams({
-  serviceKey: key, // Decoding 키 권장
-  resultType: "json",
-  pageNo: "1",
-  numOfRows: "7",
-  idxNm: "코스피",
-});
-const url = `https://apis.data.go.kr/.../getStockMarketIndex?${params}`;
-```
+| 파일 | 역할 |
+|---|---|
+| `api/kis/constants.ts` | KIS 베이스 URL·엔드포인트·TR_ID·조회 코드·상수 전부. 지표 코드 변경 시 이 파일만 수정 |
+| `api/kis/auth.ts` | KIS 토큰 발급·캐싱 — Redis 공유 캐시 + `SET NX PX` 분산 락 + 인스턴스 내 in-flight 합류 (§7.4) |
+| `api/kis/client.ts` | `fetchKisJson` 공통 래퍼(헤더·rt_cd 검증·15초 타임아웃) + 조회 함수 9종 (지수·해외·현재가·랭킹·배당·손익·재무비율·종목명·기간별시세 일/월) |
+| `api/kis/types.ts` | KIS 원본 응답 타입 (필드 전부 optional string, `[key: string]: unknown` 허용) |
+| `auth/allowedEmails.ts` | `ALLOWED_EMAILS` 파싱(모듈 로드 시 1회) — `isEmailAllowed` / `getAllowedEmails`(잡용 전체 목록) |
+| `auth/ensureAllowedSession.ts` | 상세 페이지 공용 가드 — 미로그인→`/login`, 허용 외→`/`(access-denied) |
+| `crypto/secureJson.ts` | AES-256-GCM `enc:v1:iv:tag:ct` 포맷 — `encryptJson`/`decryptJson`(실패 시 throw)/`isEncrypted` |
+| `redis/client.ts` | Upstash Redis 싱글턴 `getRedis()` |
+| `date/kst.ts` | `todayKstDate()` — KST "YYYY-MM-DD" (유일한 공용 KST 날짜 헬퍼) |
+| `format/*` | 표시 포맷 모음 (§6.2 카탈로그) |
+| `indices/kisMapper.ts` | 국내지수 응답→도메인 매핑 + **공용 유틸 `parseNum`/`applyKisSign`/`resolveDirection`/`formatBasDtLabel`** |
+| `indices/kisOverseasMapper.ts` | 해외(환율·금리·유가) 응답→도메인 매핑. 행별 전일 대비가 없어 인접 종가 차분으로 계산 |
+| `indices/getDashboard.ts` | 홈 데이터 리더 — `market:detail:*` 5종 MGET. 필수 4종 없으면 throw(`MARKET_DATA_EMPTY_MESSAGE`), oil은 null 허용 |
+| `indices/getIndexDetail.ts` / `getOverseasDetail.ts` | 상세 리더 — `market:detail:{key}` 1건. **두 파일 내용이 사실상 동일** (§8) |
+| `indices/volatility.ts` | 변동성 기록 store+계산+카드 요약 (한 파일에 쓰기·읽기 혼재) |
+| `indices/dates.ts` | `getLast7BusinessDates` — **현재 미사용 (레거시)** (§9.2) |
+| `market/store.ts` | 공용 시세 Redis 스토어 — `market:detail:*`, `market:stock:*`, `market:stockInfo:*`, `market:lastRefreshAt` (§5) |
+| `market/staleness.ts` | KST 시간창 가드(`isWithinKisCallWindow` 09:00~18:40 / `isWithinBadgeWindow` ~18:20) + 배지 판정 `resolveStaleness`(20분 warn/1시간 critical) |
+| `holdings/store.ts` | 보유종목·포트폴리오 히스토리 store — 암호화, 레거시 평문/`avgPrice` 읽기 하위호환 |
+| `holdings/valuation.ts` | 포트폴리오 평가(스냅샷 MGET) — 시세 없는 종목 null 격리·합계 제외, `latestRecordBefore`/`computeDailyChangeRate` |
+| `holdings/summary.ts` | 홈 보유종목 카드 요약 (실패 시 null) |
+| `holdings/stockHistory.ts` | 종목별 2년 종가 히스토리 `stock:{code}:history` — 백필(최대 8콜 페이징)/일별 갱신/upsert |
+| `holdings/stockInfo.ts` | 정보 블록 4종 — 쓰기(잡 전용 `fetchStockInfoBlocks`: 배당·손익·재무비율 병렬)와 읽기(`getStockInfo`: Redis 조합만) 경로가 한 파일에 명시 구분 |
+| `hotstocks/store.ts` | 핫종목 store — `market:hotStocks` + `:progress` 커서, 구간 4종 정의·라벨 |
+| `hotstocks/months.ts` | 월 문자열("YYYY-MM") 계산 — `baseMonthKst`(전월)/`addMonths`/월초·월말/표시 포맷 |
+| `hotstocks/universe.ts` | KIS 종목 마스터 zip 다운로드·EUC-KR 고정폭 파싱 — ST(주권)만, 스팩 제외, 코드 오름차순 |
+| `hotstocks/summary.ts` | 홈 핫종목 카드 요약 + 갱신 지연 판정 `isHotStocksStale` |
+| `jobs/refreshMarketData.ts` | **시세 갱신 잡 파이프라인 본체** (§4.1) |
+| `jobs/refreshHotStocks.ts` | **핫종목 갱신 잡 파이프라인 본체** (§4.2) |
+| `jobs/verifyJobRequest.ts` | 잡 공용 인증 — QStash 서명 → CRON_SECRET Bearer 폴백(timingSafeEqual) |
+| `watchlist/store.ts` | 관심종목 store — 암호화 (신규 키라 평문 하위호환 없음) |
+| `watchlist/summary.ts` | `computeWatchReturnRate`(순수 함수) + 홈 카드 요약 |
+| `theme.ts` | `THEME_STORAGE_KEY`·`Theme` 타입만 |
 
-- 포털 **미리보기**에서 Encoding/Decoding 각각 시험 → 동작하는 키를 env에 저장.
-- **401 / SERVICE_KEY_IS_NOT_REGISTERED** → 키 종류 오류·활용 미승인·만료(2년) 점검.
+### 2.3 `src/components`
 
-### 4.2 환경변수 규칙
+| 컴포넌트 | 종류 | 역할 |
+|---|---|---|
+| `indices/IndexDashboard` | Server | 홈 카드 7종 조립 + 헤더(테마 토글·로그아웃) |
+| `indices/SummaryCard` | Server | **홈 요약 카드 공용 프리미티브** — value/change/footnote/placeholder/staleness 배지. 카드 전체가 Link |
+| `indices/HotStocksCard` | Server | 핫종목 전용 카드 (TOP 3 리스트라 SummaryCard 미사용) |
+| `indices/IndexDetailScreen` | Server(async) | **지표 상세 5종 공용 화면** — `getIndexDetail`/`getOverseasDetail` 분기, 카드+차트+일별 리스트+푸터 |
+| `indices/IndexCard` / `IndexDailyList` / `DataAsOfFooter` | Server | 상세 스냅샷 카드 / 일별 시세 리스트 / 홈 푸터 |
+| `indices/IndexChartClient` → `IndexLineChart` | Client | Recharts 래핑 패턴: Client 셸이 `dynamic(…, { ssr: false })` + 스켈레톤 → 실제 차트 |
+| `indices/VolatilityChartClient` → `VolatilityChart` | Client | 동일 패턴, BarChart |
+| `holdings/HoldingsChartClient` → `HoldingsChart` | Client | 동일 패턴, LineChart + 수익률%↔원단위 토글. **보유종목 홈/상세·관심종목 상세 3곳 공용** (관심종목에선 totalValue 자리에 종가를 넣어 재활용) |
+| `stocks/StockInfoBlocks` | Server | 정보 블록 4종(시총·배당·실적·투자지표) — 보유·관심 상세 공용, `formatRatio` export |
+| `nav/NavIconLink` | Server | 헤더 이동 아이콘 버튼(home/back) — 36px 아이콘 버튼 통일 규격 |
+| `theme/ThemeToggle` | Client | `useSyncExternalStore`로 `data-theme` 구독·토글 |
+| `auth/SignOutButton` | Server | Server Action `signOut` 폼 |
 
-| 변수 | 노출 | 비고 |
-|------|------|------|
-| `DATA_GO_KR_SERVICE_KEY` | 서버 only | `.env.local`, Vercel Encrypted Env |
-| `NEXT_PUBLIC_*` | 브라우저 | **인증키에 사용 금지** |
+### 2.4 기타
 
-`.gitignore`에 `.env*` 포함됨 — 커밋 금지.
-
-### 4.3 Server Component 직접 fetch vs Route Handler (BFF)
-
-| 기준 | Server Component + `lib` | Route Handler (`/api/indices`) |
-|------|---------------------------|--------------------------------|
-| **인증키 보호** | ✅ 서버에서만 실행 | ✅ |
-| **구현 복잡도** | 낮음 | 중간 (라우트·에러 JSON 추가) |
-| **RSC 호환** | ✅ 네이티브 | 페이지가 내부 `fetch(origin/api)` 필요 |
-| **클라이언트 재요청** | props만으로는 불가 | ✅ `fetch('/api/indices')` 가능 |
-| **집계 API** | 페이지/loader에서 병렬 | 한 엔드포인트로 KOSPI+KOSDAQ+7일 묶기 용이 |
-| **캐싱** | `fetch` revalidate / `unstable_cache` | Route `revalidate` + 동일 옵션 |
-| **테스트** | lib 단위 테스트 | HTTP 통합 테스트 |
-
-#### 추천 아키텍처 (하이브리드)
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│  app/page.tsx (Server Component)                            │
-│    └─ getDashboardData()  ← src/lib/indices/getDashboard.ts │
-│         ├─ fetchIndexSnapshot('코스피')                      │
-│         ├─ fetchIndexSnapshot('코스닥')                      │
-│         └─ fetchIndexHistory('코스피'|'코스닥', 7일)         │
-└───────────────────────────┬─────────────────────────────────┘
-                            │ serializable props
-                            ▼
-┌─────────────────────────────────────────────────────────────┐
-│  IndexDashboard (Server) — 레이아웃·카드·숫자 (CSS Modules)   │
-│    └─ IndexLineChart (Client, Recharts)                      │
-└─────────────────────────────────────────────────────────────┘
-
-(선택) app/api/indices/route.ts
-  → 크론 revalidateTag, 모바일 클라이언트 갱신, 외부 연동 시만 추가
-```
-
-**결론**
-
-1. **기본 경로:** 데이터 페칭·매핑·캐시는 **`src/lib/api/` + Server Component**에 둔다.  
-2. **BFF는 선택:** Vercel Cron이 `GET /api/indices`를 호출해 `revalidateTag('indices')` 하거나, 추후 클라이언트 주도 새로고침이 필요할 때 추가한다.  
-3. **절대 금지:** 브라우저에서 `apis.data.go.kr` 직접 호출.
-
-### 4.4 에러·안정성
-
-| 상황 | 처리 |
-|------|------|
-| `resultCode !== '00'` | 사용자 메시지 + 서버 로그 (`resultMsg`) |
-| `item` 없음 | empty state |
-| 타임아웃 | `fetch` + `AbortSignal`, fallback UI |
-| 개발 HMR 캐시 | `serverComponentsHmrCache`로 dev에서 stale 가능 → hard refresh로 검증 |
-
----
-
-## 5. 데이터 캐싱 및 자동 갱신
-
-### 5.1 Next.js 16 fetch 캐싱 (현재 프로젝트 적용 모델)
-
-`node_modules/next/dist/docs/01-app/03-api-reference/04-functions/fetch.md` 기준:
-
-```ts
-// 예시 — 지수 API 호출
-await fetch(url, {
-  next: {
-    revalidate: 86_400, // 초 단위
-    tags: ["indices"],
-  },
-});
-```
-
-| `revalidate` | 의미 |
-|--------------|------|
-| `false` | 무기한 캐시 (Infinity) |
-| `0` | 캐시 안 함 (매 요청 fetch) |
-| `number` | 최대 N초 후 stale → 백그라운드 revalidate |
-
-**개발 모드:** 페이지는 기본 **요청마다 렌더** — revalidate 동작은 **production build**에서 검증.
-
-**Route segment:**
-
-```ts
-// app/page.tsx — 예시
-export const revalidate = 86_400; // 레이아웃·페이지 기본 TTL(초), 정적 분석 가능한 리터럴만
-```
-
-개별 `fetch`의 `revalidate`가 더 짧으면 **라우트 전체 주기가 낮아짐**.
-
-### 5.2 「15:30 이후 갱신」 vs 공공 API 실제 반영 시각
-
-| 시각 | 의미 |
-|------|------|
-| **15:30 KST** | 당일 현물시장 정규장 마감 (UI·비즈니스 기대) |
-| **T+1 13:00+ KST** | 공공 API에 **해당 영업일 종가**가 반영되는 시점 (공식 안내) |
-
-따라서 **15:30에 revalidate를 맞춰도 API 응답은 전일과 동일할 수 있다.**  
-앱의 「자동 갱신」은 다음 두 축으로 설계한다.
-
-1. **사용자 기대(장 마감):** UI에 「공공데이터는 익영업일 오후 1시 이후 갱신」 안내.  
-2. **기술적 갱신(신선 데이터):** **평일 14:00 KST 이후** 첫 revalidate + ISR.
-
-### 5.3 권장 갱신 전략 (복합)
-
-#### 전략 1 — Time-based Revalidate (기본, 필수)
-
-```ts
-// 24시간 — 구현 단순, 대부분의 요청은 캐시 적중
-next: { revalidate: 86_400, tags: ["indices"] }
-```
-
-- 주말·공휴일에도 revalidate는 돌지만 **API 데이터는 변하지 않음** → 트래픽 낭비 최소화하려면 전략 2 병행.
-
-#### 전략 2 — Cron + `revalidateTag` (권장, 운영)
-
-> 📝 **각주 (2026-07-03):** 이 cron은 이후 제거됨 (`plan.md` §4.7 참고) — KIS API 전환 후 `revalidate: 600s`(10분) 자동 재검증만으로 충분해 별도 cron이 불필요해졌다.
-
-| 항목 | 값 |
-|------|-----|
-| 스케줄 | `0 5 * * 1-5` (UTC) ≈ **평일 14:00 KST** (서머타임 시 cron 조정) |
-| 동작 | `GET /api/cron/revalidate-indices` (Route Handler) → `revalidateTag('indices')` |
-| 보안 | `CRON_SECRET` 헤더 검증 (Vercel Cron) |
-
-```ts
-// route.ts 예시 스케치
-import { revalidateTag } from "next/cache";
-
-export async function GET(request: Request) {
-  const auth = request.headers.get("authorization");
-  if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
-    return new Response("Unauthorized", { status: 401 });
-  }
-  revalidateTag("indices");
-  return Response.json({ revalidated: true, at: new Date().toISOString() });
-}
-```
-
-#### 전략 3 — `unstable_cache` (비-fetch 로직)
-
-날짜 계산·7일 병렬 호출·매핑 결과를 한 함수로 묶을 때:
-
-```ts
-import { unstable_cache } from "next/cache";
-
-export const getDashboardData = unstable_cache(
-  async () => { /* fetch + map */ },
-  ["dashboard-indices"],
-  { revalidate: 86_400, tags: ["indices"] }
-);
-```
-
-#### 전략 4 — Cache Components (Next 16, 미래)
-
-`cacheComponents: true` + `'use cache'` + `cacheLife()` 프로필 — **현재 프로젝트 미적용**. 마이그레이션은 API 연동 안정 후 검토.
-
-### 5.4 갱신 전략 비교표
-
-| 전략 | 장점 | 단점 | 채택 |
-|------|------|------|------|
-| `revalidate: 86400` | 단순 | API 반영 전에도 revalidate 가능 | ✅ 기본 |
-| 15:30 KST cron | 비즈니스 직관 | **데이터는 아직 안 바뀜** | ❌ 단독 사용 비권장 |
-| 14:00 KST 평일 cron + tag | API 반영 시각과 정합 | Cron 호스팅 필요 | ✅ 권장 |
-| `revalidate: 0` | 항상 최신 시도 | 트래픽·속도 불리 | ❌ |
-| 클라이언트 polling | — | 키 노출·비용 | ❌ |
-
-### 5.5 영업일 계산
-
-공휴일 API 없이 Phase 1에서는 **주말 제외 + 수동 공휴일 배열(선택)** 또는 **API `basDt` 역순 탐색**으로 7거래일 확보. 정확도 요구 시 한국거래소 휴장일 테이블·공휴일 API 추가.
+- `src/types/indices.ts` `holdings.ts` `watchlist.ts` — 도메인 타입 (§6.3).
+- `src/proxy.ts` — **미들웨어에 해당** (Next 16에서 파일명 proxy). 세션 쿠키만 낙관적
+  검사, 허용 이메일 판정은 page 레벨. matcher가 `api/auth`·잡 라우트 2종·정적 자산 제외.
+  → **잡 라우트는 미들웨어 미보호이며 `verifyJobRequest`가 유일한 인증** — 새 잡 라우트를
+  신설하면 이 matcher 제외 등록이 세트로 필요하다 (§8.13).
+- `src/styles/tokens.css` — 디자인 토큰(색·타이포·간격·radius). `html[data-theme="dark"]`
+  오버라이드. 등락색: rise `#f04452` / fall `#3182f6` (한국식 빨강=상승).
+- `src/app/globals.css` — `.numeric` (`tabular-nums`) 등 전역. 숫자 UI는 항상 `.numeric` 병기.
+- `next.config.ts` — `staticPageGenerationTimeout: 300`만.
 
 ---
 
-## 6. 데이터 포맷 정제 (Data Mapper 설계)
+## 3. 아키텍처 대원칙 (모든 계획이 지켜야 함)
 
-### 6.1 레이어 구조
-
-```
-apis.data.go.kr (raw JSON)
-        ↓
-src/lib/api/data-go-kr/
-  ├── client.ts          # URL, serviceKey, fetch + cache options
-  ├── types.ts           # RawResponse, RawIndexItem (API 그대로)
-  └── normalize.ts       # ensureArray(item)
-        ↓
-src/lib/indices/mapper.ts
-  ├── toIndexSnapshot(raw)
-  ├── toChartSeries(raw[])
-  └── toDashboardDTO(kospi, kosdaq)
-        ↓
-src/types/indices.ts     # 앱 도메인 타입 (UI·Recharts)
-```
-
-### 6.2 도메인 타입 (앱 내부, Recharts 친화)
-
-```ts
-// src/types/indices.ts — 설계 예시
-
-export type MarketIndex = "KOSPI" | "KOSDAQ";
-
-export interface IndexSnapshot {
-  market: MarketIndex;
-  name: string;           // "코스피"
-  basDt: string;          // "20260522" → 표시 시 포맷
-  close: number;
-  changeAmount: number;
-  changeRate: number;
-  direction: "rise" | "fall" | "flat";
-}
-
-/** Recharts LineChart dataKey 호환 */
-export interface IndexChartPoint {
-  date: string;           // "05/19" 또는 ISO — 표시용
-  basDt: string;          // 원본 YYYYMMDD
-  close: number;
-}
-
-export interface IndexSeries {
-  market: MarketIndex;
-  points: IndexChartPoint[];
-}
-
-export interface IndexDashboardData {
-  asOf: string;           // ISO — 캐시 생성 시각
-  kospi: IndexSnapshot;
-  kosdaq: IndexSnapshot;
-  kospiHistory: IndexSeries;
-  kosdaqHistory: IndexSeries;
-}
-```
-
-### 6.3 Raw → Domain 매핑 규칙
-
-| 단계 | 함수 (예시) | 책임 |
-|------|-------------|------|
-| Normalize | `ensureItemsArray(body)` | `item` 단일 객체 → `[item]` |
-| Parse number | `parseNum(s: string \| number)` | `clpr`, `fltRt` 문자열 대응 |
-| Snapshot | `mapToSnapshot(item, market)` | `direction` = sign(`fltRt`) |
-| History | `mapToChartPoints(items[])` | `basDt` 오름차순 정렬, `date` 라벨 |
-| Validate | `assertChartLength(points, 7)` | 개발 시 경고 |
-
-```ts
-// mapper 예시 스니펫
-function ensureItemsArray<T>(items: { item?: T | T[] }): T[] {
-  const raw = items?.item;
-  if (!raw) return [];
-  return Array.isArray(raw) ? raw : [raw];
-}
-
-function mapToChartPoints(items: RawIndexItem[]): IndexChartPoint[] {
-  return ensureItemsArray({ item: items })
-    .sort((a, b) => a.basDt.localeCompare(b.basDt))
-    .map((row) => ({
-      basDt: row.basDt,
-      date: formatBasDtLabel(row.basDt), // "05/22"
-      close: parseNum(row.clpr),
-    }));
-}
-```
-
-### 6.4 Recharts 데이터 형태
-
-Recharts `LineChart`는 **객체 배열 + `dataKey`** 패턴.
-
-```tsx
-// Client 컴포넌트에서 사용할 props 예시 (구현 스케치)
-<LineChart data={series.points}>
-  <XAxis dataKey="date" />
-  <YAxis domain={["auto", "auto"]} />
-  <Line type="monotone" dataKey="close" dot={false} />
-</LineChart>
-```
-
-- KOSPI/KOSDAQ **차트 2개** 또는 **탭 전환 1개** — UI 결정은 plan 단계에서 확정.
-- Y축: 지수별 스케일 분리(차트 2개) 권장 — 스케일 혼합 시 왜곡.
-
-### 6.5 DTO 조립 (대시보드 1회 로드)
-
-```ts
-// getDashboardData() 반환 예시
-async function getDashboardData(): Promise<IndexDashboardData> {
-  const [kospiRaw, kosdaqRaw, kospiHist, kosdaqHist] = await Promise.all([
-    fetchIndex("코스피", { rows: 1 }),
-    fetchIndex("코스닥", { rows: 1 }),
-    fetchIndexHistory("코스피", 7),
-    fetchIndexHistory("코스닥", 7),
-  ]);
-  return {
-    asOf: new Date().toISOString(),
-    kospi: mapToSnapshot(kospiRaw, "KOSPI"),
-    kosdaq: mapToSnapshot(kosdaqRaw, "KOSDAQ"),
-    kospiHistory: { market: "KOSPI", points: mapToChartPoints(kospiHist) },
-    kosdaqHistory: { market: "KOSDAQ", points: mapToChartPoints(kosdaqHist) },
-  };
-}
-```
+1. **KIS 호출은 잡 2개만 한다.** 화면(Server Component)·Server Action은 KIS를 절대
+   직접 호출하지 않고 Redis 스냅샷만 읽는다 (plan.md §11.6). 사용자 액션은 임의 시각에
+   발생해 KIS 허용 시간 규칙과 충돌하므로, 등록 폼은 형식 검증만 하고 종목명·시세·
+   기준가는 다음 갱신 회차에 잡이 채운다 (§11.10-A4, §15.4).
+2. **쓰기/읽기 주체 분리** — Redis 공용 시세 키의 쓰기는 잡만, 읽기는 화면만.
+   개인 데이터(holdings/watchlist)만 Server Action이 쓴다.
+3. **모든 저장은 멱등** — SET 덮어쓰기·날짜 upsert. 잡 재시도·중복 실행에 안전.
+4. **실패 격리** — 지표별/종목별/이메일별로 try-catch 격리, 카드 요약은 실패 시 null
+   반환(홈 전체를 막지 않음), 부분 실패는 리포트에 기록.
+5. **KST 시간창 이중 방어** — QStash 스케줄 자체 + 라우트의 `isWithinKisCallWindow`
+   가드(평일 09:00~18:40 밖이면 no-op 200). 우회는 `?force=true` + CRON_SECRET 수동
+   트리거 한정.
 
 ---
 
-## 7. 클라이언트 컴포넌트 분리 (Recharts + RSC)
+## 4. 데이터 흐름
 
-### 7.1 제약
-
-| 제약 | 설명 |
-|------|------|
-| Recharts | DOM/SVG 의존 → **Client Component 필수** |
-| RSC | `fetch`·`process.env` 서버 전용 |
-| React 19 | `recharts` 2.13+ 및 `react-is` 버전 정합 (peer) |
-
-### 7.2 권장 컴포넌트 트리
+### 4.1 시세 갱신 잡 (핵심 파이프라인)
 
 ```
-app/page.tsx                          [Server]
-└── IndexDashboard                    [Server]
-    ├── AppHeader / IndexSummaryCards [Server] — CSS Modules
-    │     ├── IndexCard (KOSPI)       [Server] — 숫자 .numeric
-    │     └── IndexCard (KOSDAQ)      [Server]
-    ├── IndexChartsSection            [Server] — 섹션 레이아웃만
-    │     ├── IndexLineChart          [Client] ← Recharts
-    │     └── IndexLineChart          [Client]
-    └── DataAsOfFooter                [Server] — asOf, API 지연 안내
+QStash 스케줄 4개 (평일 09:00~15:30 10분 간격 / 15:40 / 18:15 KST)
+  → POST /api/jobs/refresh-market-data
+      ① verifyJobRequest: QStash 서명 → CRON_SECRET Bearer 폴백 (실패 401)
+      ② isWithinKisCallWindow 가드 (밖이면 no-op 200; manual+?force=true만 우회)
+  → refreshMarketData(trigger)  [lib/jobs/refreshMarketData.ts]
+      1. refreshIndices: KIS 5종 병렬(allSettled) → market:detail:{kospi|kosdaq|usdkrw|us10y|oil}
+         (snapshot + history 7일 + dailyRows, 매퍼: kisMapper / kisOverseasMapper)
+      2. KOSPI 원본 응답 재사용 → computeVolatilityRecords → kospiVolatility:history upsert
+      3. 전체 허용 이메일의 holdings + watchlist 조회 → 종목코드 union·중복 제거
+      4. refreshStocks: 종목별 순차(유량 제한) —
+         현재가 스냅샷 → market:stock:{code}
+         + 확정 회차(KST 15:35 이후: 15:40·18:15)면 종가 히스토리 갱신·정보 블록 갱신
+         + 신규 종목이면 즉시 2년 백필 / 정보 블록 최초 생성
+         (시총 랭킹은 회차당 1회 지연 조회)
+      5. fillMissingNames: 종목명 빈 항목 → fetchKisStockName → holdings/watchlist 저장
+      6. fillRegistrationPrices: 관심종목 기준가 확정 — KIS 호출 없이
+         stock:{code}:history에서 registeredAt 이하 마지막 종가. 잠정(직전 거래일)
+         확정은 이후 회차에 당일 종가로 승격 재확인. 멱등
+      7. refreshPortfolios: 이메일별 평가 → holdings:{email}:history 오늘 upsert
+         (스냅샷 하나라도 없으면 과소 집계 방지 위해 그 사용자 skip)
+      8. tradingDay 판정(KOSPI basDt == KST 오늘) → 알림 훅 evaluateAlertsHook
+         (Phase 10 예정, 현재 no-op. 휴장일 skip, 실패해도 200)
+      9. 전부 성공 시 market:lastRefreshAt 기록
+  → 응답: report (데이터 갱신 실패 시 500 → QStash 재시도)
 ```
 
-**데이터 전달 규칙**
-
-- Server → Client: **plain object/array만** (JSON serializable).
-- Client에서 **재-fetch 금지**(Phase 1) — 키·캐시 정책 단순화.
-- 차트 interactivity(툴팁)만 클라이언트.
-
-### 7.3 Client 차트 컴포넌트 패턴
-
-**패턴 A — `'use client'` + 직접 import (권장, 단순)**
-
-```tsx
-// IndexLineChart.tsx — 스케치
-"use client";
-
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer } from "recharts";
-import type { IndexSeries } from "@/types/indices";
-
-export function IndexLineChart({ series }: { series: IndexSeries }) {
-  return (
-    <ResponsiveContainer width="100%" height={200}>
-      <LineChart data={series.points}>{/* ... */}</LineChart>
-    </ResponsiveContainer>
-  );
-}
-```
-
-**패턴 B — `next/dynamic` + `ssr: false`**
-
-- Recharts 전체를 dynamic 로드해 **hydration mismatch** 방지.
-- React 19 + Next 16에서 이슈 시 B 적용.
-
-```tsx
-// IndexChartsSection.tsx (Server) — 스케치
-import dynamic from "next/dynamic";
-
-const IndexLineChart = dynamic(
-  () => import("./IndexLineChart").then((m) => m.IndexLineChart),
-  { ssr: false, loading: () => <p>차트 로딩 중…</p> }
-);
-```
-
-**권장:** 먼저 **패턴 A** 시도 → 빌드/하이드레이션 오류 시 **B**로 전환.
-
-### 7.4 Server / Client 경계 체크리스트
-
-| 컴포넌트 | 유형 | 이유 |
-|----------|------|------|
-| `app/page.tsx` | Server | `getDashboardData()` |
-| `IndexDashboard` | Server | 조립·SEO |
-| `IndexCard` | Server | 정적 숫자·CSS Modules |
-| `IndexLineChart` | **Client** | Recharts |
-| `IndexChartsSection` | Server (A) 또는 Client wrapper (B) | dynamic 사용 시 |
-| API lib / mapper | Server only | env·fetch |
-
-### 7.5 Recharts 설치 시 (구현 단계 참고)
-
-```bash
-npm install recharts
-```
-
-- `react-is`가 React 19와 맞는지 `npm ls react-is` 확인.
-- 문제 시 `package.json` `overrides`로 `react-is` 버전 정렬 (Recharts 이슈 #5146 참고).
-
----
-
-## 8. 스타일링 (CSS Modules) — 대시보드 적용
-
-Tailwind 없이 진행. `research.md`(이전 jusik 계획)와 동일하게:
-
-| 계층 | 파일 | 용도 |
-|------|------|------|
-| 토큰 | `src/styles/tokens.css` | `--color-rise` `#f04452`, `--color-fall` `#3182f6`, 배경 `#f2f4f6` |
-| 전역 | `globals.css` | `.numeric { font-variant-numeric: tabular-nums; }` |
-| 카드 | `IndexCard.module.css` | surface, radius 16px |
-| 차트 | `IndexLineChart.module.css` | 높이, 패딩 (Recharts wrapper) |
-
-지수 색: **상승 빨강 / 하락 파랑** — 한국 주식 UI 관례. Recharts `<Line stroke={...} />`에 CSS 변수 연동은 Client에서 `getComputedStyle` 또는 토큰 hex를 props로 전달.
-
----
-
-## 9. 제안 디렉터리 구조 (구현 시)
-
-> ⚠️ `lib/api/data-go-kr/` 관련 경로는 삭제됨 (KIS API로 전환, `plan.md` Phase 5 참고). 아래는 원안 당시 제안 구조를 그대로 보존한 것이다.
+### 4.2 핫종목 갱신 잡
 
 ```
-src/
-├── app/
-│   ├── page.tsx
-│   ├── page.module.css
-│   ├── layout.tsx
-│   └── api/
-│       └── cron/revalidate-indices/route.ts   # (선택) — 삭제됨, plan.md §4.7 참고
-├── components/
-│   └── indices/
-│       ├── IndexDashboard.tsx
-│       ├── IndexCard.tsx
-│       ├── IndexCard.module.css
-│       ├── IndexChartsSection.tsx
-│       ├── IndexLineChart.tsx                 # 'use client'
-│       └── IndexLineChart.module.css
-├── lib/
-│   ├── api/data-go-kr/                        # 삭제됨 — KIS API(lib/api/kis/)로 대체
-│   │   ├── client.ts
-│   │   ├── types.ts
-│   │   └── normalize.ts
-│   └── indices/
-│       ├── mapper.ts                          # 삭제됨 — 유틸은 kisMapper.ts로 이관
-│       ├── getDashboard.ts
-│       └── dates.ts                           # 영업일 7개 계산
-├── types/
-│   └── indices.ts
-└── styles/
-    └── tokens.css
+QStash 스케줄 (매월 1~7일 10:35 KST) → POST /api/jobs/refresh-hot-stocks
+  (인증·시간창 가드 동일)
+  → refreshHotStocks(trigger)  [lib/jobs/refreshHotStocks.ts]
+      완료 가드: market:hotStocks.computedFor == 기준월(전월)이면 no-op
+      → fetchHotStockUniverse: 마스터 zip 2종 다운로드·파싱 (~2,650종목, 코드 오름차순)
+      → market:hotStocks:progress 있으면 커서 이어받기 (같은 기준월만 유효)
+      → 종목별: 월봉 1콜(M-13월초~M월말) → 구간 4종(1m/3m/6m/12m) 수익률 후보 제출
+         (온라인 선택으로 구간별 상위 100만 유지, 초당 15콜 스로틀, 1회 재시도,
+          연속 10실패 시 progress 저장 후 중단·500)
+      → 시간 예산 250초 소진 시 progress 저장 후 종료 (다음 날 스케줄이 이어받음)
+      → 완주 시 market:hotStocks 저장 + progress 삭제
 ```
 
----
+### 4.3 화면 읽기 경로 (전부 Redis만)
 
-## 10. 리스크 및 오픈 이슈
+페이지가 부르는 내부 REST API는 없다 — Route Handler는 auth·잡 2종뿐이고, 모든
+페이지는 Server Component에서 lib 함수를 직접 호출한다.
 
-| ID | 이슈 | 완화 |
-|----|------|------|
-| R1 | API URL/필드명 가이드와 불일치 | 활용 가이드 PDF 기준 단일 소스 |
-| R2 | 15:30 vs T+1 13:00 기대치 gap | UI 문구 + 14:00 cron |
-| R3 | `item` 단일/배열 | `ensureItemsArray` |
-| R4 | Recharts × React 19 | 버전·dynamic ssr:false |
-| R5 | 7일 × 2지수 트래픽 | 캐시·병렬 1일 1회 갱신 |
-| R6 | 지수명 변경(2024.12) | `idxNm` 가이드 확인 |
-| R7 | 개발 모드 캐시 착시 | production build로 revalidate 검증 |
+- **홈** `app/page.tsx`: `getDashboardData`(detail 5종 MGET) + 카드 요약 4종 +
+  `getLastRefreshRecord` 병렬 → staleness 배지 판정 → `IndexDashboard`.
+- **지표 상세**: `IndexDetailScreen` → `getIndexDetail`/`getOverseasDetail` → detail 1건.
+- **보유종목**: `getHoldings`(복호화) → `getPortfolioValuation`(`market:stock:*` MGET) +
+  `getPortfolioHistory`. 상세는 + `getStockInfo`(스냅샷+정보 블록 조합) + `getStockHistory`.
+- **관심종목**: `getWatchlist` + `getStockSnapshots` + `computeWatchReturnRate`.
+  상세는 보유종목 상세와 동일 구성에 기준가 대비 차트.
+- **핫종목**: `getHotStocks` 통짜 1건 → `?period` 탭으로 구간 선택 (검증: 알 수 없는 값→1m).
+- **변동성**: `getVolatilityHistory` → `aggregateMonthlyAverages`(최근 6개월).
 
----
+### 4.4 사용자 쓰기 경로 (Server Actions)
 
-## 11. 구현 순서 제안 (승인 후)
-
-1. env + `lib/api/data-go-kr/client` + raw fetch 검증 (콘솔/일시 route)  
-2. `types` + `mapper` + `getDashboardData` + revalidate/tag  
-3. Server UI (카드, footer) + tokens/CSS Modules  
-4. `recharts` + `IndexLineChart` (Client)  
-5. (선택) Cron `revalidateTag`  
-6. production에서 갱신 시각·캐시 hit QA  
-
----
-
-## 12. 참고 링크
-
-| 자료 | URL |
-|------|-----|
-| 금융위원회 지수시세정보 | https://www.data.go.kr/data/15094807/openapi.do |
-| Next.js fetch / revalidate | `node_modules/next/dist/docs/01-app/03-api-reference/04-functions/fetch.md` |
-| Caching (Previous Model) | `node_modules/next/dist/docs/01-app/02-guides/caching-without-cache-components.md` |
-| Recharts + Next 이슈 | https://github.com/recharts/recharts/issues/5146 |
+- `holdings/actions.ts`·`watchlist/actions.ts`: `requireEmail`(세션+허용 검사, 실패
+  redirect `/login`) → 형식 검증(실패 시 `?error=코드` redirect, page의 ERROR_MESSAGES
+  맵이 표시) → store 저장(암호화) → `revalidatePath` → redirect.
+- 검증 규칙: 종목코드 `^\d{6}$` · 수량 양의 정수 · 총 매입금액 > 0 · 관심종목 기준일은
+  오늘 이하 & 최근 2년(`STOCK_HISTORY_WINDOW_DAYS`) 이내(히스토리 범위 밖은 기준가
+  확정 불가라 등록 차단) · 동일 종목 중복 등록 차단.
+- 관심종목 기준일 변경 시 `priceAtRegistration`/`priceBasisDate`를 null로 리셋 →
+  다음 회차에 잡이 재확정.
 
 ---
 
-## 13. 결론
+## 5. Redis 키 맵
 
-- **보안:** 공공 API 키는 **서버 데이터 레이어**에만 두고, **Server Component에서 직접 fetch**하는 구조를 1차로 채택한다. BFF Route Handler는 크론·클라이언트 갱신이 필요해질 때 추가한다.  
-- **갱신:** `revalidate: 86400` + **`indices` 태그** + **평일 14:00 KST cron `revalidateTag`** 조합이 공공 API 실제 반영 주기와 가장 잘 맞는다. 15:30만으로는 **데이터가 아직 갱신되지 않을 수 있음**을 명시한다.  
-- **매퍼:** `items.item` 정규화 → `IndexSnapshot` / `IndexChartPoint[]` → Recharts `data` 배열.  
-- **UI:** fetch·매핑은 Server, **Recharts만 Client**로 분리하고 직렬화된 props를 넘긴다.
+| 키 | 값 | 암호화 | 쓰기 주체 | 읽기 주체 |
+|---|---|---|---|---|
+| `market:detail:{kospi\|kosdaq\|usdkrw\|us10y\|oil}` | `StoredMarketDetail` (snapshot+history+dailyRows+fetchedAt) | ✕ | 시세 잡 | 홈·지표 상세·시장 |
+| `market:stock:{code}` | `StoredStockSnapshot` (price·changeRate·marketName·raw 전체·fetchedAt) | ✕ | 시세 잡 | 평가·관심종목·상세 |
+| `market:stockInfo:{code}` | `StoredStockInfoBlocks` (순위·배당·실적) | ✕ | 시세 잡(확정 회차/신규) | `getStockInfo` |
+| `market:lastRefreshAt` | `LastRefreshRecord` (at·trigger·ok) | ✕ | 시세 잡(전부 성공 시) | 홈 배지·각 페이지 「마지막 갱신」 |
+| `stock:{code}:history` | `StockDailyPrice[]` 2년 (날짜 오름차순) | ✕ | 시세 잡(백필/확정 갱신) | 상세 차트·기준가 확정 |
+| `kospiVolatility:history` | `KospiVolatilityRecord[]` | ✕ | 시세 잡 | 변동성 카드·상세 |
+| `market:hotStocks` | `StoredHotStocks` (구간 4종 TOP 100) | ✕ | 핫종목 잡 | 핫종목 카드·페이지 |
+| `market:hotStocks:progress` | `HotStocksProgress` (커서) | ✕ | 핫종목 잡 (완료 시 삭제) | 핫종목 잡 |
+| `holdings:{email}` | `Holding[]` | **○** | Server Action + 잡(종목명 채움) | 보유종목 화면·잡 |
+| `holdings:{email}:history` | `PortfolioDailyRecord[]` | **○** | 시세 잡 | 보유종목 화면 |
+| `watchlist:{email}` | `WatchItem[]` | **○** | Server Action + 잡(종목명·기준가) | 관심종목 화면·잡 |
+| `kis:access_token` (+`:lock`) | 토큰 캐시 (TTL=만료 시각) | ✕ | KIS auth | KIS auth |
 
-본 문서는 `plan.md` 작성 및 구현 승인 전 **기술 의사결정의 기준 문서**로 사용한다.
-
----
-
-## 14. KIS API 마이그레이션 리서치 (추가, 2026-07-03)
-
-> §14는 실제 구현이 코드베이스에 선반영된 뒤 사후 문서화한 내용이다. §1~13(공공데이터포털 기반 원안)은 초기 리서치 기록으로 유지하고, 데이터 소스는 이후 한국투자증권(KIS) Open API로 전환되었다.
-
-### 14.1 전환 배경
-
-- 원안(§3)의 금융위원회 지수시세정보 API 대비, KIS Open API는 준실시간(약 10분 간격) 시세를 제공해 「15:30 이후 갱신」 기대치 격차(R2, §5.2, §10)를 줄일 수 있다.
-- 코드베이스에 `src/lib/api/kis/`(`auth.ts`, `client.ts`, `constants.ts`, `types.ts`), `src/lib/indices/kisMapper.ts`가 이미 구현되어 있고, `getDashboard.ts`가 KIS 경로로 완전히 전환되어 있다.
-- `src/lib/api/data-go-kr/`, `src/lib/indices/mapper.ts`(data-go-kr 전용 함수)는 레거시로 남아 있으며 사용 여부·정리 방향은 미확정 → `plan.md` Phase 5로 등록.
-
-### 14.2 KIS Open API 개요
-
-| 항목 | 내용 |
-|------|------|
-| Base URL | `https://openapi.koreainvestment.com:9443` (`KIS_BASE_URL` env로 override 가능) |
-| 인증 | OAuth2 client_credentials, `POST /oauth2/tokenP` |
-| 시세 조회 | `GET /uapi/domestic-stock/v1/quotations/inquire-index-daily-price` (TR_ID `FHPUP02120000`) |
-| 지수 코드 | KOSPI `0001`, KOSDAQ `1001` (업종 시장분류 코드 `U`) |
-| 응답 구조 | `output1`(당일 요약 스냅샷) + `output2`(일자별 배열, 최신순) |
-| 캐시 정책 | fetch 레벨 `revalidate: 600s` + `unstable_cache` 이중 캐시 (§5.3 전략 1+3과 동일 패턴) |
-
-### 14.3 토큰 발급 제약 (실측, 2026-07-03)
-
-- 토큰 발급 엔드포인트는 **1분당 1회** 제한이며, 초과 시 `error_code: EGW00133`("접근토큰 발급 잠시 후 다시 시도하세요")로 거부된다. 로컬 검증 중 연속 스크립트 실행으로 실제 재현됨.
-- 현재 구현(`src/lib/api/kis/auth.ts`)은 **모듈 메모리**에 토큰을 캐시(`cachedToken` + `inflight` 프로미스로 동시 요청 합류)한다. 단일 프로세스 내에서는 안전하지만, **서버리스 다중 인스턴스 환경(Vercel)에서는 인스턴스마다 캐시가 별도로 초기화**되어 트래픽 증가 시 인스턴스 수만큼 토큰 발급이 분산 발생 → 1분당 1회 제한에 걸릴 위험이 커진다.
-- `auth.ts` 코드 내 기존 NOTE 주석에 "Vercel KV / Upstash Redis 등 외부 저장소 캐시로 교체 검토"가 이미 언급되어 있었으나 계획 문서에는 미반영 상태였다 → `plan.md` Phase 6으로 정식 등록.
-
-### 14.4 외부 저장소 캐시 옵션 비교
-
-| 옵션 | 장점 | 단점 |
-|------|------|------|
-| **Vercel KV**(Upstash 기반 Redis) | Vercel 프로젝트에 통합, 대시보드에서 즉시 프로비저닝 | Vercel 플랫폼 종속 |
-| **Upstash Redis**(직접 연동) | REST API로 Edge/서버리스 모두 호환, 배포처 종속 없음 | 별도 계정·키 관리 필요 |
-| 유지(모듈 메모리) | 변경 없음 | 인스턴스별 분산 발급 지속, 스케일 시 rate limit 리스크 |
-
-**권고:** Upstash Redis(REST API 방식)를 우선 검토한다 — 현재 Vercel 배포와 호환되면서도 특정 플랫폼에 종속되지 않는다. 상세 구현 순서는 `plan.md` Phase 6 참고.
+- 이메일 키는 항상 `normalizeEmail`(trim+lowercase) 후 사용.
+- 공용 시세는 비암호화(사용자 무관 공개 데이터), 개인 데이터 3키만 `enc:v1:` 암호화.
+- `holdings:{email}`은 레거시 평문 배열·`avgPrice` 모델 읽기 하위호환이 있고, 다음
+  저장 시 자연 마이그레이션된다. watchlist는 신규 키라 하위호환 없음.
 
 ---
 
-*문서 버전: 2.0 · 국내 지수 대시보드 / 공공 API 연동 리서치*
+## 6. 재사용 가능한 기존 자산 카탈로그
+
+새 기능 구현 전 반드시 여기서 먼저 찾는다. 같은 성격의 코드를 새로 만들면 안 된다.
+
+### 6.1 데이터·계산 유틸
+
+- `parseNum` (kisMapper) — KIS 문자열 숫자→number(비정상 0). *주의: `stockInfo.ts`의
+  `toNumber`는 비정상 시 null 반환으로 의미가 다름 — 0이 유효값인 문맥에선 toNumber 계열.*
+- `applyKisSign` — KIS 부호 코드(1~5)→부호 있는 숫자. 전일 대비 다룰 때 필수.
+- `resolveDirection` — 등락값→`rise|fall|flat` (CSS 클래스명과 1:1).
+- `todayKstDate` (date/kst) — KST 오늘 "YYYY-MM-DD".
+- `ensureAllowedSession` — 페이지 접근 가드. `requireEmail` 패턴 — 액션 가드.
+- `encryptJson`/`decryptJson`/`isEncrypted` — 개인 데이터 저장 시 필수.
+- `getStockSnapshots`/`getMarketDetails` — MGET 일괄 조회 (개별 GET 반복 금지).
+- `computeWatchReturnRate`, `computeDailyChangeRate`, `latestRecordBefore`,
+  `getPortfolioValuation` — 수익률·평가 계산은 이들 재사용.
+- `addMonths`/`baseMonthKst`/`monthStartYyyyMmDd`/`monthEndYyyyMmDd` (hotstocks/months) —
+  월 단위 계산 공용.
+- `resolveStaleness`/`isWithinKisCallWindow`/`isWithinBadgeWindow` (market/staleness).
+- `verifyJobRequest` — 새 잡 라우트를 만들면 반드시 이걸로 인증 (신설 시 3곳 동기화 — §8.13).
+- `getLastRefreshRecord().catch(() => null)` — 「마지막 갱신」 표기는 이 실패 격리
+  패턴으로 통일 (여러 페이지에서 반복되는 관례).
+
+### 6.2 표시 포맷 (`lib/format/*`)
+
+- `formatIndex` — 지수 소수 2자리. `formatKrw` — "12,345원". `formatAvgPrice` —
+  총액÷수량 버림 2자리. `formatEokwon` — 억원→"356조 6,867억원". `formatKrwAbbrev` —
+  차트 y축 M/B. `formatChangeAmount`/`formatChangeRate`/`formatChange`/
+  `formatPercentPoint` — 등락 표기(+부호). `formatKstDateTime` — 「마지막 갱신」 표기.
+  `formatBasDtDisplay`(2026.06.01) / `formatBasDtLabel`(06/01, kisMapper에 위치).
+  `formatRatio`(StockInfoBlocks에서 export) — PER/PBR 등.
+  `formatMonthDisplay`/`formatMonthRangeDisplay` (hotstocks/months).
+
+### 6.3 타입
+
+- `types/indices.ts` — `IndicatorId`(=`MarketIndex`|`OverseasIndicator`),
+  `IndexSnapshot`/`IndexSeries`/`IndexDailyRow`/`IndexDetailData`/`IndexDashboardData`,
+  `PriceDirection`, 변동성 3종, `KIS_DATA_NOTICE`, `INDICATOR_NAMES`.
+- `types/holdings.ts` — `Holding`(totalCost 모델), `PortfolioDailyRecord`,
+  `HoldingValuation`/`PortfolioValuation`, `HoldingsCardSummary`.
+- `types/watchlist.ts` — `WatchItem` (priceAtRegistration/priceBasisDate 잠정·확정 모델).
+- store별 Stored* 타입은 각 store 파일에서 export (market/store, hotstocks/store).
+
+### 6.4 UI 패턴
+
+- **Recharts는 3단 래핑 고정**: Server page → `*ChartClient`(`'use client'` +
+  `dynamic(ssr:false)` + 스켈레톤) → 실제 차트 컴포넌트. 새 차트도 이 패턴.
+- 차트 색·축은 CSS 변수(`var(--chart-stroke-kospi)` 등) 사용 — 하드코딩 금지.
+- 홈 카드는 `SummaryCard` 프리미티브 재사용 (특수 레이아웃만 HotStocksCard처럼 별도).
+- 페이지 헤더 규격: `NavIconLink`(home/back) + `h1.title` + `span.lastRefresh`.
+- 숫자는 `.numeric` 클래스, 등락 색은 `styles[resolveDirection(x)]` — 새 화면의 CSS
+  Module에도 `.rise/.fall/.flat` 클래스가 있어야 한다.
+- **신규 단일 지표 상세 화면은 `IndexDetailScreen`(market 프로프) 패턴 재사용이 1순위.**
+- 폼 오류는 `?error=코드` redirect + page의 `ERROR_MESSAGES` 맵 + `role="alert"` 배너.
+- 접기 폼은 `<details open={오류 시}>` 패턴 (holdings·watchlist 추가 폼).
+- 페이지 골격 CSS 클래스명 관례: `page > container > header/section/footer` +
+  `sectionTitle`·`emptyNotice`·`notice` (페이지마다 `page.module.css` 1:1).
+
+---
+
+## 7. 인증·보안 구조
+
+### 7.1 사용자 인증 (Auth.js + 화이트리스트 2단)
+
+- `src/auth.ts`: Google Provider만, `trustHost: true`. **로그인 자체는 모든 Google
+  계정 허용** — 접근 가부는 page 레벨에서 판단 (access-denied 화면을 보여주기 위한
+  의도된 설계).
+- `src/proxy.ts`(미들웨어): 세션 쿠키 존재만 낙관적 검사, 없으면 `/login` redirect.
+  matcher가 `api/auth`, 잡 라우트 2종, 정적 자산을 제외.
+- page 레벨: 홈은 직접 검사(허용 외→access-denied 화면 렌더), 나머지 페이지는
+  `ensureAllowedSession()`(허용 외→`/` redirect). Server Action은 `requireEmail`.
+
+### 7.2 잡 엔드포인트 인증 (`verifyJobRequest`)
+
+- ① QStash `Upstash-Signature` JWT 검증 (Receiver, 서명·본문 해시·만료만 — URL claim은
+  프록시 편차로 검증 제외) → ② 실패 시 `CRON_SECRET` Bearer 폴백(`timingSafeEqual`
+  타이밍 공격 방지). 반환값 `"qstash" | "manual" | null`이 trigger 문자열이자 force
+  권한 판단 기준(`manual`만 `?force=true` 허용).
+
+### 7.3 개인 데이터 암호화 (`secureJson`)
+
+- AES-256-GCM, `enc:v1:{iv}:{tag}:{ct}` base64. IV 매회 랜덤 12바이트. 복호화 실패는
+  **throw** (조용한 빈 값 반환 금지 — plan.md §12.3). 버전 프리픽스로 키 로테이션(v2) 대비.
+
+### 7.4 KIS 토큰 발급·캐싱 (`api/kis/auth.ts`) — 3중 동시성 제어
+
+1. Redis 캐시 (`kis:access_token`, TTL=만료 시각, 만료 60초 전 갱신) — 다중 인스턴스 공유.
+2. 같은 인스턴스 동시 요청은 `inflight` 프로미스 합류.
+3. 인스턴스 간 동시 발급은 `SET NX PX 10s` 분산 락 — 락 미점유 시 250ms×20회 폴링으로
+   피어가 써준 토큰 대기. KIS 토큰 발급은 1초 1건 제한이라 이 구조가 필수.
+
+### 7.5 기타
+
+- KIS 키·Redis 토큰 등 전부 서버 전용 env. 클라이언트에서 외부 API 직접 호출 없음.
+- `dangerouslySetInnerHTML`은 layout.tsx 테마 스크립트 1곳 — 정적 문자열 상수라 안전.
+- 사용자 입력 렌더링은 React 기본 이스케이프에 의존 (위험 패턴 없음).
+
+---
+
+## 8. 화면 간 겹치는·중복된 로직 (수정 시 주의, 리팩터링 후보)
+
+새 작업이 아래 항목을 건드리면 **모든 사본을 함께** 고치거나, 공용화를 먼저 검토한다.
+
+1. **KST 변환 `new Date(now + 9*60*60*1000)` + getUTC\* 패턴 5곳** — `date/kst.ts`,
+   `market/staleness.ts`, `hotstocks/months.ts`, `refreshMarketData.isConfirmedRound`,
+   `kis/client.ts kstYyyyMmDd`. 공용 헬퍼는 `todayKstDate` 하나뿐이고 나머지는 인라인.
+   *참고: `todayKstDate`는 `date/kst`가 정본이고 `holdings/store`가 re-export — import
+   경로가 2개지만 실체는 동일 (실측 확인).*
+2. **`kstYyyyMmDd(daysAgo)` 함수가 문자 그대로 중복** — `kis/client.ts`와
+   `holdings/stockInfo.ts`에 동일 구현 2벌.
+3. **"YYYYMMDD"→"YYYY-MM-DD" 변환(`toIsoDate`) 3벌** — `stockInfo.ts`(형식 검사 포함),
+   `volatility.ts`(검사 없음), `stockHistory.parseChartRows` 인라인.
+4. **날짜 더하기 헬퍼 2벌** — `stockHistory.addDaysYyyyMmDd`(YYYYMMDD)와
+   `watchlist/actions.addDaysIsoDate`(ISO). 같은 목적, 포맷만 다름.
+5. **전월 계산 2벌** — `volatility.previousMonth`는 `hotstocks/months.addMonths(m, -1)`과
+   동일 기능. `stockInfo.previousQuarterYymm`도 유사 계열(분기 단위).
+6. **수익률 계산식 `(현재-기준)/기준*100` 인라인 반복** — `valuation.ts`(정본),
+   holdings page 일별 리스트·chartPoints, holdings 상세 chartPoints, watchlist 상세
+   chartPoints, `computeWatchReturnRate`. 산식 정책이 바뀌면 전부 손봐야 한다.
+7. **Server Action 보일러플레이트 중복** — `requireEmail`/`fail`이 holdings·watchlist
+   actions.ts에 각각 정의. ERROR_MESSAGES 맵도 page마다 부분 중복.
+8. **`getIndexDetail`과 `getOverseasDetail`이 사실상 동일 코드** — 타입 시그니처만 다름.
+   `INDICATOR_TO_DETAIL_KEY`가 이미 IndicatorId 전체를 커버하므로 통합 가능.
+9. **`normalizeEmail` 2벌** (holdings/store, watchlist/store), **`sleep` 2벌**
+   (kis/auth, refreshHotStocks), **`errorMessage` 헬퍼** (refreshMarketData 로컬).
+10. **「가장 오래된 fetchedAt 선택」 로직 3곳** — `getDashboard.asOf`, 홈 page의
+    marketFetchedAt, market page의 oldestFetchedAt (전부 `.sort()[0]` 패턴). 또한
+    staleness 판정 자체도 홈 `resolveStaleness`(장중 시간창)와 핫종목
+    `isHotStocksStale`(기준월)로 이원화되어 있다.
+11. **관심종목 잠정 기준가 판정식 `priceBasisDate < registeredAt` 3곳** —
+    `fillRegistrationPrices`(needsFill), watchlist page, watchlist 상세 page.
+12. **차트 축·그리드·툴팁 Recharts 설정** — IndexLineChart/VolatilityChart/HoldingsChart
+    3곳에 유사 코드 (tick 스타일·margin 등). 디자인 변경 시 3곳 동시 수정.
+13. **잡 라우트 신설 시 3곳 동기화** — 새 `/api/jobs/*`는 ① `proxy.ts` matcher 제외
+    추가, ② `verifyJobRequest`+`isWithinKisCallWindow` 가드 재사용, ③ QStash 스케줄
+    등록이 세트다. 기존 잡에 로직을 얹을 수 있으면 신설하지 않는 편이 구조에 맞다.
+14. **chartPoints 매핑 3벌** — `{ fullDate, date: slice(5).replace("-","/"), totalValue,
+    returnRate }` 변환이 holdings 목록·상세, watchlist 상세에서 거의 동일하게 반복 —
+    새 차트 화면 추가 시 4번째 사본이 생기기 쉽다 (§8.6 수익률 산식 반복과 같은 지점).
+
+---
+
+## 9. 특이사항·제약사항
+
+### 9.1 문서·헌법과 코드의 불일치
+
+- **AGENTS.md(헌법) §2가 여전히 공공데이터포털**(`DATA_GO_KR_SERVICE_KEY`,
+  `ensureItemsArray`) 기준으로 쓰여 있으나, 코드는 Phase 5에서 KIS로 완전 이관되어
+  **해당 키·함수·`lib/api/data-go-kr/`가 존재하지 않는다.** 취지(서버 전용 키·클라이언트
+  직접 호출 금지·응답 정규화)는 KIS 코드에 동일하게 적용되어 있다. 헌법 갱신은 별도
+  승인 사항.
+- plan.md 전반부(§1~5)도 공공데이터포털 시절 설계라 현재 코드와 다르다. **현행 구조는
+  §9(Phase 9) 이후 절이 정본**이다.
+- `layout.tsx` 루트 metadata description에도 "공공데이터포털" 문구가 남아 있다
+  (실측 2026-07-12). metadata를 만지는 작업에서 함께 정리 후보.
+
+### 9.2 레거시·미사용 코드 (실측 grep 확인, 2026-07-12)
+
+- `lib/indices/dates.ts`(`getLast7BusinessDates`) — 어디서도 import되지 않음.
+- `KIS_ENDPOINTS.INDEX_PRICE` / `KIS_TR_ID.INDEX_PRICE` — 미사용 (일자별 조회로 대체).
+- `KIS_MARKET_CAP_RANKING_SIZE` 상수 — 미사용 (라벨 문자열 "30위권 밖"에 하드코딩).
+
+### 9.3 KIS API 실측 기반 제약 (코드 주석에 박제된 것들)
+
+- 현재가 응답(FHKST01010100)에 **종목명이 없다** → 종목명은 별도 CTPF1002R로 채움.
+- 손익계산서 값은 **연중 누적(YTD)** → 분기 단독값은 직전 분기 차감(12월 결산 가정).
+- 배당 주당배당금 0원은 **미확정 회차** → 확정분만 집계.
+- 기간별시세 1회 최대 100행. 월봉은 진행 중인 달 미포함(FID_INPUT_DATE_2 월말 지정 시).
+- OIL은 `N/WTIF`만 사용 — `S/M0401` 계열은 output2가 비어 응답 (사용 금지).
+- 종목 마스터 파일 그룹코드 오프셋은 `tail[1:3]` — **공식 파이썬 샘플([0:2])과 1바이트
+  다름** (2026-07-11 원시 바이트 실측 우선).
+- 시총 랭킹은 1회 상위 30건 → 밖이면 "30위권 밖" 라벨.
+- KIS 문자열 숫자·부호 코드는 반드시 `parseNum`+`applyKisSign` 경유.
+
+### 9.4 시간·스케줄 규칙
+
+- KIS 호출 허용 창: **KST 평일 09:00~18:40** (`isWithinKisCallWindow`). 배지 판정 창은
+  ~18:20. 확정 회차 판정은 **KST 15:35 이후** (`isConfirmedRound`).
+- 공휴일은 미반영 — 휴장일 감지는 basDt ≠ KST 오늘 (tradingDay=false → 알림만 skip,
+  데이터 갱신은 수행).
+- 핫종목 기준월 = 실행 시점 KST의 **전월**(직전 완결 월). 구간 라벨은 "최근 …"으로 통일
+  ("1분기"·"상반기" 같은 고정 명칭 금지 — 사용자 확정).
+- QStash는 응답 200이어야 재시도 안 함 — 시간창 밖 skip은 200, 데이터 실패는 500(재시도
+  유도), 알림 실패는 200.
+
+### 9.5 도메인 모델 주의점
+
+- Holding은 **totalCost 모델** — 평균 매입가는 저장하지 않고 표시 시 `formatAvgPrice`로
+  계산. 레거시 avgPrice 항목은 읽기 시 역산.
+- WatchItem 기준가는 **잠정→확정 2단계** — `priceBasisDate < registeredAt`이면 잠정
+  (직전 거래일 종가), 이후 회차가 당일 종가 생성 여부를 재확인해 승격.
+- 등록 직후 종목명은 빈 문자열 — 화면은 `name || symbolCode`로 표시.
+- 상세 페이지는 종목코드 단위 — 동일 종목 중복 등록을 액션에서 차단. `[symbolCode]`
+  페이지는 6자리 형식 검증 → 소유/등록 목록 필터 → 없으면 목록으로 redirect.
+  **임의 종목(미보유·미등록) 상세 조회 기능은 현재 없다** — 신규 요구가 이를 필요로
+  하면 plan.md 작성 전에 확인.
+- 포트폴리오 히스토리 upsert는 스냅샷이 하나라도 없으면 그 사용자 전체 skip (과소 집계 방지).
+- 홈 `getDashboardData`는 필수 4종(kospi·kosdaq·usdkrw·us10y) 없으면 throw, **oil만
+  null 허용** (Phase 15 추가 키 — 새 지표 추가 시 같은 전략 참고).
+- 알림(Web Push)은 **Phase 10 미구현** — `evaluateAlertsHook`이 연결 지점(no-op).
+  `StoredStockSnapshot.changeRate`/`marketName`은 이 알림 조건용으로 미리 저장 중.
+
+### 9.6 프런트 규칙
+
+- Tailwind 금지, CSS Modules + `tokens.css` 토큰. 등락색은 rise=빨강/fall=파랑 (한국식).
+- Client Component는 차트 셸 3종 + ThemeToggle뿐 — 새 인터랙션도 최소 Client 원칙.
+- 테마는 `data-theme` 속성 + localStorage(`jusik-theme`), FOUC 방지 인라인 스크립트.
+- 레이아웃 max-width 480px 모바일 우선 (`--layout-max-width`).
+- `params`/`searchParams`는 Promise — Next 16 규약대로 항상 `await` 후 사용. 검증 실패
+  값은 redirect 또는 기본값 폴백(핫종목 `resolvePeriod` 참고).
+
+---
+
+## 10. plan.md 연계 방법
+
+- plan.md의 현행 정본은 Phase 9~16 절(§9 이후). 새 Phase 계획 작성 시:
+  1. 관련 파일·데이터 흐름을 본 문서 §2·§4·§5에서 확인하고 계획에 파일 경로를 명시한다.
+  2. 재사용 자산(§6)에 있는 것은 "재사용"으로 명시하고 새로 만들지 않는다.
+  3. §8 중복 목록에 걸리는 로직을 수정하는 계획이면 영향받는 사본 전부를 계획에 적는다.
+  4. §9 제약(시간창·멱등·실패 격리·암호화·KIS 실측 제약)을 위반하는 요구면 plan.md
+     작성 전에 사용자에게 확인받는다.
+- 코드 구조가 바뀌는 Phase가 완료되면 이 문서의 해당 절을 같은 커밋 흐름에서 갱신한다.
+
+---
+
+*조사 이력: 1차 src/app 조사(구 research.legacy.md §15 — 본 문서 각 절로 이관 후 제거)
+→ 현행 문서(2026-07-12, src 전체 조사)가 1차 내용을 포함·해소. 이후 모든 조사는 본
+문서 해당 절에 통합한다.*

@@ -1,9 +1,10 @@
-# jusik 최종 구현 계획서 — 공공 API 연동 국내 지수 대시보드
+# jusik 구현 계획서 — KIS API 연동 국내 지수 대시보드
 
-> **문서 상태:** 검토·최종 승인 대기  
-> **기준 문서:** [`research.md`](./research.md) (기술 의사결정 100% 반영)  
+> **문서 상태:** 운영 중 — Phase 이력 관리 문서 (2026-07-12 기준: Phase 1~15 구현 완료, Phase 16 화면 시각 확인 대기)  
+> **기준 문서:** [`research.md`](./research.md) (코드 구조 사전 조사, 2026-07-12) — 구세대 원본은 [`research.legacy.md`](./research.legacy.md)로 보존  
 > **스택:** Next.js 16.2.6 · React 19.2.4 · Recharts · CSS Modules (Tailwind 없음)  
-> **제약:** 본 문서는 **절차·구조 스니펫만** 포함. 승인 전 **`.tsx` / `.css` 등 소스 파일 생성·수정 금지**.
+> **제약:** 새 Phase 계획은 `research.md`와 대조해 승인받은 뒤 구현한다. 전반부 §0~§6(Phase 1~8)은 구세대 설계 이력 보존 구간 — 각 섹션 상단 배너 참고.  
+> **문서 조직 원리:** plan.md는 Phase 단위로 시간순 작업 이력을 기록하는 문서다. research.md(구조 기준 §1~10, 항상 최신 유지)와는 조직 원리가 다르므로, 코드 구조 조사 내용을 여기에 Phase로 추가하지 말고 research.md에 반영할 것.
 
 ---
 
@@ -29,13 +30,15 @@
 | 16 — 핫종목 상세 테이블 시장 구분 위첨자 전환 | 📋 **설계 반영 완료, 구현 미착수 — 승인 대기.** "시장" 열 제거 + 종목명 뒤 위첨자(ᴷ/ᴰ)로 대체해 가로 스크롤 해소. 기존 `entry.market` 필드만 사용(추가 API 호출 없음), 핫종목 상세 화면 한정 |
 
 **남은 작업 (6-6):** 프로덕션(Vercel) 배포 후 다중 인스턴스 환경에서 토큰 발급 횟수가 실제로 줄었는지 Vercel 로그로 확인.
-**참고 (2026-07-04):** KIS 서버가 7/4~7/5 전산 점검 중이라 이 기간 대시보드에서 "fetch failed"(KIS API 연결 실패)가 발생할 수 있음 — 코드 문제 아님, 점검 종료 후 재확인.
+**이력 (2026-07-04):** KIS 서버 7/4~7/5 전산 점검 기간에 대시보드에서 "fetch failed"(KIS API 연결 실패)가 발생했었음 — 코드 문제 아니었고, 점검 종료 후 정상 동작 확인됨.
 
 이하는 각 Phase의 상세 계획·근거·작업 단위 원문이다.
 
 ---
 
 ## 0. 앱 목표 및 완료 정의
+
+> ⚠️ **구세대 설계 (Phase 5 이전)** — 이 섹션은 공공데이터포털 시절 설계이며 현재 코드와 다름. 현행 기준은 Phase 9 이후 절 및 `research.md`(코드 구조 사전 조사) 참고. 내용은 이력 보존용으로 수정하지 않음.
 
 ### 0.1 핵심 스펙
 
@@ -83,6 +86,8 @@ app/page.tsx [Server] ──props──► IndexDashboard [Server]
 ---
 
 ## 1. 환경 변수 및 API 클라이언트 설정 계획
+
+> ⚠️ **구세대 설계 (Phase 5 이전)** — 이 섹션은 공공데이터포털 시절 설계이며 현재 코드와 다름. 현행 기준은 Phase 9 이후 절 및 `research.md`(코드 구조 사전 조사) 참고. 내용은 이력 보존용으로 수정하지 않음.
 
 ### 1.1 `.env.local` 설정
 
@@ -271,6 +276,8 @@ export async function fetchStockMarketIndex(
 ---
 
 ## 2. 데이터 정상화(Normalize) 및 TypeScript 타입 정의
+
+> ⚠️ **구세대 설계 (Phase 5 이전)** — 이 섹션은 공공데이터포털 시절 설계이며 현재 코드와 다름. 현행 기준은 Phase 9 이후 절 및 `research.md`(코드 구조 사전 조사) 참고. 내용은 이력 보존용으로 수정하지 않음.
 
 ### 2.1 파일 배치
 
@@ -533,6 +540,8 @@ async function fetchIndexHistory(idxNm: string, market: MarketIndex) {
 
 ## 3. 데이터 페칭 및 캐싱 아키텍처 계획
 
+> ⚠️ **구세대 설계 (Phase 5 이전)** — 이 섹션은 공공데이터포털 시절 설계이며 현재 코드와 다름(`unstable_cache`·`revalidateTag`는 Phase 11에서 전부 제거됨). 현행 기준은 Phase 9 이후 절 및 `research.md`(코드 구조 사전 조사) 참고. 내용은 이력 보존용으로 수정하지 않음.
+
 ### 3.1 `getDashboardData()` 설계 (`src/lib/indices/getDashboard.ts`)
 
 #### 3.1.1 역할
@@ -713,6 +722,8 @@ export default async function HomePage() {
 ---
 
 ## 4. 컴포넌트 구조 및 React 19 / Next 16 호환 계획
+
+> ⚠️ **구세대 설계 (Phase 5 이전)** — 이 섹션은 공공데이터포털 시절 설계이며 현재 코드와 다름(컴포넌트 구성은 Phase 9 이후 재편됨 — research.md §2.3 참고). 현행 기준은 Phase 9 이후 절 및 `research.md`(코드 구조 사전 조사) 참고. 내용은 이력 보존용으로 수정하지 않음.
 
 ### 4.1 디렉터리 및 파일 목록
 
@@ -957,6 +968,8 @@ import "./globals.css";
 
 ## 5. 디자인 토큰 및 CSS Modules 스타일 계획
 
+> ⚠️ **구세대 설계 (Phase 5 이전)** — 이 섹션은 초기 설계 스니펫이며 현재 코드와 다름(현행 `tokens.css`는 다크모드 `html[data-theme="dark"]` 오버라이드·차트 CSS 변수 등 포함 — research.md §2.4 참고). 현행 기준은 Phase 9 이후 절 및 `research.md`(코드 구조 사전 조사) 참고. 내용은 이력 보존용으로 수정하지 않음.
+
 ### 5.1 `src/styles/tokens.css` (신규)
 
 ```css
@@ -1077,6 +1090,8 @@ body {
 ---
 
 ## 6. 단계별 구현 마일스톤 (Phase 1 ~ 7)
+
+> ⚠️ **구세대 구간 포함** — 이 섹션 앞부분(Phase 1~8)은 Phase 5 이전 구세대(공공데이터포털) 설계에서 출발한 이력이며 현재 코드와 다른 서술이 있음. **현행 정본은 Phase 9 이후 절**(research.md 연계). 내용은 이력 보존용으로 수정하지 않음.
 
 ### Phase 1 — 환경·API 클라이언트·Raw 파이프
 
@@ -1233,6 +1248,8 @@ body {
 ---
 
 ### Phase 8 — 시간대별 캐시 최적화 (KIS 마감 후 갱신 패턴 반영)
+
+> **⚠️ Phase 11에 의한 대체 공지:** 본 Phase의 캐시 + `revalidateTag` cron 구조는 Phase 11(QStash 갱신 잡)로 전면 대체되었고, 남은 작업이던 8-6(배포 후 cron 확인)도 폐기됨 (§11.7 참고 — 요약 테이블과 동일 내용).
 
 **목표:** `summary.md`("KIS 지수 API 장 마감 후 갱신 여부 조사", 2026-07-07 실측)의 결론을 바탕으로, 기본 캐시 주기는 그대로 두되 확정 반영 시각에 강제 캐시 무효화를 걸어 불필요한 지연 없이 최신 데이터를 보장한다.
 
@@ -1424,6 +1441,8 @@ HTTP 200, output1.ovrs_nmix_prpr = "52925.15" — 기존에 알려진 사용 예
 | 보유종목 수익률 | `/holdings` | **필요** |
 | 코스피 변동성 지수 | `/indices/kospi-volatility` | 불필요 |
 
+> ※ **현행 정정 (2026-07-12):** 위 표의 「불필요」는 이 절 작성 시점(공개 데이터 전제) 기준 — 현재는 미들웨어(`src/proxy.ts`)가 전 경로를 보호하고, 모든 상세 페이지가 이메일 화이트리스트 인증(`ensureAllowedSession`)을 요구한다 (research.md §7.1).
+
 #### 9.4 지표별 상세 설계
 
 ##### 9.4.1 코스피/코스닥
@@ -1519,7 +1538,7 @@ interface KospiVolatilityRecord {
 
 #### 9.5 공통 사항
 
-- **보안:** 코스피/코스닥/환율/금리/변동성 지수는 로그인 불필요(기존과 동일, 공개 데이터). 보유종목만 로그인 필요(`session.user.email` + 기존 `isEmailAllowed()`) — 새 인증 로직 불필요, 기존 패턴 재사용.
+- **보안:** 코스피/코스닥/환율/금리/변동성 지수는 로그인 불필요(기존과 동일, 공개 데이터). 보유종목만 로그인 필요(`session.user.email` + 기존 `isEmailAllowed()`) — 새 인증 로직 불필요, 기존 패턴 재사용. *(※ 현행 정정 2026-07-12: 지금은 미들웨어가 전 경로를 보호하고 지수 상세 페이지도 전부 이메일 화이트리스트 인증 필요 — research.md §7.1)*
 - **캐시:** 기존 Phase 8 정책(10분 자동 재검증 + 확정 시각 cron) 유지 — 단, cron은 구현 시 평일 18:15 KST 단일로 통합(§9.4.3). 종목별 현재가는 사용자마다 다른 보유종목을 조회하므로 KOSPI/KOSDAQ와 같은 `unstable_cache` 단일 키 방식은 맞지 않음 — 종목코드별 fetch 레벨 캐시 전략은 **구현 단계에서 설계**(방향성만: `next.tags`에 종목코드를 포함해 종목 단위로 무효화 가능하게).
 - **단순화 원칙 유지:** 보유종목 자금 유출입 정밀 보정(TWR 등) 안 함.
 - **레이아웃:** 홈 화면 카드 레이아웃은 기존 다크모드/디자인 토큰 시스템(`tokens.css`) 그대로 활용.
@@ -1581,7 +1600,7 @@ interface StockPeak {
 
 | # | 조건 | 판정 값 출처 |
 |---|---|---|
-| 1 | 매입가 대비 종목 수익률 ≤ −10% | `(현재가 − avgPrice) / avgPrice × 100` — holdings + 현재가 |
+| 1 | 매입가 대비 종목 수익률 ≤ −10% | `(현재가 − avgPrice) / avgPrice × 100` — holdings + 현재가 *(※ 현행: Phase 13에서 totalCost 모델로 전환 — 계산은 `(현재가×수량 − totalCost)/totalCost` 기준)* |
 | 2 | 종목 신고가 대비 현재가 하락률 ≥ 10% | `(peakPrice − 현재가) / peakPrice × 100` — `StockPeak` |
 | 3 | 당일 지수 등락률 ≤ −2% **AND** 당일 종목 등락률 ≤ −12% | 지수: 기존 국내지수 API `output1`(코스피/코스닥 중 **종목 소속 시장** 기준), 종목: 현재가 API `prdy_ctrt`(부호 적용) |
 
@@ -2231,9 +2250,11 @@ interface WatchItem {
 
 ---
 
-## 8. `research.md` 의사결정 대조표 (100% 반영 확인)
+## 8. `research.legacy.md` 의사결정 대조표 (구세대 — 이력 보존)
 
-| research.md 결정 | plan.md 반영 위치 |
+> ⚠️ **구세대 표시** — 아래 대조표는 구세대 원본 [`research.legacy.md`](./research.legacy.md) 기준이며, 결정 대부분이 Phase 5(KIS 이관)·Phase 11(QStash 재설계)로 대체됨. 현행 근거 문서는 새 `research.md`(코드 구조 사전 조사).
+
+| research.legacy.md 결정 | plan.md 반영 위치 |
 |------------------|-------------------|
 | Server + lib 직접 fetch, BFF 선택 | §0.3, §1, §4 |
 | Decoding + URLSearchParams | §1.3.2 |
@@ -2250,6 +2271,8 @@ interface WatchItem {
 
 ## 9. 승인 후 첫 커맨드 (참고)
 
+> ⚠️ **구세대 설계 (Phase 5 이전)** — 이 섹션은 공공데이터포털 시절 설계이며 현재 코드와 다름(`src/lib/api/data-go-kr`은 Phase 5에서 제거됨). 현행 기준은 Phase 9 이후 절 및 `research.md`(코드 구조 사전 조사) 참고. 내용은 이력 보존용으로 수정하지 않음.
+
 ```bash
 # Phase 1 시작 시 (승인 후에만 실행)
 touch .env.local   # 키 직접 입력
@@ -2258,7 +2281,7 @@ mkdir -p src/lib/api/data-go-kr src/lib/indices src/types src/styles
 
 ---
 
-**본 `plan.md`를 최종 승인한 뒤에만 Phase 1 파일 생성을 시작한다.**
+**(이력)** ~~본 `plan.md`를 최종 승인한 뒤에만 Phase 1 파일 생성을 시작한다.~~ — 최초 승인 절차 문구로, Phase 1~15 구현 완료에 따라 효력 종료(과거 이력으로만 보존).
 
 ---
 
