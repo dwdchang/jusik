@@ -68,6 +68,7 @@
 | `watchlist/[symbolCode]/page.tsx` | 관심종목 상세 — 등록일 이후 추이·정보 블록 (보유종목 상세와 구조 동일) |
 | `watchlist/actions.ts` | Server Actions: add/update(기준일 변경 시 기준가 null 리셋)/delete |
 | `hot-stocks/page.tsx` | 핫종목 TOP 100 테이블 — `?period=1m|3m|6m|12m` 탭, 시장 위첨자(ᴷ/ᴰ) 표기(`MARKET_SUP` 로컬 상수) |
+| `feeds/page.tsx` | 새 소식 상세 (Phase 17-2b) — `ensureAllowedSession` + `getDisclosureBoard` + `FeedTabsClient`(뉴스/공시/수출입 탭+게시판+아코디언). 홈 "새 소식" 요약 카드에서 이동 |
 | `api/auth/[...nextauth]/route.ts` | Auth.js 핸들러 re-export (3줄) |
 | `api/jobs/refresh-market-data/route.ts` | 시세 갱신 잡 엔드포인트 (POST, §4.1) |
 | `api/jobs/refresh-hot-stocks/route.ts` | 핫종목 갱신 잡 엔드포인트 (POST, §4.2) |
@@ -85,7 +86,7 @@
 | `api/kis/types.ts` | KIS 원본 응답 타입 (필드 전부 optional string, `[key: string]: unknown` 허용) |
 | `api/dart/client.ts` | DART OpenAPI 클라이언트 — `corpCode.xml` zip 파싱(fflate, 상장사만 매핑)·공시검색 `list.json`(status 013=빈 결과 정상 처리) |
 | `feeds/store.ts` | 피드 store — `market:disclosures:{code}`(공시 스냅샷) 라이터·`disclosuresKey` export·`dart:corpCodeMap`(종목코드→고유번호) 리더·라이터. (단일 종목 리더 `getDisclosures`는 Phase 17-2에서 제거 — 화면은 `homeFeed`의 MGET로 통합) |
-| `feeds/homeFeed.ts` | 홈 통합 피드 리더 (Phase 17-2) — 로그인 사용자 보유+관심 `{code→name}` 구성 → `market:disclosures:{code}` MGET 병합·접수번호 내림차순·상위 40건 컷. 읽기 전용(누적 없음 — 종목별 원본이 SET 덮어쓰기라 컷은 조회 시점 계산만) |
+| `feeds/homeFeed.ts` | 홈 피드 리더 (Phase 17-2/17-2b) — ① `getDisclosureBoard`(`/feeds`용): 보유+관심 `{code→name}` → `market:disclosures:{code}` MGET 병합·접수번호 내림차순·상위 40건 컷. ② `getTodayFeedCounts`(홈 요약 카드용): 같은 MGET으로 `rceptDt===KST 오늘`만 카운트(뉴스·수출입은 null=준비 중). `collectOwnedStocks` 공유. 읽기 전용(누적 없음 — 종목별 원본이 SET 덮어쓰기라 컷·카운트는 조회 시점 계산만) |
 | `auth/allowedEmails.ts` | `ALLOWED_EMAILS` 파싱(모듈 로드 시 1회) — `isEmailAllowed` / `getAllowedEmails`(잡용 전체 목록) |
 | `auth/ensureAllowedSession.ts` | 상세 페이지 공용 가드 — 미로그인→`/login`, 허용 외→`/`(access-denied) |
 | `crypto/secureJson.ts` | AES-256-GCM `enc:v1:iv:tag:ct` 포맷 — `encryptJson`/`decryptJson`(실패 시 throw)/`isEncrypted` |
@@ -131,7 +132,8 @@
 | `indices/VolatilityChartClient` → `VolatilityChart` | Client | 동일 패턴, BarChart |
 | `holdings/HoldingsChartClient` → `HoldingsChart` | Client | 동일 패턴, LineChart + 수익률%↔원단위 토글. **보유종목 홈/상세·관심종목 상세 3곳 공용** (관심종목에선 totalValue 자리에 종가를 넣어 재활용) |
 | `stocks/StockInfoBlocks` | Server | 정보 블록 4종(시총·배당·실적·투자지표) — 보유·관심 상세 공용, `formatRatio` export |
-| `feeds/FeedTabsClient` | **Client** | 홈 통합 피드 카드 (Phase 17-2) — 뉴스/공시/수출입 3탭 + 아코디언. 데이터는 Server(page.tsx)가 props로 주입, Client는 탭 선택·아코디언 open/close만. 공시 탭만 실동작(homeFeed 병합 리스트→아코디언에 제출인·접수일 메타+DART 원문 새 탭), 뉴스·수출입은 자리표시자(후속 17-3/17-4). ※별도 HomeFeedCard Server 래퍼 없이 `IndexDashboard`가 직접 렌더(페이지=데이터/컴포넌트=표시 관례). ~~`stocks/StockDisclosures`~~는 A안 철회로 **삭제** |
+| `feeds/FeedTabsClient` | **Client** | 뉴스/공시/수출입 3탭 + 게시판 + 아코디언 (Phase 17-2). 데이터는 Server가 props로 주입, Client는 탭 선택·아코디언 open/close만. 공시 탭만 실동작(제출인·접수일 메타+DART 원문 새 탭), 뉴스·수출입은 자리표시자. **17-2b에서 홈 전체폭→`/feeds/page.tsx`로 렌더 위치만 이동**(컴포넌트 무변경). ~~`stocks/StockDisclosures`~~는 A안 철회로 **삭제** |
+| `indices/FeedSummaryCard` | Server | 홈 "새 소식" 그리드 요약 카드 (Phase 17-2b) — 핫종목형 3줄(공시/뉴스/수출입 당일 건수, 뉴스·수출입은 "준비 중"). 골격은 SummaryCard `composes`, 카드 전체가 `/feeds` 링크. `getTodayFeedCounts` 결과를 prop으로 받음 |
 | `nav/NavIconLink` | Server | 헤더 이동 아이콘 버튼(home/back) — 36px 아이콘 버튼 통일 규격 |
 | `theme/ThemeToggle` | Client | `useSyncExternalStore`로 `data-theme` 구독·토글 |
 | `auth/SignOutButton` | Server | Server Action `signOut` 폼 |
@@ -247,10 +249,11 @@ QStash 스케줄 (매일 08~22시 정시 KST, CRON_TZ=Asia/Seoul 0 8-22 * * *)
   `getPortfolioHistory`. 상세는 + `getStockInfo`(스냅샷+정보 블록 조합) + `getStockHistory`.
 - **관심종목**: `getWatchlist` + `getStockSnapshots` + `computeWatchReturnRate`.
   상세는 보유종목 상세와 동일 구성에 기준가 대비 차트.
-- **홈 통합 피드**: `getDisclosureBoard(email)`(feeds/homeFeed) — 사용자 보유+관심
-  종목의 `market:disclosures:{code}` MGET 병합·상위 40건 → `FeedTabsClient` 공시 탭.
-  홈 `Promise.all`에 `.catch(() => [])` 격리로 합류. (Phase 17-2에서 A안 철회 —
-  보유·관심 상세 페이지는 더 이상 공시를 읽지 않는다.)
+- **홈 "새 소식" 카드**: `getTodayFeedCounts(email)`(feeds/homeFeed) — 오늘 공시 건수만
+  집계 → `FeedSummaryCard`. 홈 `Promise.all`에 `.catch(() => 기본 0/null)` 격리로 합류.
+- **새 소식 상세(`/feeds`)**: `getDisclosureBoard(email)` — `market:disclosures:{code}`
+  MGET 병합·상위 40건 → `FeedTabsClient`. (Phase 17-2에서 A안 철회 — 보유·관심 상세
+  페이지는 더 이상 공시를 읽지 않는다. 17-2b에서 게시판을 홈 전체폭→`/feeds`로 이동.)
 - **핫종목**: `getHotStocks` 통짜 1건 → `?period` 탭으로 구간 선택 (검증: 알 수 없는 값→1m).
 - **변동성**: `getVolatilityHistory` → `aggregateMonthlyAverages`(최근 6개월).
 
@@ -316,7 +319,8 @@ QStash 스케줄 (매일 08~22시 정시 KST, CRON_TZ=Asia/Seoul 0 8-22 * * *)
 - `collectHoldings`/`collectWatchlists`/`unionSymbolCodes` (jobs/collectTargets) —
   잡의 수집 대상(허용 이메일 전체 보유+관심종목) 조회는 이들 재사용.
 - `getDisclosureBoard` (feeds/homeFeed) — 사용자 보유+관심 공시를 MGET 병합·상위 40건
-  컷한 홈 통합 피드 리더. 종목별 원본 리더가 필요하면 이걸 확장(`disclosuresKey` export 재사용).
+  컷(`/feeds` 게시판용). `getTodayFeedCounts` — 같은 MGET으로 당일 건수만 세는 홈 카드용.
+  종목별 원본 리더가 필요하면 이들을 확장(`disclosuresKey` export 재사용).
 - `getLastRefreshRecord().catch(() => null)` — 「마지막 갱신」 표기는 이 실패 격리
   패턴으로 통일 (여러 페이지에서 반복되는 관례).
 

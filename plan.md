@@ -2331,6 +2331,26 @@ interface WatchItem {
 
 **Phase 17-2 완료 조건:** ☑ A안 철회(상세 공시 섹션 제거)·홈 통합 카드 신설, ☑ 공시 탭이 보유+관심 종목 공시를 시간순 병합·상위 40건 표시(누적 없음 — 조회 시점 컷), ☑ 뉴스·수출입 탭 자리표시자(후속 17-3/17-4), ☑ Client 컴포넌트 1개 추가는 최소 Client 예외로 명시, ☑ 신규 의존성 0, ☑ lint·tsc·build 통과, ☑ 실브라우저 E2E로 탭 전환·아코디언·병합 정렬·null-row skip 확인.
 
+#### 17.8 피드 UI 재배치 — 그리드 요약 카드 + `/feeds` 상세 페이지 — Phase 17-2b (2026-07-13)
+
+- **요청 근거**: `phase9.request.md`(Phase 17-2b로 갱신). 17-2의 전체폭 3탭 카드를 코스피·코스닥과 동일한 **그리드 요약 카드**(당일 업로드 건수만)로 축소하고, 탭+게시판+아코디언 전체는 **별도 페이지 `/feeds`**로 이동(핫종목 카드→페이지 패턴).
+- **사용자 승인 (2026-07-13)**: ① 홈 카드 형태 = **핫종목형 3줄 카드**(공시/뉴스/수출입 건수 나열), ② 상세는 `/feeds` 경로, ③ "당일" = 병합 데이터 중 `rceptDt===KST 오늘`만 카운트(스냅샷에 과거 항목이 섞일 수 있어 필터 필수).
+- **당일 판정**: DART 접수일 `rceptDt`("YYYYMMDD")·`todayKstDate()` 모두 **KST 캘린더 문자열**이라 시간대 변환 없이 문자열 비교. 오늘 0건도 "0건" 정상 표시. 뉴스 `pubDate`(RFC822 타임존)는 17-3에서 KST 날짜 변환 후 비교 예정.
+- **성능**: 홈은 게시판을 더 이상 렌더하지 않으므로 40건 전체를 만들지 않고 **경량 카운트 전용 `getTodayFeedCounts`** 신설(같은 MGET 1회, sort/slice/종목명 결합 생략). 뉴스·수출입은 백엔드 전이라 `null`("준비 중" 표기 — 0건과 구분).
+- **무변경 재사용**: `FeedTabsClient`·`getDisclosureBoard`·`FeedBoardItem` 그대로. 홈에선 전체폭 `feedSection` 제거 + 그리드 카드 1개(8번째) 추가.
+
+**17-2b 작업 목록 (구현 완료 — 2026-07-13):**
+
+| 순서 | 작업 | 파일 | 상태 |
+|---|---|---|---|
+| 17-2b-1 | 경량 카운트 리더 `getTodayFeedCounts(email)` — 오늘 공시 건수만 집계(뉴스·수출입 null), `collectOwnedStocks` 공유 | `src/lib/feeds/homeFeed.ts` | ☑ |
+| 17-2b-2 | 홈 "새 소식" 그리드 카드(핫종목형 3줄) — 카드 전체가 `/feeds` 링크, SummaryCard 골격 composes | `src/components/indices/FeedSummaryCard.tsx`·`.module.css` (신규) | ☑ |
+| 17-2b-3 | `/feeds` 상세 페이지 신설 — `ensureAllowedSession` + `getDisclosureBoard` + `FeedTabsClient` 재사용, back 헤더 | `src/app/feeds/page.tsx`·`page.module.css` (신규) | ☑ |
+| 17-2b-4 | 홈 배선 교체 — `getDisclosureBoard`→`getTodayFeedCounts`, 전체폭 `feedSection`+`FeedTabsClient` 제거하고 `FeedSummaryCard`를 그리드에 편입, `.feedSection` CSS 제거 | `src/app/page.tsx`, `src/components/indices/IndexDashboard.tsx`·`.module.css` | ☑ |
+| 17-2b-5 | 검증 — lint·tsc·build + 실브라우저 E2E(홈 카드 당일 건수·과거 제외·준비 중 표기·카드 클릭→`/feeds` 이동·게시판 재사용) | — | ☑ PASS |
+
+**Phase 17-2b 완료 조건:** ☑ 홈 피드가 그리드 요약 카드(핫종목형 3줄)로 편입, ☑ 당일(`rceptDt===KST 오늘`) 공시 건수만 카운트(과거 항목 제외 실측), ☑ 뉴스·수출입은 "준비 중"(0건과 구분), ☑ 탭+게시판+아코디언이 `/feeds`로 이동(FeedTabsClient·homeFeed 무변경 재사용), ☑ 홈 카드 클릭→`/feeds` 이동 확인, ☑ 신규 의존성 0, ☑ lint·tsc·build 통과, ☑ 실브라우저 E2E PASS.
+
 ---
 
 ## 7. PR 분리 권장 (선택)
