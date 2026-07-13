@@ -1,0 +1,47 @@
+/* 홈 "새 소식" 카드 — 골격은 SummaryCard와 동일, 내용만 소스별 오늘 건수 3줄 */
+.card {
+  composes: card from "./SummaryCard.module.css";
+}
+
+.title {
+  composes: title from "./SummaryCard.module.css";
+}
+
+.footnote {
+  composes: footnote from "./SummaryCard.module.css";
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  margin-bottom: var(--space-12);
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-8);
+  font-size: var(--text-caption);
+  min-width: 0;
+}
+
+.label {
+  flex: 1;
+  min-width: 0;
+  color: var(--color-text-secondary);
+  font-weight: var(--weight-medium);
+}
+
+.count {
+  flex-shrink: 0;
+  color: var(--color-text-primary);
+  font-weight: var(--weight-semibold);
+}
+
+.pending {
+  flex-shrink: 0;
+  color: var(--color-text-tertiary);
+  font-size: var(--text-micro);
+}

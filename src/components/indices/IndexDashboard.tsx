@@ -1,7 +1,6 @@
 import { SignOutButton } from "@/components/auth/SignOutButton";
-import { FeedTabsClient } from "@/components/feeds/FeedTabsClient";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
-import type { FeedBoardItem } from "@/lib/feeds/homeFeed";
+import type { TodayFeedCounts } from "@/lib/feeds/homeFeed";
 import { formatBasDtDisplay } from "@/lib/format/basDt";
 import {
   formatChange,
@@ -20,6 +19,7 @@ import type {
   VolatilityCardSummary,
 } from "@/types/indices";
 import { DataAsOfFooter } from "./DataAsOfFooter";
+import { FeedSummaryCard } from "./FeedSummaryCard";
 import { HotStocksCard } from "./HotStocksCard";
 import styles from "./IndexDashboard.module.css";
 import { SummaryCard } from "./SummaryCard";
@@ -56,7 +56,7 @@ export function IndexDashboard({
   hotStocksSummary,
   watchlistSummary,
   staleness,
-  disclosureFeed,
+  feedCounts,
 }: {
   data: IndexDashboardData;
   holdingsSummary: HoldingsCardSummary | null;
@@ -64,7 +64,7 @@ export function IndexDashboard({
   hotStocksSummary: HotStocksCardSummary | null;
   watchlistSummary: WatchlistCardSummary | null;
   staleness: DashboardStaleness;
-  disclosureFeed: FeedBoardItem[];
+  feedCounts: TodayFeedCounts;
 }) {
   return (
     <div className={styles.dashboard}>
@@ -205,10 +205,7 @@ export function IndexDashboard({
             placeholder="종목을 등록해보세요"
           />
         )}
-      </section>
-
-      <section className={styles.feedSection} aria-label="뉴스·공시·수출입">
-        <FeedTabsClient disclosures={disclosureFeed} />
+        <FeedSummaryCard counts={feedCounts} />
       </section>
 
       <DataAsOfFooter data={data} />

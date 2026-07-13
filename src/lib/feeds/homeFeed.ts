@@ -1,3 +1,4 @@
+import { todayKstDate } from "@/lib/date/kst";
 import { getRedis } from "@/lib/redis/client";
 import { disclosuresKey, type StoredDisclosures } from "@/lib/feeds/store";
 import { getHoldings } from "@/lib/holdings/store";
@@ -105,4 +106,45 @@ export async function getDisclosureBoard(email: string): Promise<FeedBoardItem[]
 
   items.sort((a, b) => (a.sortKey < b.sortKey ? 1 : a.sortKey > b.sortKey ? -1 : 0));
   return items.slice(0, HOME_FEED_LIMIT);
+}
+
+/**
+ * 홈 그리드 요약 카드용 — 소스별 "오늘 업로드 건수" (Phase 17-2b, plan.md §17.8).
+ * null = 백엔드 미구현 자리표시자("준비 중"), number = 실집계(0 포함).
+ */
+export interface TodayFeedCounts {
+  /** 오늘 접수(rceptDt===KST 오늘) 공시 건수 */
+  disclosures: number;
+  /** 뉴스(17-3 이후) — 현재는 백엔드 없어 null */
+  news: number | null;
+  /** 수출입(17-4 이후) — 현재는 백엔드 없어 null */
+  trade: number | null;
+}
+
+/**
+ * 게시판 40건을 만들지 않고 오늘 건수만 센다(sort/slice/종목명 결합 생략).
+ * Redis 비용은 getDisclosureBoard와 동일한 MGET 1회, CPU만 절약.
+ * DART 접수일·KST 오늘 모두 KST 캘린더 문자열이라 시간대 변환이 필요 없다.
+ */
+export async function getTodayFeedCounts(
+  email: string
+): Promise<TodayFeedCounts> {
+  const todayYmd = todayKstDate().replaceAll("-", "");
+  const owned = await collectOwnedStocks(email);
+  const codes = [...owned.keys()];
+
+  let disclosures = 0;
+  if (codes.length > 0) {
+    const rows = await getRedis().mget<Array<StoredDisclosures | null>>(
+      ...codes.map(disclosuresKey)
+    );
+    for (const row of rows) {
+      if (row === null) {
+        continue;
+      }
+      disclosures += row.items.filter((d) => d.rceptDt === todayYmd).length;
+    }
+  }
+
+  return { disclosures, news: null, trade: null };
 }
