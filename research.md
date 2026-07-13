@@ -100,7 +100,7 @@
 | `indices/volatility.ts` | 변동성 기록 store+계산+카드 요약 (한 파일에 쓰기·읽기 혼재) |
 | `indices/dates.ts` | `getLast7BusinessDates` — **현재 미사용 (레거시)** (§9.2) |
 | `market/store.ts` | 공용 시세 Redis 스토어 — `market:detail:*`, `market:stock:*`, `market:stockInfo:*`, `market:lastRefreshAt` (§5) |
-| `market/staleness.ts` | KST 시간창 가드(`isWithinKisCallWindow` 09:00~18:40 / `isWithinBadgeWindow` ~18:20) + 배지 판정 `resolveStaleness`(20분 warn/1시간 critical) |
+| `market/staleness.ts` | KST 시간창 가드(`isWithinKisCallWindow` 09:00~18:40) + **스케줄 인지형 배지 판정** `resolveStaleness` — 시세 잡 스케줄 상수(`SCHEDULE_MINUTES`: 09:00~15:30 10분 + 15:40 + 18:15)로 "이미 완료됐어야 할 최근 슬롯(`lastDueRefreshMs`, 유예 20분)"을 구해, fetchedAt이 그보다 오래됐을 때만 배지(정상 휴지 구간엔 안 뜸). 지연 경과로 warn/critical. `SCHEDULE_MINUTES`는 외부 QStash 등록과 동기화 필수 |
 | `holdings/store.ts` | 보유종목·포트폴리오 히스토리 store — 암호화, 레거시 평문/`avgPrice` 읽기 하위호환 |
 | `holdings/valuation.ts` | 포트폴리오 평가(스냅샷 MGET) — 시세 없는 종목 null 격리·합계 제외, `latestRecordBefore`/`computeDailyChangeRate` |
 | `holdings/summary.ts` | 홈 보유종목 카드 요약 (실패 시 null) |
@@ -314,7 +314,7 @@ QStash 스케줄 (매일 08~22시 정시 KST, CRON_TZ=Asia/Seoul 0 8-22 * * *)
   `getPortfolioValuation` — 수익률·평가 계산은 이들 재사용.
 - `addMonths`/`baseMonthKst`/`monthStartYyyyMmDd`/`monthEndYyyyMmDd` (hotstocks/months) —
   월 단위 계산 공용.
-- `resolveStaleness`/`isWithinKisCallWindow`/`isWithinBadgeWindow` (market/staleness).
+- `resolveStaleness`(스케줄 인지형 배지)/`isWithinKisCallWindow` (market/staleness).
 - `verifyJobRequest` — 새 잡 라우트를 만들면 반드시 이걸로 인증 (신설 시 3곳 동기화 — §8.13).
 - `collectHoldings`/`collectWatchlists`/`unionSymbolCodes` (jobs/collectTargets) —
   잡의 수집 대상(허용 이메일 전체 보유+관심종목) 조회는 이들 재사용.
@@ -480,8 +480,13 @@ QStash 스케줄 (매일 08~22시 정시 KST, CRON_TZ=Asia/Seoul 0 8-22 * * *)
 
 ### 9.4 시간·스케줄 규칙
 
-- KIS 호출 허용 창: **KST 평일 09:00~18:40** (`isWithinKisCallWindow`). 배지 판정 창은
-  ~18:20. 확정 회차 판정은 **KST 15:35 이후** (`isConfirmedRound`).
+- KIS 호출 허용 창: **KST 평일 09:00~18:40** (`isWithinKisCallWindow`). 확정 회차 판정은
+  **KST 15:35 이후** (`isConfirmedRound`).
+- **배지 판정(2026-07-13 개정)**: 고정 시간창(구 `isWithinBadgeWindow` ~18:20)·"N분 경과"
+  방식을 폐기하고, 시세 잡 스케줄(09:00~15:30 10분 + 15:40 + 18:15)을 코드 상수화해
+  "예정된 갱신이 지났는데도 누락된 경우"에만 배지를 띄운다. **정상 휴지 구간(15:40~18:15,
+  장 마감 후·주말)에는 마지막 갱신이 오래돼도 배지가 뜨지 않는다.** `SCHEDULE_MINUTES`
+  상수는 외부 QStash 등록과 반드시 일치시켜야 한다(스케줄 변경 시 동반 수정 — §8.13 결합점).
 - 피드 잡(DART)은 시간창 제약 없음 — 스케줄은 매일 08~22시 정시
   (`CRON_TZ=Asia/Seoul 0 8-22 * * *`), 라우트에 시간창 가드도 없다.
 - 공휴일은 미반영 — 휴장일 감지는 basDt ≠ KST 오늘 (tradingDay=false → 알림만 skip,
