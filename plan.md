@@ -2297,6 +2297,40 @@ interface WatchItem {
 
 **Phase 17-1 완료 조건:** ☑ KIS 외 신규 소스(DART)도 "잡만 쓰고 화면은 Redis만 읽는" 대원칙 유지, ☑ 잡 신설 3곳 동기화 중 코드 2곳(proxy matcher·verifyJobRequest) 반영 — QStash 스케줄 등록은 사용자 액션, ☑ 공시 섹션이 보유·관심 상세 2곳에 공용 적용(A안), ☑ 신규 의존성 0(fflate 재사용), ☑ lint·tsc·build 통과, ☐ `DART_API_KEY` 등록 후 수동 트리거로 실데이터 확인(사용자 대기).
 
+#### 17.7 UI 설계 변경 — 홈 통합 카드(뉴스·공시·수출입 탭) — Phase 17-2 (2026-07-13)
+
+- **요청 근거**: `phase9.request.md`(Phase 17-2로 갱신). **17-1의 A안(보유·관심 상세 페이지 공시 섹션)을 철회**하고, 홈 화면에 뉴스/공시/수출입 3탭 통합 카드를 신설한다. 종목별이 아니라 **로그인 사용자의 보유+관심 종목 전체를 시간순 병합한 통합 뷰**.
+- **범위 결정 (사용자 승인 2026-07-13)**: "**UI 먼저, 백엔드는 단계별**". 이번 Phase 17-2는 ① 새 홈 카드 UI + ② **공시 탭만 실동작**(기존 `market:disclosures` 재사용) + ③ 상세 페이지 공시 섹션 제거까지. **뉴스·수출입 탭은 "준비 중" 자리표시자** — 데이터 백엔드(네이버 클라이언트·`market:news`, 관세청 클라이언트·`market:tradeStats`)가 아직 없어 후속 Phase로 분리.
+  - 후속 **17-3 뉴스 백엔드**: 네이버 검색 API 클라이언트 + `market:news:{code}` writer + `refreshFeeds` 증분 + `NAVER_CLIENT_ID/SECRET` 발급 → 뉴스 탭 활성화.
+  - 후속 **17-4 수출입 백엔드**: 관세청 `getNewtradeList` 클라이언트 + `market:tradeStats` + `refreshFeeds` 증분 + `DATA_GO_KR_SERVICE_KEY` 발급 → 수출입 탭 활성화.
+- **아키텍처**: 데이터 계층 무변경(잡·store 골격 재사용). 홈 조회 로직만 신규 — 종목별 원본은 수집 잡이 **SET 덮어쓰기(쓰기 시점 최대 10건)**라 누적되지 않으므로, 홈 병합 상위 컷(40건)은 **조회 시점 계산만**으로 충분하고 별도 삭제 로직이 없다(사용자 확인).
+- **관세청 API 실측(17-4용 기록)**: 엔드포인트 `http://apis.data.go.kr/1220000/Newtrade/getNewtradeList` (params `serviceKey`/`strtYymm`/`endYymm`, XML). GW 계열 표준 응답 필드 `year`·`expDlr`(수출 천달러)·`impDlr`(수입)·`balPayments`(무역수지)·`expWgt`/`impWgt`. `DATA_GO_KR_SERVICE_KEY` 미발급이라 live 실측은 17-4 착수 시 첫 호출로 필드명·단위 확정. 표시안: 최신 확정월 수출/수입/무역수지 + 전년 동월 대비(YoY) 요약 카드(환율·금리·유가 미니 카드 형태).
+
+##### 백로그 (추후 정리 과제 — 17-2 범위 아님)
+
+- **종목 삭제 시 관련 Redis 키 미정리**: 보유·관심종목을 삭제해도 `market:disclosures:{code}`
+  (및 `market:stock:{code}`·`market:stockInfo:{code}`·`stock:{code}:history` 등 종목코드 단위
+  공용 키)가 정리되지 않고 잔존한다. Phase 17-1부터 있던 기존 동작이며 17-2가 만든 문제가
+  아니다. 화면 노출 영향은 없음 — 조회 경로(homeFeed·평가·상세)가 모두 **현재 보유/관심 코드만**
+  읽어 고아 키는 표시되지 않는다. 다만 Redis에 사용되지 않는 키가 누적되므로, 삭제 Server Action
+  (holdings/watchlist `deleteAction`) 또는 갱신 잡에서 **더 이상 어느 사용자도 보유/관심하지 않는
+  종목코드의 공용 키를 정리**하는 로직을 추후 검토한다. (주의: 공용 키라 여러 사용자가 공유 —
+  전체 union에서 빠진 코드만 삭제 대상. 잘못 삭제하면 다른 사용자 화면에서 재수집 전까지 공백.)
+  **17-2에서는 코드 변경 없이 기록만 남긴다 (사용자 지시 2026-07-13).**
+
+**17-2 작업 목록 (구현 완료 — 2026-07-13):**
+
+| 순서 | 작업 | 파일 | 상태 |
+|---|---|---|---|
+| 17-2-1 | 홈 통합 피드 리더 — 세션 사용자 보유+관심 `{code→name}` → `market:disclosures:{code}` MGET 병합·접수번호 내림차순·상위 40건 컷 | `src/lib/feeds/homeFeed.ts` (신규) | ☑ |
+| 17-2-2 | 탭 전환 + 아코디언 Client 셸(최소 Client 예외) — 공시 탭 실동작, 뉴스·수출입 자리표시자 | `src/components/feeds/FeedTabsClient.tsx`·`.module.css` (신규) | ☑ |
+| 17-2-3 | 홈 배치 — `page.tsx` `Promise.all`에 `getDisclosureBoard` 합류, `IndexDashboard`가 7카드 그리드 아래 전체폭 섹션으로 렌더 | `src/app/page.tsx`, `src/components/indices/IndexDashboard.tsx`·`.module.css` | ☑ |
+| 17-2-4 | A안 철회 — 상세 2곳 공시 섹션·import·`getDisclosures` 호출 제거 | `src/app/holdings/[symbolCode]/page.tsx`, `src/app/watchlist/[symbolCode]/page.tsx` | ☑ |
+| 17-2-5 | 미사용 코드 정리 — `StockDisclosures.tsx`·`.module.css` 삭제, `getDisclosures` 리더 제거(homeFeed가 MGET로 대체), `disclosuresKey` export해 store↔homeFeed 공유(§8 키 중복 방지) | `src/components/stocks/StockDisclosures.*`(삭제), `src/lib/feeds/store.ts` | ☑ |
+| 17-2-6 | 검증 — lint·tsc·build + 실브라우저 E2E(세션 민팅·헤드리스 Chrome로 탭 전환·아코디언·병합 정렬 실측) | — | ☑ PASS |
+
+**Phase 17-2 완료 조건:** ☑ A안 철회(상세 공시 섹션 제거)·홈 통합 카드 신설, ☑ 공시 탭이 보유+관심 종목 공시를 시간순 병합·상위 40건 표시(누적 없음 — 조회 시점 컷), ☑ 뉴스·수출입 탭 자리표시자(후속 17-3/17-4), ☑ Client 컴포넌트 1개 추가는 최소 Client 예외로 명시, ☑ 신규 의존성 0, ☑ lint·tsc·build 통과, ☑ 실브라우저 E2E로 탭 전환·아코디언·병합 정렬·null-row skip 확인.
+
 ---
 
 ## 7. PR 분리 권장 (선택)
