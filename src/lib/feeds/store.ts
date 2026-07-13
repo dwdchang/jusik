@@ -34,7 +34,8 @@ export interface StoredCorpCodeMap {
   fetchedAt: string;
 }
 
-function disclosuresKey(symbolCode: string): string {
+/** market:disclosures:{code} 키 조립 — 종목별 리더(homeFeed MGET)와 라이터가 공유 */
+export function disclosuresKey(symbolCode: string): string {
   return `market:disclosures:${symbolCode}`;
 }
 

@@ -1,0 +1,152 @@
+.card {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.tab {
+  flex: 1;
+  padding: var(--space-12) var(--space-8);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-size: var(--text-caption);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+}
+
+.tab:hover {
+  color: var(--color-text-secondary);
+}
+
+.tabActive {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+}
+
+.panel {
+  padding: var(--space-8);
+}
+
+.placeholder {
+  padding: var(--space-16) var(--space-8);
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+  line-height: 1.5;
+  text-align: center;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.item + .item {
+  border-top: 1px solid var(--color-border);
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding: var(--space-12) var(--space-8);
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+
+.row:hover .title {
+  color: var(--color-primary);
+}
+
+.title {
+  font-size: var(--text-caption);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+  line-height: 1.4;
+}
+
+.remark {
+  margin-left: var(--space-8);
+  font-size: var(--text-micro);
+  font-weight: 400;
+  color: var(--color-text-tertiary);
+}
+
+.rowMeta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-8);
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+}
+
+.stockName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-secondary);
+  font-weight: var(--weight-semibold);
+}
+
+.accordion {
+  padding: var(--space-8) var(--space-8) var(--space-16);
+  border-top: 1px dashed var(--color-border);
+}
+
+.metaList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 var(--space-12);
+}
+
+.metaRow {
+  display: flex;
+  gap: var(--space-8);
+  font-size: var(--text-micro);
+}
+
+.metaRow dt {
+  flex-shrink: 0;
+  width: 3.5rem;
+  color: var(--color-text-tertiary);
+}
+
+.metaRow dd {
+  margin: 0;
+  color: var(--color-text-secondary);
+}
+
+.originalLink {
+  display: inline-block;
+  font-size: var(--text-caption);
+  font-weight: var(--weight-semibold);
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.originalLink:hover {
+  text-decoration: underline;
+}
+
+.source {
+  padding: var(--space-8);
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+}

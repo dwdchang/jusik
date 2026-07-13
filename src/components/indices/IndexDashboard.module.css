@@ -44,3 +44,7 @@
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+.feedSection {
+  margin-bottom: var(--space-24);
+}

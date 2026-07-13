@@ -5,6 +5,7 @@ import {
   type DashboardStaleness,
 } from "@/components/indices/IndexDashboard";
 import { isEmailAllowed } from "@/lib/auth/allowedEmails";
+import { getDisclosureBoard } from "@/lib/feeds/homeFeed";
 import { getHoldingsCardSummary } from "@/lib/holdings/summary";
 import { getHotStocksCardSummary } from "@/lib/hotstocks/summary";
 import { getDashboardData } from "@/lib/indices/getDashboard";
@@ -53,9 +54,10 @@ export default async function HomePage() {
   let hotStocksSummary: Awaited<ReturnType<typeof getHotStocksCardSummary>>;
   let watchlistSummary: Awaited<ReturnType<typeof getWatchlistCardSummary>>;
   let lastRefresh: Awaited<ReturnType<typeof getLastRefreshRecord>>;
+  let disclosureFeed: Awaited<ReturnType<typeof getDisclosureBoard>>;
 
   try {
-    // 카드 요약(보유종목·변동성·핫종목·관심종목)은 실패 시 null 반환 — 홈 전체를 막지 않는다
+    // 카드 요약(보유종목·변동성·핫종목·관심종목)과 통합 피드는 실패 시 빈/null 반환 — 홈 전체를 막지 않는다
     [
       data,
       holdingsSummary,
@@ -63,6 +65,7 @@ export default async function HomePage() {
       hotStocksSummary,
       watchlistSummary,
       lastRefresh,
+      disclosureFeed,
     ] = await Promise.all([
       getDashboardData(),
       getHoldingsCardSummary(email),
@@ -70,6 +73,7 @@ export default async function HomePage() {
       getHotStocksCardSummary(),
       getWatchlistCardSummary(email),
       getLastRefreshRecord().catch(() => null),
+      getDisclosureBoard(email).catch(() => []),
     ]);
   } catch (error) {
     const message =
@@ -123,6 +127,7 @@ export default async function HomePage() {
         hotStocksSummary={hotStocksSummary}
         watchlistSummary={watchlistSummary}
         staleness={staleness}
+        disclosureFeed={disclosureFeed}
       />
     </main>
   );
