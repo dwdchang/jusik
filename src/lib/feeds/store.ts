@@ -41,12 +41,6 @@ export function disclosuresKey(symbolCode: string): string {
 
 const CORP_CODE_MAP_KEY = "dart:corpCodeMap";
 
-export async function getDisclosures(
-  symbolCode: string
-): Promise<StoredDisclosures | null> {
-  return getRedis().get<StoredDisclosures>(disclosuresKey(symbolCode));
-}
-
 export async function setDisclosures(value: StoredDisclosures): Promise<void> {
   await getRedis().set(disclosuresKey(value.symbolCode), value);
 }
