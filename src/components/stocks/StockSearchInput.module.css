@@ -1,0 +1,119 @@
+.field {
+  position: relative;
+  /* 등록 폼의 2열 그리드에서 한 줄 전체를 차지 (그리드 밖이면 무시됨) */
+  grid-column: 1 / -1;
+}
+
+.input {
+  width: 100%;
+  min-width: 0;
+  padding: var(--space-8) var(--space-12);
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-14, 14px);
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+/* 선택된 종목 배지 */
+.chip {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  width: 100%;
+  padding: var(--space-8) var(--space-12);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-md);
+}
+
+.chipName {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.chipCode {
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-13, 13px);
+}
+
+.chipMarket {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-12, 12px);
+}
+
+.chipClear {
+  margin-left: auto;
+  padding: 0 var(--space-8);
+  background: none;
+  border: none;
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-14, 14px);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.chipClear:hover {
+  color: var(--color-text-primary);
+}
+
+/* 결과 드롭다운 */
+.dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  margin: 0;
+  padding: var(--space-4, 4px);
+  list-style: none;
+  max-height: 288px;
+  overflow-y: auto;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md, 0 8px 24px rgba(0, 0, 0, 0.12));
+}
+
+.status {
+  padding: var(--space-8) var(--space-12);
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-13, 13px);
+}
+
+.option {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-8);
+  padding: var(--space-8) var(--space-12);
+  border-radius: var(--radius-sm, 8px);
+  cursor: pointer;
+}
+
+.optionActive {
+  background-color: var(--color-bg);
+}
+
+.optionName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text-primary);
+}
+
+.optionCode {
+  color: var(--color-text-tertiary);
+  font-size: var(--font-size-13, 13px);
+}
+
+.optionMarket {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-12, 12px);
+}
