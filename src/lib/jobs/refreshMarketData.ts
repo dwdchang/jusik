@@ -17,6 +17,7 @@ import {
   refreshStockHistory,
 } from "@/lib/holdings/stockHistory";
 import { fetchStockInfoBlocks } from "@/lib/holdings/stockInfo";
+import { fetchHotStockUniverse } from "@/lib/hotstocks/universe";
 import {
   applyKisSign,
   mapKisDailyRows,
@@ -38,10 +39,13 @@ import {
   setDailyFluctuation,
   setLastRefreshRecord,
   setMarketDetail,
+  getStockMaster,
   setStockInfoBlocks,
+  setStockMaster,
   setStockSnapshot,
   type DailyFluctuationItem,
   type MarketDetailKey,
+  type StockMasterItem,
   type StoredStockSnapshot,
 } from "@/lib/market/store";
 import { getStockHistory } from "@/lib/holdings/stockHistory";
@@ -78,6 +82,8 @@ export interface RefreshMarketDataReport {
   volatility: { ok: boolean; upserted?: number; error?: string };
   /** 당일 등락률 순위 저장 결과 — 부수 데이터라 실패해도 잡 전체 ok에 영향 없음 */
   dailyFluctuation: { ok: boolean; count?: number; error?: string };
+  /** 종목 마스터 저장 결과 — 1일 1회, 부수 데이터라 잡 전체 ok에 영향 없음 */
+  stockMaster: { ok: boolean; count?: number; skipped?: true; error?: string };
   stocks: Array<{ symbolCode: string; ok: boolean; error?: string }>;
   nameFills: Array<{ symbolCode: string; ok: boolean; error?: string }>;
   portfolios: Array<{
@@ -221,6 +227,42 @@ async function refreshDailyFluctuation(
     return { ok: true, count: items.length };
   } catch (error) {
     console.error("[job] daily fluctuation refresh failed:", error);
+    return { ok: false, error: errorMessage(error) };
+  }
+}
+
+/** ISO 시각의 KST 날짜 "YYYY-MM-DD" — 마스터 1일 1회 갱신 판정용 */
+function kstDateOf(iso: string): string {
+  const kst = new Date(new Date(iso).getTime() + 9 * 60 * 60 * 1000);
+  return kst.toISOString().slice(0, 10);
+}
+
+/**
+ * 종목 마스터 → market:stockMaster 저장 (종목명 검색용, §17.11).
+ * 공개 KIS 종목 마스터를 파싱한 코드↔종목명 목록. 마스터는 거의 안 변하므로
+ * 이미 오늘 갱신됐으면 다운로드를 건너뛴다(1일 1회). 부수 데이터라 실패해도
+ * 잡 전체 ok에 영향 없이 로그만 남긴다.
+ */
+async function refreshStockMaster(
+  fetchedAt: string
+): Promise<RefreshMarketDataReport["stockMaster"]> {
+  try {
+    const existing = await getStockMaster();
+    if (existing !== null && kstDateOf(existing.fetchedAt) === todayKstDate()) {
+      return { ok: true, skipped: true, count: existing.items.length };
+    }
+
+    const universe = await fetchHotStockUniverse();
+    const items: StockMasterItem[] = universe.map((stock) => ({
+      code: stock.code,
+      name: stock.name,
+      market: stock.market,
+    }));
+
+    await setStockMaster({ items, fetchedAt });
+    return { ok: true, count: items.length };
+  } catch (error) {
+    console.error("[job] stock master refresh failed:", error);
     return { ok: false, error: errorMessage(error) };
   }
 }
@@ -520,6 +562,9 @@ export async function refreshMarketData(
   // 1b. 당일 등락률 순위 상위 30 → market:dailyFluctuation (부수 데이터, 실패 격리)
   const dailyFluctuation = await refreshDailyFluctuation(startedAt);
 
+  // 1c. 종목 마스터 → market:stockMaster (종목명 검색용, 1일 1회, 실패 격리)
+  const stockMaster = await refreshStockMaster(startedAt);
+
   // 4. 코스피 변동성 upsert (1의 KOSPI 응답 재사용)
   let volatility: RefreshMarketDataReport["volatility"];
   if (kospiRaw !== null) {
@@ -607,6 +652,7 @@ export async function refreshMarketData(
     indices,
     volatility,
     dailyFluctuation,
+    stockMaster,
     stocks,
     nameFills,
     portfolios,

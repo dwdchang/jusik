@@ -86,6 +86,24 @@ export interface StoredDailyFluctuation {
   fetchedAt: string;
 }
 
+/** market:stockMaster 항목 — 종목 검색용 코드↔종목명 (KIS 종목 마스터 1행) */
+export interface StockMasterItem {
+  /** 단축코드 — KOSDAQ 신형은 영숫자 6자리일 수 있다 */
+  code: string;
+  name: string;
+  market: "KOSPI" | "KOSDAQ";
+}
+
+/**
+ * market:stockMaster — 종목명 검색용 전체 종목 스냅샷 (사용자 무관 공용).
+ * 공개 KIS 종목 마스터를 파싱한 코드↔종목명 목록으로, 하루 1회 갱신한다.
+ */
+export interface StoredStockMaster {
+  items: StockMasterItem[];
+  /** 잡이 마스터를 받아온 시각 (ISO) — 1일 1회 갱신 판정용 */
+  fetchedAt: string;
+}
+
 /** market:lastRefreshAt — 마지막 갱신 잡 실행 기록 (staleness 판단·수동 점검용) */
 export interface LastRefreshRecord {
   /** 실행 완료 시각 (ISO) */
@@ -109,6 +127,7 @@ function stockInfoKey(symbolCode: string): string {
 
 const LAST_REFRESH_KEY = "market:lastRefreshAt";
 const DAILY_FLUCTUATION_KEY = "market:dailyFluctuation";
+const STOCK_MASTER_KEY = "market:stockMaster";
 
 export async function getMarketDetail(
   key: MarketDetailKey
@@ -198,4 +217,12 @@ export async function setDailyFluctuation(
   value: StoredDailyFluctuation
 ): Promise<void> {
   await getRedis().set(DAILY_FLUCTUATION_KEY, value);
+}
+
+export async function getStockMaster(): Promise<StoredStockMaster | null> {
+  return getRedis().get<StoredStockMaster>(STOCK_MASTER_KEY);
+}
+
+export async function setStockMaster(value: StoredStockMaster): Promise<void> {
+  await getRedis().set(STOCK_MASTER_KEY, value);
 }
