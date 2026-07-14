@@ -2367,6 +2367,15 @@ interface WatchItem {
 - **구현**: ① `constants.ts` 엔드포인트/TR_ID/`KIS_FLUCTUATION_RANKING_SIZE=30` ② `client.ts` `fetchKisFluctuationRanking(sort)` — 페이지네이션 없이 1콜 ③ `market/store.ts` `StoredDailyFluctuation`/`DailyFluctuationItem` + `market:dailyFluctuation` 키(단일 SET 덮어쓰기·누적 없음) + get/set ④ `refreshMarketData` 잡에 `refreshDailyFluctuation` 스텝(부수 데이터라 실패 격리·잡 전체 `ok` 미영향, 보고서 `dailyFluctuation` 필드) — 기존 시세 갱신 잡(10분+15:40/18:15)에 얹어 장중 갱신 ⑤ `/hot-stocks`에 서버 모드 탭 `?mode=daily` 신설(`[월간 핫종목 | 당일 등락률]`, Link 기반·클라 JS 없음), 당일 뷰는 30행 테이블(순위/종목명/종목코드/등락률/현재가)+`resolveStaleness(fetchedAt)` 배지. 홈 카드·월간 뷰 무변경.
 - **검증**: tsc·lint·build(16/16) PASS. Redis 시드(상위 30) + 세션 쿠키 + 헤드리스 크롬 E2E로 `/hot-stocks?mode=daily` 렌더 확인(모드 탭 활성·30행·등락률 내림차순·상승 색상·원화 포맷), `/hot-stocks` 월간 뷰 하위호환 확인. 시드한 가짜 키는 검증 후 삭제(다음 실제 잡이 채움).
 
+#### 17.11 보유·관심종목 등록을 종목명 검색으로 전환 (2026-07-14)
+
+- **요청**: 등록 폼의 종목코드 6자리 직접 입력을 종목명 검색 + 탭 선택으로 교체.
+- **데이터 소스**: `hotstocks/universe.ts`의 `fetchHotStockUniverse()`(공개 KIS 종목 마스터·인증 불필요) 재사용 — 코스피/코스닥 보통주 코드↔종목명(~2,650). DART corpCode는 상장·비상장 혼재라 부적합해 배제.
+- **아키텍처 (서버 검색)**: 규모(직렬화 ~150KB)상 클라 전량 전송보다 서버 검색이 유리(페이로드 최소·KIS 미노출). ① 잡: `refreshMarketData`에 `refreshStockMaster` 스텝 추가 — 마스터를 파싱해 `market:stockMaster`(`{items:[{code,name,market}], fetchedAt}`)에 저장. 마스터는 거의 안 변하므로 저장된 `fetchedAt`의 KST 날짜가 오늘이면 다운로드 skip(**1일 1회**). 부수 데이터라 실패 격리·잡 전체 `ok` 미영향(보고서 `stockMaster` 필드). ② 검색 액션: `lib/stocks/search.ts`의 `searchStocks(query)` Server Action — `auth()`+`isEmailAllowed` 가드 후 `market:stockMaster`를 종목명(또는 2~6자리 코드) 부분일치로 필터, 접두 일치 우선·가나다 안정 정렬해 상위 20 반환. KIS 직접 호출 없음. ③ 컴포넌트: `components/stocks/StockSearchInput.tsx`(`'use client'`) — 디바운스 250ms 후 `searchStocks` 호출, 결과 드롭다운(키보드 ↑↓/Enter/Esc·마우스), 선택 시 hidden `symbolCode` 채우고 종목 배지 표시, 미선택 시 검색 입력 `required`로 빈 제출 차단. 그리드 한 줄 전체 차지.
+- **폼 배선**: `holdings/page.tsx`·`watchlist/page.tsx`의 `<input name="symbolCode">`를 `<StockSearchInput />`로 교체(수량·매입금액·기준일 인풋 유지). **`addHoldingAction`·`addWatchItemAction`은 무변경** — 제출값은 여전히 `symbolCode`뿐이고, 종목명은 기존대로 갱신 잡 `fillMissingNames`가 채운다. 폼 힌트 문구만 검색 안내로 갱신.
+- **설계 유지 근거**: 등록 액션의 "형식 검증만·종목명은 잡이 채움" 철학(§11.10-A4)을 그대로 유지. 검색 실패·미선택 시에도 서버 액션이 `invalid_code`로 재차 방어.
+- **검증**: tsc·lint·build(20/20 라우트) PASS. `market:stockMaster` 시드(10종) + 세션 쿠키 + 헤드리스 크롬 E2E — `/holdings`에서 "삼성" 입력 → 드롭다운 4종(삼성물산/삼성바이오로직스/삼성전자/삼성SDI, 가나다 정렬) → 삼성물산 선택 → hidden `symbolCode="028260"`·배지 렌더 확인. 시드 키는 검증 후 삭제(fetchedAt=오늘이라 안 지우면 잡이 실제 다운로드를 skip하므로 필수).
+
 ---
 
 ## 7. PR 분리 권장 (선택)
