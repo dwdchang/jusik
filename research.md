@@ -67,8 +67,8 @@
 | `watchlist/page.tsx` | 관심종목 목록 — 등록 기준일 종가 대비 수익률, 기준일 변경/삭제 |
 | `watchlist/[symbolCode]/page.tsx` | 관심종목 상세 — 등록일 이후 추이·정보 블록 (보유종목 상세와 구조 동일) |
 | `watchlist/actions.ts` | Server Actions: add/update(기준일 변경 시 기준가 null 리셋)/delete |
-| `hot-stocks/page.tsx` | 핫종목 TOP 100 테이블 — `?period=1m|3m|6m|12m` 탭, 시장 위첨자(ᴷ/ᴰ) 표기(`MARKET_SUP` 로컬 상수) |
-| `feeds/page.tsx` | 새 소식 상세 (Phase 17-2b) — `ensureAllowedSession` + `getDisclosureBoard` + `FeedTabsClient`(뉴스/공시/수출입 탭+게시판+아코디언). 홈 "새 소식" 요약 카드에서 이동 |
+| `hot-stocks/page.tsx` | 핫종목 — 서버 모드 탭 `?mode=monthly(기본)\|daily`. 월간: 구간 수익률 TOP 100(`?period=1m\|3m\|6m\|12m`, 시장 위첨자 ᴷ/ᴰ). 당일: `market:dailyFluctuation` 상위 30 테이블+`resolveStaleness` 배지. 두 뷰는 async 서버 서브컴포넌트(`MonthlyView`/`DailyView`) |
+| `feeds/page.tsx` | 뉴스·공시 상세 (Phase 17-2b) — `ensureAllowedSession` + `getDisclosureBoard` + `FeedTabsClient`(뉴스/공시/수출입 탭+게시판+아코디언). 홈 "뉴스·공시" 요약 카드에서 이동 |
 | `api/auth/[...nextauth]/route.ts` | Auth.js 핸들러 re-export (3줄) |
 | `api/jobs/refresh-market-data/route.ts` | 시세 갱신 잡 엔드포인트 (POST, §4.1) |
 | `api/jobs/refresh-hot-stocks/route.ts` | 핫종목 갱신 잡 엔드포인트 (POST, §4.2) |
@@ -82,7 +82,7 @@
 |---|---|
 | `api/kis/constants.ts` | KIS 베이스 URL·엔드포인트·TR_ID·조회 코드·상수 전부. 지표 코드 변경 시 이 파일만 수정 |
 | `api/kis/auth.ts` | KIS 토큰 발급·캐싱 — Redis 공유 캐시 + `SET NX PX` 분산 락 + 인스턴스 내 in-flight 합류 (§7.4) |
-| `api/kis/client.ts` | `fetchKisJson` 공통 래퍼(헤더·rt_cd 검증·15초 타임아웃) + 조회 함수 9종 (지수·해외·현재가·랭킹·배당·손익·재무비율·종목명·기간별시세 일/월) |
+| `api/kis/client.ts` | `fetchKisJson` 공통 래퍼(헤더·rt_cd 검증·15초 타임아웃) + 조회 함수 10종 (지수·해외·현재가·시총랭킹·등락률랭킹·배당·손익·재무비율·종목명·기간별시세 일/월) |
 | `api/kis/types.ts` | KIS 원본 응답 타입 (필드 전부 optional string, `[key: string]: unknown` 허용) |
 | `api/dart/client.ts` | DART OpenAPI 클라이언트 — `corpCode.xml` zip 파싱(fflate, 상장사만 매핑)·공시검색 `list.json`(status 013=빈 결과 정상 처리) |
 | `feeds/store.ts` | 피드 store — `market:disclosures:{code}`(공시 스냅샷) 라이터·`disclosuresKey` export·`dart:corpCodeMap`(종목코드→고유번호) 리더·라이터. (단일 종목 리더 `getDisclosures`는 Phase 17-2에서 제거 — 화면은 `homeFeed`의 MGET로 통합) |
@@ -99,10 +99,10 @@
 | `indices/getIndexDetail.ts` / `getOverseasDetail.ts` | 상세 리더 — `market:detail:{key}` 1건. **두 파일 내용이 사실상 동일** (§8) |
 | `indices/volatility.ts` | 변동성 기록 store+계산+카드 요약 (한 파일에 쓰기·읽기 혼재) |
 | `indices/dates.ts` | `getLast7BusinessDates` — **현재 미사용 (레거시)** (§9.2) |
-| `market/store.ts` | 공용 시세 Redis 스토어 — `market:detail:*`, `market:stock:*`, `market:stockInfo:*`, `market:lastRefreshAt` (§5) |
+| `market/store.ts` | 공용 시세 Redis 스토어 — `market:detail:*`, `market:stock:*`, `market:stockInfo:*`, `market:lastRefreshAt`, `market:dailyFluctuation` (§5) |
 | `market/staleness.ts` | KST 시간창 가드(`isWithinKisCallWindow` 09:00~18:40) + **스케줄 인지형 배지 판정** `resolveStaleness` — 시세 잡 스케줄 상수(`SCHEDULE_MINUTES`: 09:00~15:30 10분 + 15:40 + 18:15)로 "이미 완료됐어야 할 최근 슬롯(`lastDueRefreshMs`, 유예 20분)"을 구해, fetchedAt이 그보다 오래됐을 때만 배지(정상 휴지 구간엔 안 뜸). 지연 경과로 warn/critical. `SCHEDULE_MINUTES`는 외부 QStash 등록과 동기화 필수 |
 | `holdings/store.ts` | 보유종목·포트폴리오 히스토리 store — 암호화, 레거시 평문/`avgPrice` 읽기 하위호환 |
-| `holdings/valuation.ts` | 포트폴리오 평가(스냅샷 MGET) — 시세 없는 종목 null 격리·합계 제외, `latestRecordBefore`/`computeDailyChangeRate` |
+| `holdings/valuation.ts` | 포트폴리오 평가(스냅샷 MGET) — 시세 없는 종목 null 격리·합계 제외. 일일 등락률(`totalDailyChangeRate`)은 종목별 `changeRate`로 전일 평가액을 역산·가중(히스토리 불필요·항상 가용) |
 | `holdings/summary.ts` | 홈 보유종목 카드 요약 (실패 시 null) |
 | `holdings/stockHistory.ts` | 종목별 2년 종가 히스토리 `stock:{code}:history` — 백필(최대 8콜 페이징)/일별 갱신/upsert |
 | `holdings/stockInfo.ts` | 정보 블록 4종 — 쓰기(잡 전용 `fetchStockInfoBlocks`: 배당·손익·재무비율 병렬)와 읽기(`getStockInfo`: Redis 조합만) 경로가 한 파일에 명시 구분 |
@@ -110,7 +110,7 @@
 | `hotstocks/months.ts` | 월 문자열("YYYY-MM") 계산 — `baseMonthKst`(전월)/`addMonths`/월초·월말/표시 포맷 |
 | `hotstocks/universe.ts` | KIS 종목 마스터 zip 다운로드·EUC-KR 고정폭 파싱 — ST(주권)만, 스팩 제외, 코드 오름차순 |
 | `hotstocks/summary.ts` | 홈 핫종목 카드 요약 + 갱신 지연 판정 `isHotStocksStale` |
-| `jobs/refreshMarketData.ts` | **시세 갱신 잡 파이프라인 본체** (§4.1) |
+| `jobs/refreshMarketData.ts` | **시세 갱신 잡 파이프라인 본체** (§4.1) — 지수·종목·포트폴리오 갱신에 더해 당일 등락률 상위 30(`refreshDailyFluctuation`, 부수·실패 격리)도 저장 |
 | `jobs/refreshHotStocks.ts` | **핫종목 갱신 잡 파이프라인 본체** (§4.2) |
 | `jobs/refreshFeeds.ts` | **피드(공시) 갱신 잡 파이프라인 본체** (§4.5) |
 | `jobs/collectTargets.ts` | 잡 공용 수집 대상 조회 — `collectHoldings`/`collectWatchlists`/`unionSymbolCodes`/`errorMessage` (시세·피드 잡 공유, Phase 17-1에서 refreshMarketData 로컬 함수를 추출) |
@@ -249,12 +249,12 @@ QStash 스케줄 (매일 08~22시 정시 KST, CRON_TZ=Asia/Seoul 0 8-22 * * *)
   `getPortfolioHistory`. 상세는 + `getStockInfo`(스냅샷+정보 블록 조합) + `getStockHistory`.
 - **관심종목**: `getWatchlist` + `getStockSnapshots` + `computeWatchReturnRate`.
   상세는 보유종목 상세와 동일 구성에 기준가 대비 차트.
-- **홈 "새 소식" 카드**: `getTodayFeedCounts(email)`(feeds/homeFeed) — 오늘 공시 건수만
+- **홈 "뉴스·공시" 카드**: `getTodayFeedCounts(email)`(feeds/homeFeed) — 오늘 공시 건수만
   집계 → `FeedSummaryCard`. 홈 `Promise.all`에 `.catch(() => 기본 0/null)` 격리로 합류.
-- **새 소식 상세(`/feeds`)**: `getDisclosureBoard(email)` — `market:disclosures:{code}`
+- **뉴스·공시 상세(`/feeds`)**: `getDisclosureBoard(email)` — `market:disclosures:{code}`
   MGET 병합·상위 40건 → `FeedTabsClient`. (Phase 17-2에서 A안 철회 — 보유·관심 상세
   페이지는 더 이상 공시를 읽지 않는다. 17-2b에서 게시판을 홈 전체폭→`/feeds`로 이동.)
-- **핫종목**: `getHotStocks` 통짜 1건 → `?period` 탭으로 구간 선택 (검증: 알 수 없는 값→1m).
+- **핫종목**: `?mode` 서버 분기 — 월간은 `getHotStocks` 통짜 1건→`?period` 탭, 당일은 `getDailyFluctuation` 1건(상위 30)+`resolveStaleness`. (검증: 알 수 없는 mode→monthly, period→1m).
 - **변동성**: `getVolatilityHistory` → `aggregateMonthlyAverages`(최근 6개월).
 
 ### 4.4 사용자 쓰기 경로 (Server Actions)
@@ -282,6 +282,7 @@ QStash 스케줄 (매일 08~22시 정시 KST, CRON_TZ=Asia/Seoul 0 8-22 * * *)
 | `kospiVolatility:history` | `KospiVolatilityRecord[]` | ✕ | 시세 잡 | 변동성 카드·상세 |
 | `market:hotStocks` | `StoredHotStocks` (구간 4종 TOP 100) | ✕ | 핫종목 잡 | 핫종목 카드·페이지 |
 | `market:hotStocks:progress` | `HotStocksProgress` (커서) | ✕ | 핫종목 잡 (완료 시 삭제) | 핫종목 잡 |
+| `market:dailyFluctuation` | `StoredDailyFluctuation` (당일 등락률 상위 30+fetchedAt) | ✕ | 시세 잡 | 핫종목 페이지 `?mode=daily` |
 | `holdings:{email}` | `Holding[]` | **○** | Server Action + 잡(종목명 채움) | 보유종목 화면·잡 |
 | `holdings:{email}:history` | `PortfolioDailyRecord[]` | **○** | 시세 잡 | 보유종목 화면 |
 | `watchlist:{email}` | `WatchItem[]` | **○** | Server Action + 잡(종목명·기준가) | 관심종목 화면·잡 |
@@ -476,6 +477,9 @@ QStash 스케줄 (매일 08~22시 정시 KST, CRON_TZ=Asia/Seoul 0 8-22 * * *)
 - 종목 마스터 파일 그룹코드 오프셋은 `tail[1:3]` — **공식 파이썬 샘플([0:2])과 1바이트
   다름** (2026-07-11 원시 바이트 실측 우선).
 - 시총 랭킹은 1회 상위 30건 → 밖이면 "30위권 밖" 라벨.
+- **등락률 순위(FHPST01700000)도 1회 상위 30건이 상한** — `fid_input_cnt_1`을 키워도 30건,
+  `tr_cont` 연속조회는 1페이지로 리셋돼 31위 이하 조회 불가(2026-07-14 실측). 100위는
+  전체 종목 스캔이라야 가능. `fid_rank_sort_cls_code` "0"=상승률순/"1"=하락률순.
 - KIS 문자열 숫자·부호 코드는 반드시 `parseNum`+`applyKisSign` 경유.
 
 ### 9.4 시간·스케줄 규칙

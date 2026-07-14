@@ -2359,6 +2359,14 @@ interface WatchItem {
 - **파일**: `src/lib/market/staleness.ts`(단일 수정 — 홈 6개 카드 배지 전부 교정). `page.tsx` 호출부·잡·다른 화면 무변경. `SCHEDULE_MINUTES`는 외부 QStash 등록과 동기화 필수(§8.13 결합점).
 - **검증**: 순수 로직 9개 시나리오(정상 휴지·장중·15:40/18:15 누락·주말·이른 아침) 전부 PASS + 실브라우저 E2E(실제 16:54 KST·fetchedAt 15:40에서 배지 미표시, 카드 정상 렌더) PASS.
 
+#### 17.10 핫종목 페이지 "당일 등락률" 모드 신설 (2026-07-14)
+
+- **요청**: 핫종목 카드/페이지에 "당일 등락률 순위 100위"를 추가.
+- **실측으로 뒤집힌 범위 (2026-07-14, 토큰 캐시 훼손 없는 읽기 프로브)**: KIS 등락률 순위 API(`FHPST01700000`, `/uapi/domestic-stock/v1/ranking/fluctuation`)는 **1콜 상위 30건이 상한**. `fid_input_cnt_1`을 키워도 30건 고정, `tr_cont="N"` 연속조회도 1페이지로 리셋돼 31위 이하가 안 온다(공식 예제의 `tr_cont=="M"` 분기는 이 엔드포인트에선 발동 안 함). → **100위 불가**, 100위를 하려면 Phase 14식 전체(~2,650) 스캔뿐인데 10분 라이브엔 부적합. **사용자 결정: 상위 30위·장중 라이브 채택**(월간 핫종목처럼 저빈도 100위 배치는 보류).
+- **확정 파라미터·필드 (실측)**: `fid_rank_sort_cls_code` **"0"=상승률순 / "1"=하락률순**. 필드 `stck_shrn_iscd`(코드)·`data_rank`(순위)·`hts_kor_isnm`(종목명)·`stck_prpr`(현재가)·`prdy_ctrt`(등락률)+`prdy_vrss_sign`(부호). 부호는 `applyKisSign`으로 적용.
+- **구현**: ① `constants.ts` 엔드포인트/TR_ID/`KIS_FLUCTUATION_RANKING_SIZE=30` ② `client.ts` `fetchKisFluctuationRanking(sort)` — 페이지네이션 없이 1콜 ③ `market/store.ts` `StoredDailyFluctuation`/`DailyFluctuationItem` + `market:dailyFluctuation` 키(단일 SET 덮어쓰기·누적 없음) + get/set ④ `refreshMarketData` 잡에 `refreshDailyFluctuation` 스텝(부수 데이터라 실패 격리·잡 전체 `ok` 미영향, 보고서 `dailyFluctuation` 필드) — 기존 시세 갱신 잡(10분+15:40/18:15)에 얹어 장중 갱신 ⑤ `/hot-stocks`에 서버 모드 탭 `?mode=daily` 신설(`[월간 핫종목 | 당일 등락률]`, Link 기반·클라 JS 없음), 당일 뷰는 30행 테이블(순위/종목명/종목코드/등락률/현재가)+`resolveStaleness(fetchedAt)` 배지. 홈 카드·월간 뷰 무변경.
+- **검증**: tsc·lint·build(16/16) PASS. Redis 시드(상위 30) + 세션 쿠키 + 헤드리스 크롬 E2E로 `/hot-stocks?mode=daily` 렌더 확인(모드 탭 활성·30행·등락률 내림차순·상승 색상·원화 포맷), `/hot-stocks` 월간 뷰 하위호환 확인. 시드한 가짜 키는 검증 후 삭제(다음 실제 잡이 채움).
+
 ---
 
 ## 7. PR 분리 권장 (선택)
