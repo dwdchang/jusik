@@ -17,6 +17,8 @@ import type {
   KisDividendRow,
   KisFinancialRatioResponse,
   KisFinancialRatioRow,
+  KisFluctuationRankingResponse,
+  KisFluctuationRankingRow,
   KisIncomeStatementResponse,
   KisIncomeStatementRow,
   KisIndexDailyResponse,
@@ -181,6 +183,39 @@ export async function fetchKisMarketCapRanking(): Promise<
       fid_input_price_1: "",
       fid_input_price_2: "",
       fid_vol_cnt: "",
+    }
+  );
+
+  return data.output ?? [];
+}
+
+/**
+ * 국내주식 등락률 순위 (FHPST01700000) — 전체시장 상위 30건 (2026-07-14 실측).
+ * sort "0" 상승률순 / "1" 하락률순. 1콜 30건이 상한이라 페이지네이션은 하지 않는다.
+ * 시세 갱신 잡이 회차당 1회 호출해 `market:dailyFluctuation`에 저장한다.
+ */
+export async function fetchKisFluctuationRanking(
+  sort: "0" | "1" = "0"
+): Promise<KisFluctuationRankingRow[]> {
+  const data = await fetchKisJson<KisFluctuationRankingResponse>(
+    "fluctuation ranking",
+    KIS_ENDPOINTS.FLUCTUATION_RANKING,
+    KIS_TR_ID.FLUCTUATION_RANKING,
+    {
+      fid_cond_mrkt_div_code: KIS_STOCK_MARKET_DIV_CODE,
+      fid_cond_scr_div_code: "20170",
+      fid_input_iscd: "0000",
+      fid_rank_sort_cls_code: sort,
+      fid_input_cnt_1: "0",
+      fid_prc_cls_code: "0",
+      fid_input_price_1: "",
+      fid_input_price_2: "",
+      fid_vol_cnt: "",
+      fid_trgt_cls_code: "0",
+      fid_trgt_exls_cls_code: "0",
+      fid_div_cls_code: "0",
+      fid_rsfl_rate1: "",
+      fid_rsfl_rate2: "",
     }
   );
 

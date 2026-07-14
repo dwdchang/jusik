@@ -136,6 +136,34 @@ export interface KisMarketCapRankingResponse {
   output?: KisMarketCapRankingRow[];
 }
 
+/** 등락률 순위 (FHPST01700000) — output 행 (2026-07-14 실측 필드) */
+export interface KisFluctuationRankingRow {
+  /** 단축 종목코드 6자리 */
+  stck_shrn_iscd?: string;
+  /** 순위 (1부터) */
+  data_rank?: string;
+  /** HTS 한글 종목명 */
+  hts_kor_isnm?: string;
+  /** 현재가(원) */
+  stck_prpr?: string;
+  /** 전일 대비 */
+  prdy_vrss?: string;
+  /** 전일 대비 부호 (1:상한 2:상승 3:보합 4:하한 5:하락) */
+  prdy_vrss_sign?: string;
+  /** 전일 대비율(%) — 부호 미적용, prdy_vrss_sign으로 부호 판단 */
+  prdy_ctrt?: string;
+  /** 누적 거래량 */
+  acml_vol?: string;
+  [key: string]: unknown;
+}
+
+export interface KisFluctuationRankingResponse {
+  rt_cd?: string;
+  msg_cd?: string;
+  msg1?: string;
+  output?: KisFluctuationRankingRow[];
+}
+
 /** 예탁원 배당일정 (HHKDB669102C0) — output1 행 (plan.md §13.4 실측) */
 export interface KisDividendRow {
   /** 기준일 (YYYYMMDD) */

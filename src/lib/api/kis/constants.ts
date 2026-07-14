@@ -29,6 +29,8 @@ export const KIS_ENDPOINTS = {
     "/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice",
   /** 시가총액 상위 랭킹 — 1회 상위 30건 (plan.md §13.4 실측) */
   MARKET_CAP_RANKING: "/uapi/domestic-stock/v1/ranking/market-cap",
+  /** 국내주식 등락률 순위 — 1회 상위 30건, tr_cont 연속조회 미지원 (2026-07-14 실측) */
+  FLUCTUATION_RANKING: "/uapi/domestic-stock/v1/ranking/fluctuation",
   /** 예탁원 배당일정 */
   DIVIDEND: "/uapi/domestic-stock/v1/ksdinfo/dividend",
   /** 손익계산서 — 분기값은 연중 누적(YTD), 단위 억원 (plan.md §13.4 실측) */
@@ -45,6 +47,7 @@ export const KIS_TR_ID = {
   STOCK_BASIC_INFO: "CTPF1002R",
   STOCK_DAILY_CHART: "FHKST03010100",
   MARKET_CAP_RANKING: "FHPST01740000",
+  FLUCTUATION_RANKING: "FHPST01700000",
   DIVIDEND: "HHKDB669102C0",
   INCOME_STATEMENT: "FHKST66430200",
   FINANCIAL_RATIO: "FHKST66430300",
@@ -52,6 +55,12 @@ export const KIS_TR_ID = {
 
 /** 시가총액 랭킹 1회 응답 건수 — 이 밖의 순위는 "30위권 밖"으로 표시 */
 export const KIS_MARKET_CAP_RANKING_SIZE = 30;
+
+/**
+ * 등락률 순위 1회 응답 건수 — 전체시장 상위 30건이 상한 (2026-07-14 실측).
+ * fid_input_cnt_1을 키워도 30건, tr_cont 연속조회도 1페이지로 리셋돼 100위는 불가.
+ */
+export const KIS_FLUCTUATION_RANKING_SIZE = 30;
 
 /** 배당 정보 집계 범위 — 최근 1년 주당배당금 합계로 시가배당률을 계산 */
 export const DIVIDEND_LOOKBACK_DAYS = 365;
