@@ -63,6 +63,29 @@ export interface StoredStockInfoBlocks {
   fetchedAt: string;
 }
 
+/** market:dailyFluctuation 항목 — 당일 등락률 순위 1행 */
+export interface DailyFluctuationItem {
+  /** 순위 (1부터) */
+  rank: number;
+  /** 종목코드 6자리 */
+  code: string;
+  name: string;
+  /** 현재가(원) */
+  price: number;
+  /** 전일 대비율(%) — 부호 적용 */
+  changeRate: number;
+}
+
+/**
+ * market:dailyFluctuation — 당일 등락률 순위 상위 30 스냅샷 (사용자 무관 공용).
+ * 전체시장 상승률순, 시세 갱신 잡이 회차당 1회 덮어쓴다 (누적 없음).
+ */
+export interface StoredDailyFluctuation {
+  items: DailyFluctuationItem[];
+  /** 잡이 KIS에서 받아온 시각 (ISO) — staleness 판정용 */
+  fetchedAt: string;
+}
+
 /** market:lastRefreshAt — 마지막 갱신 잡 실행 기록 (staleness 판단·수동 점검용) */
 export interface LastRefreshRecord {
   /** 실행 완료 시각 (ISO) */
@@ -85,6 +108,7 @@ function stockInfoKey(symbolCode: string): string {
 }
 
 const LAST_REFRESH_KEY = "market:lastRefreshAt";
+const DAILY_FLUCTUATION_KEY = "market:dailyFluctuation";
 
 export async function getMarketDetail(
   key: MarketDetailKey
@@ -164,4 +188,14 @@ export async function setLastRefreshRecord(
   value: LastRefreshRecord
 ): Promise<void> {
   await getRedis().set(LAST_REFRESH_KEY, value);
+}
+
+export async function getDailyFluctuation(): Promise<StoredDailyFluctuation | null> {
+  return getRedis().get<StoredDailyFluctuation>(DAILY_FLUCTUATION_KEY);
+}
+
+export async function setDailyFluctuation(
+  value: StoredDailyFluctuation
+): Promise<void> {
+  await getRedis().set(DAILY_FLUCTUATION_KEY, value);
 }

@@ -1,4 +1,5 @@
 import {
+  fetchKisFluctuationRanking,
   fetchKisIndexDaily,
   fetchKisMarketCapRanking,
   fetchKisOverseasDaily,
@@ -34,10 +35,12 @@ import {
 } from "@/lib/indices/volatility";
 import {
   getStockInfoBlocks,
+  setDailyFluctuation,
   setLastRefreshRecord,
   setMarketDetail,
   setStockInfoBlocks,
   setStockSnapshot,
+  type DailyFluctuationItem,
   type MarketDetailKey,
   type StoredStockSnapshot,
 } from "@/lib/market/store";
@@ -73,6 +76,8 @@ export interface RefreshMarketDataReport {
   tradingDay: boolean;
   indices: Array<{ key: MarketDetailKey; ok: boolean; error?: string }>;
   volatility: { ok: boolean; upserted?: number; error?: string };
+  /** 당일 등락률 순위 저장 결과 — 부수 데이터라 실패해도 잡 전체 ok에 영향 없음 */
+  dailyFluctuation: { ok: boolean; count?: number; error?: string };
   stocks: Array<{ symbolCode: string; ok: boolean; error?: string }>;
   nameFills: Array<{ symbolCode: string; ok: boolean; error?: string }>;
   portfolios: Array<{
@@ -190,6 +195,34 @@ async function refreshIndices(fetchedAt: string): Promise<{
   });
 
   return { results, kospiRaw };
+}
+
+/**
+ * 당일 등락률 순위 상위 30 → market:dailyFluctuation 저장 (§17.10).
+ * 전체시장 상승률순 1콜, 부수 데이터라 실패해도 잡 전체 ok에 영향 없이 로그만 남긴다.
+ */
+async function refreshDailyFluctuation(
+  fetchedAt: string
+): Promise<RefreshMarketDataReport["dailyFluctuation"]> {
+  try {
+    const rows = await fetchKisFluctuationRanking("0");
+
+    const items: DailyFluctuationItem[] = rows
+      .filter((row) => row.stck_shrn_iscd && row.hts_kor_isnm)
+      .map((row) => ({
+        rank: parseNum(row.data_rank),
+        code: row.stck_shrn_iscd as string,
+        name: row.hts_kor_isnm as string,
+        price: parseNum(row.stck_prpr),
+        changeRate: applyKisSign(parseNum(row.prdy_ctrt), row.prdy_vrss_sign),
+      }));
+
+    await setDailyFluctuation({ items, fetchedAt });
+    return { ok: true, count: items.length };
+  } catch (error) {
+    console.error("[job] daily fluctuation refresh failed:", error);
+    return { ok: false, error: errorMessage(error) };
+  }
 }
 
 /**
@@ -484,6 +517,9 @@ export async function refreshMarketData(
   // 1. 지수·환율·금리·유가 5종 → market:detail:*
   const { results: indices, kospiRaw } = await refreshIndices(startedAt);
 
+  // 1b. 당일 등락률 순위 상위 30 → market:dailyFluctuation (부수 데이터, 실패 격리)
+  const dailyFluctuation = await refreshDailyFluctuation(startedAt);
+
   // 4. 코스피 변동성 upsert (1의 KOSPI 응답 재사용)
   let volatility: RefreshMarketDataReport["volatility"];
   if (kospiRaw !== null) {
@@ -570,6 +606,7 @@ export async function refreshMarketData(
     tradingDay,
     indices,
     volatility,
+    dailyFluctuation,
     stocks,
     nameFills,
     portfolios,
