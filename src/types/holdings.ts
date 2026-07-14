@@ -52,6 +52,9 @@ export interface PortfolioValuation {
   totalProfit: number;
   /** 총 수익률(%) */
   totalReturnRate: number;
+  /** 일일 등락률(%) — 종목별 KIS 전일 대비(changeRate)로 전일 평가액 역산해 가중.
+   * 시세 있는 종목이 없으면 null (히스토리 불필요·항상 가용) */
+  totalDailyChangeRate: number | null;
   /** 시세 스냅샷이 없어 합계에서 제외된 종목코드 */
   missingPriceSymbols: string[];
 }

@@ -1,9 +1,5 @@
 import { getStockSnapshots } from "@/lib/market/store";
-import type {
-  Holding,
-  PortfolioDailyRecord,
-  PortfolioValuation,
-} from "@/types/holdings";
+import type { Holding, PortfolioValuation } from "@/types/holdings";
 
 /**
  * 보유종목 평가 — QStash 갱신 잡이 저장한 `market:stock:{code}` 스냅샷으로 계산한다.
@@ -49,12 +45,33 @@ export async function getPortfolioValuation(
   const totalValue = priced.reduce((sum, item) => sum + (item.value ?? 0), 0);
   const totalProfit = totalValue - totalCost;
 
+  // 일일 등락 — 종목별 KIS 전일 대비(changeRate)로 전일 평가액을 역산해 가중.
+  // 포트폴리오 히스토리(전일 스냅샷)에 의존하지 않아 첫날·기록 공백에도 항상 가용.
+  let dailyPrevValue = 0;
+  let dailyNowValue = 0;
+  for (const item of priced) {
+    const snapshot = snapshots.get(item.holding.symbolCode);
+    if (snapshot === undefined || item.value === null) {
+      continue;
+    }
+    const denom = 1 + snapshot.changeRate / 100;
+    if (denom > 0) {
+      dailyPrevValue += item.value / denom;
+      dailyNowValue += item.value;
+    }
+  }
+  const totalDailyChangeRate =
+    dailyPrevValue > 0
+      ? ((dailyNowValue - dailyPrevValue) / dailyPrevValue) * 100
+      : null;
+
   return {
     items,
     totalCost,
     totalValue,
     totalProfit,
     totalReturnRate: totalCost > 0 ? (totalProfit / totalCost) * 100 : 0,
+    totalDailyChangeRate,
     missingPriceSymbols: [
       ...new Set(
         items
@@ -63,25 +80,4 @@ export async function getPortfolioValuation(
       ),
     ],
   };
-}
-
-/** history에서 기준일(KST "YYYY-MM-DD") 이전의 가장 최근 기록 */
-export function latestRecordBefore(
-  history: PortfolioDailyRecord[],
-  date: string
-): PortfolioDailyRecord | undefined {
-  return [...history]
-    .filter((record) => record.date < date)
-    .sort((a, b) => b.date.localeCompare(a.date))[0];
-}
-
-/** 일일 변동률(%) — 전일 기록이 없거나 0이면 null */
-export function computeDailyChangeRate(
-  todayValue: number,
-  prevRecord: PortfolioDailyRecord | undefined
-): number | null {
-  if (!prevRecord || prevRecord.totalValue <= 0) {
-    return null;
-  }
-  return ((todayValue - prevRecord.totalValue) / prevRecord.totalValue) * 100;
 }

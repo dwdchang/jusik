@@ -1,10 +1,6 @@
 import type { HoldingsCardSummary } from "@/types/holdings";
-import { getHoldings, getPortfolioHistory, todayKstDate } from "./store";
-import {
-  computeDailyChangeRate,
-  getPortfolioValuation,
-  latestRecordBefore,
-} from "./valuation";
+import { getHoldings } from "./store";
+import { getPortfolioValuation } from "./valuation";
 
 /**
  * 홈 화면 보유종목 카드 요약.
@@ -20,17 +16,11 @@ export async function getHoldingsCardSummary(
       return null;
     }
 
-    const [valuation, history] = await Promise.all([
-      getPortfolioValuation(holdings),
-      getPortfolioHistory(email),
-    ]);
+    const valuation = await getPortfolioValuation(holdings);
 
     return {
       totalReturnRate: valuation.totalReturnRate,
-      dailyChangeRate: computeDailyChangeRate(
-        valuation.totalValue,
-        latestRecordBefore(history, todayKstDate())
-      ),
+      dailyChangeRate: valuation.totalDailyChangeRate,
     };
   } catch (error) {
     console.error("[getHoldingsCardSummary] failed:", error);

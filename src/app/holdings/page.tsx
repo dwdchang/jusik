@@ -12,11 +12,7 @@ import {
   getPortfolioHistory,
   todayKstDate,
 } from "@/lib/holdings/store";
-import {
-  computeDailyChangeRate,
-  getPortfolioValuation,
-  latestRecordBefore,
-} from "@/lib/holdings/valuation";
+import { getPortfolioValuation } from "@/lib/holdings/valuation";
 import { formatKstDateTime } from "@/lib/format/datetime";
 import { resolveDirection } from "@/lib/indices/kisMapper";
 import { getLastRefreshRecord } from "@/lib/market/store";
@@ -86,12 +82,7 @@ export default async function HoldingsPage({
         : 0,
   }));
 
-  const dailyChangeRate = valuation
-    ? computeDailyChangeRate(
-        valuation.totalValue,
-        latestRecordBefore(history, today)
-      )
-    : null;
+  const dailyChangeRate = valuation ? valuation.totalDailyChangeRate : null;
 
   return (
     <main className={styles.page}>
