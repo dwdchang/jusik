@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { HoldingsChartClient } from "@/components/holdings/HoldingsChartClient";
 import type { HoldingsChartPoint } from "@/components/holdings/HoldingsChart";
 import { NavIconLink } from "@/components/nav/NavIconLink";
+import { StockSearchInput } from "@/components/stocks/StockSearchInput";
 import { ensureAllowedSession } from "@/lib/auth/ensureAllowedSession";
 import { formatChangeRate } from "@/lib/format/change";
 import { formatKrw } from "@/lib/format/krw";
@@ -201,14 +202,7 @@ export default async function HoldingsPage({
           <details className={styles.addDetails} open={errorMessage !== null}>
             <summary className={styles.addToggle}>+ 종목 추가</summary>
             <form action={addHoldingAction} className={styles.addForm}>
-              <input
-                name="symbolCode"
-                className={styles.input}
-                placeholder="종목코드 6자리"
-                inputMode="numeric"
-                pattern="\d{6}"
-                required
-              />
+              <StockSearchInput />
               <input
                 name="quantity"
                 className={styles.input}
@@ -232,8 +226,8 @@ export default async function HoldingsPage({
               </button>
             </form>
             <p className={styles.formHint}>
-              종목명·시세는 다음 갱신 회차(평일 09:00~15:30 KST, 10분 간격)에
-              자동으로 채워집니다.
+              종목명으로 검색해 선택하세요. 시세는 다음 갱신 회차(평일
+              09:00~15:30 KST, 10분 간격)에 자동으로 채워집니다.
             </p>
           </details>
         </section>

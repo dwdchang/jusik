@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { NavIconLink } from "@/components/nav/NavIconLink";
+import { StockSearchInput } from "@/components/stocks/StockSearchInput";
 import { ensureAllowedSession } from "@/lib/auth/ensureAllowedSession";
 import { todayKstDate } from "@/lib/date/kst";
 import { formatChangeRate } from "@/lib/format/change";
@@ -87,14 +88,7 @@ export default async function WatchlistPage({
           <details className={styles.addDetails} open={errorMessage !== null}>
             <summary className={styles.addToggle}>+ 종목 추가</summary>
             <form action={addWatchItemAction} className={styles.addForm}>
-              <input
-                name="symbolCode"
-                className={styles.input}
-                placeholder="종목코드 6자리"
-                inputMode="numeric"
-                pattern="\d{6}"
-                required
-              />
+              <StockSearchInput />
               <input
                 name="registeredAt"
                 className={styles.input}
@@ -108,9 +102,9 @@ export default async function WatchlistPage({
               </button>
             </form>
             <p className={styles.formHint}>
-              종목명과 기준가(등록 기준일 종가)는 다음 갱신 회차(평일
-              09:00~15:30 KST, 10분 간격)에 자동으로 채워집니다. 기준일이
-              휴장일이면 직전 거래일 종가가 기준가가 됩니다.
+              종목명으로 검색해 선택하세요. 기준가(등록 기준일 종가)는 다음 갱신
+              회차(평일 09:00~15:30 KST, 10분 간격)에 자동으로 채워집니다.
+              기준일이 휴장일이면 직전 거래일 종가가 기준가가 됩니다.
             </p>
           </details>
         </section>
