@@ -46,6 +46,8 @@
 | `ALLOWED_EMAILS` | 접근 허용 이메일 CSV 화이트리스트 | `lib/auth/allowedEmails.ts` |
 | `HOLDINGS_ENCRYPTION_KEY` | 개인 데이터 AES-256-GCM 키 (base64 32바이트) | `lib/crypto/secureJson.ts` |
 | `DART_API_KEY` | DART OpenAPI 인증키 (공시, Phase 17-1) | `lib/api/dart/client.ts` |
+| `NAVER_CLIENT_ID`·`NAVER_CLIENT_SECRET` | 네이버 검색 API 인증키 (뉴스, Phase 17-3) | `lib/api/naver/client.ts` |
+| `DATA_GO_KR_SERVICE_KEY` | 관세청 수출입총괄(GW) API 인증키 (수출입, Phase 17-4) | `lib/api/customs/client.ts` |
 
 ---
 
@@ -59,7 +61,7 @@
 | `page.tsx` | 홈 대시보드. 세션 검사 → 허용 외 이메일이면 access-denied 화면 → 카드 7종 데이터 병렬 조회(`Promise.all`) → `IndexDashboard` 렌더. staleness 배지 판정도 여기서 수행 |
 | `login/page.tsx` | Google 로그인 버튼 (Server Action으로 `signIn("google")`). 세션 있으면 `/` redirect, 인라인 `GoogleIcon` SVG 로컬 정의 |
 | `indices/kospi` `kosdaq` `usdkrw` `us10y` `oil/page.tsx` | 지표 상세 5종 — 전부 `ensureAllowedSession()` 후 `<IndexDetailScreen market=…>` 한 줄 위임 |
-| `indices/market/page.tsx` | 시장 요약(환율·금리·유가 미니 카드 3종). `getMarketDetails` MGET 1회 |
+| `indices/market/page.tsx` | 시장 요약(환율·금리·유가 미니 카드 3종). `getMarketDetails` MGET 1회. + 수출입 미니 카드(Phase 17-4) — `getTradeStatsView`로 최신 확정월 수출/수입/무역수지+YoY, `/feeds` 링크 |
 | `indices/kospi-volatility/page.tsx` | 변동성 상세 — 월별 평균 막대 차트 |
 | `holdings/page.tsx` | 보유종목 목록·요약·연초 이후 추이·종목 추가 폼(`<details>` 토글, 종목명 검색 `<StockSearchInput>`) |
 | `holdings/[symbolCode]/page.tsx` | 보유종목 상세 — 평가 요약·수정/삭제(`?edit=1`)·2년 추이·정보 블록 4종 |
@@ -67,8 +69,8 @@
 | `watchlist/page.tsx` | 관심종목 목록 — 등록 기준일 종가 대비 수익률, 기준일 변경/삭제. 추가 폼은 종목명 검색 `<StockSearchInput>` |
 | `watchlist/[symbolCode]/page.tsx` | 관심종목 상세 — 등록일 이후 추이·정보 블록 (보유종목 상세와 구조 동일) |
 | `watchlist/actions.ts` | Server Actions: add/update(기준일 변경 시 기준가 null 리셋)/delete |
-| `hot-stocks/page.tsx` | 핫종목 — 서버 모드 탭 `?mode=monthly(기본)\|daily`. 월간: 구간 수익률 TOP 100(`?period=1m\|3m\|6m\|12m`, 시장 위첨자 ᴷ/ᴰ). 당일: `market:dailyFluctuation` 상위 30 테이블+`resolveStaleness` 배지. 두 뷰는 async 서버 서브컴포넌트(`MonthlyView`/`DailyView`) |
-| `feeds/page.tsx` | 뉴스·공시 상세 (Phase 17-2b) — `ensureAllowedSession` + `getDisclosureBoard` + `FeedTabsClient`(뉴스/공시/수출입 탭+게시판+아코디언). 홈 "뉴스·공시" 요약 카드에서 이동 |
+| `hot-stocks/page.tsx` | 핫종목 — 서버 모드 탭 `[당일 등락률(기본) \| 월간 핫종목]`(`?mode=monthly`으로 월간). 당일: `market:dailyFluctuation` 상위 30 테이블(종목코드는 종목명 뒤 인라인)+`resolveStaleness` 배지. 월간: 구간 수익률 TOP 100(`?period=1m\|3m\|6m\|12m`, 시장 위첨자 ᴷ/ᴰ). 두 뷰는 async 서버 서브컴포넌트(`DailyView`/`MonthlyView`) |
+| `feeds/page.tsx` | 뉴스·공시 상세 (Phase 17-2b) — `ensureAllowedSession` + `getDisclosureBoard`·`getNewsBoard`·`getTradeStatsView`(17-4) + `FeedTabsClient`(뉴스/공시/수출입 탭+게시판+아코디언). 홈 "뉴스·공시" 요약 카드에서 이동 |
 | `api/auth/[...nextauth]/route.ts` | Auth.js 핸들러 re-export (3줄) |
 | `api/jobs/refresh-market-data/route.ts` | 시세 갱신 잡 엔드포인트 (POST, §4.1) |
 | `api/jobs/refresh-hot-stocks/route.ts` | 핫종목 갱신 잡 엔드포인트 (POST, §4.2) |
@@ -85,13 +87,16 @@
 | `api/kis/client.ts` | `fetchKisJson` 공통 래퍼(헤더·rt_cd 검증·15초 타임아웃) + 조회 함수 10종 (지수·해외·현재가·시총랭킹·등락률랭킹·배당·손익·재무비율·종목명·기간별시세 일/월) |
 | `api/kis/types.ts` | KIS 원본 응답 타입 (필드 전부 optional string, `[key: string]: unknown` 허용) |
 | `api/dart/client.ts` | DART OpenAPI 클라이언트 — `corpCode.xml` zip 파싱(fflate, 상장사만 매핑)·공시검색 `list.json`(status 013=빈 결과 정상 처리) |
-| `feeds/store.ts` | 피드 store — `market:disclosures:{code}`(공시 스냅샷) 라이터·`disclosuresKey` export·`dart:corpCodeMap`(종목코드→고유번호) 리더·라이터. (단일 종목 리더 `getDisclosures`는 Phase 17-2에서 제거 — 화면은 `homeFeed`의 MGET로 통합) |
-| `feeds/homeFeed.ts` | 홈 피드 리더 (Phase 17-2/17-2b) — ① `getDisclosureBoard`(`/feeds`용): 보유+관심 `{code→name}` → `market:disclosures:{code}` MGET 병합·접수번호 내림차순·상위 40건 컷. ② `getTodayFeedCounts`(홈 요약 카드용): 같은 MGET으로 `rceptDt===KST 오늘`만 카운트(뉴스·수출입은 null=준비 중). `collectOwnedStocks` 공유. 읽기 전용(누적 없음 — 종목별 원본이 SET 덮어쓰기라 컷·카운트는 조회 시점 계산만) |
+| `api/naver/client.ts` | 네이버 뉴스 검색 클라이언트 (Phase 17-3) — 종목명 키워드·`sort=date`, `<b>`/엔티티 제거, **제목+요약에 종목명 포함 기사만** 필터(저관련·오탐 제거), pubDate ms 파싱. 상위 10건 |
+| `api/customs/client.ts` | 관세청 수출입총괄(GW) 클라이언트 (Phase 17-4) — `getNewtradeList`(XML), `fetchTradeStats(strt,end)`. `총계`/비정형 year 제외·`year "YYYY.MM"→"YYYYMM"` 정규화·`parseNum` 경유·`resultCode≠00` throw. **조회 범위 최대 12개월(inclusive)** 제약 |
+| `feeds/store.ts` | 피드 store — `market:disclosures:{code}`(공시)·`market:news:{code}`(뉴스) 스냅샷 라이터·`disclosuresKey`/`newsKey` export·`dart:corpCodeMap`(종목코드→고유번호) 리더·라이터·`market:tradeStats`(수출입, 종목 무관 단일 키) `TradeStatMonth`/`StoredTradeStats`+`getTradeStats`/`setTradeStats`(Phase 17-4). (단일 종목 리더 `getDisclosures`는 Phase 17-2에서 제거 — 화면은 `homeFeed`의 MGET로 통합) |
+| `feeds/tradeStats.ts` | 수출입 뷰 빌더 (Phase 17-4) — `buildTradeStatsView`(순수: 최신 확정월 + 전년동월 `find`로 YoY %)/`getTradeStatsView`(리더). `/indices/market` 카드·`/feeds` 탭 공용 |
+| `feeds/homeFeed.ts` | 홈 피드 리더 (Phase 17-2/17-2b/17-3) — ① `getDisclosureBoard`/`getNewsBoard`(`/feeds`용): 보유+관심 `{code→name}` → `market:disclosures:{code}`/`market:news:{code}` MGET 병합·최신순(접수번호/pubDate)·상위 40건 컷(공통 `FeedBoardItem`). ② `getTodayFeedCounts`(홈 요약 카드용): 공시·뉴스 MGET 2회로 오늘(`rceptDt`/`pubDateKst`===KST 오늘) 건수 카운트(수출입 제외 — 월간 데이터). `collectOwnedStocks` 공유. 읽기 전용(누적 없음 — 종목별 원본이 SET 덮어쓰기라 컷·카운트는 조회 시점 계산만) |
 | `auth/allowedEmails.ts` | `ALLOWED_EMAILS` 파싱(모듈 로드 시 1회) — `isEmailAllowed` / `getAllowedEmails`(잡용 전체 목록) |
 | `auth/ensureAllowedSession.ts` | 상세 페이지 공용 가드 — 미로그인→`/login`, 허용 외→`/`(access-denied) |
 | `crypto/secureJson.ts` | AES-256-GCM `enc:v1:iv:tag:ct` 포맷 — `encryptJson`/`decryptJson`(실패 시 throw)/`isEncrypted` |
 | `redis/client.ts` | Upstash Redis 싱글턴 `getRedis()` |
-| `date/kst.ts` | `todayKstDate()` — KST "YYYY-MM-DD" (유일한 공용 KST 날짜 헬퍼) |
+| `date/kst.ts` | `todayKstDate()` — KST "YYYY-MM-DD" (유일한 공용 KST 날짜 헬퍼) · `kstYyyyMmDd(ms)`(17-3) · `currentKstMonth()`/`subtractMonths(ym,n)`(17-4, 수출입 월 판정·조회창) |
 | `format/*` | 표시 포맷 모음 (§6.2 카탈로그) |
 | `indices/kisMapper.ts` | 국내지수 응답→도메인 매핑 + **공용 유틸 `parseNum`/`applyKisSign`/`resolveDirection`/`formatBasDtLabel`** |
 | `indices/kisOverseasMapper.ts` | 해외(환율·금리·유가) 응답→도메인 매핑. 행별 전일 대비가 없어 인접 종가 차분으로 계산 |
@@ -110,10 +115,11 @@
 | `hotstocks/store.ts` | 핫종목 store — `market:hotStocks` + `:progress` 커서, 구간 4종 정의·라벨 |
 | `hotstocks/months.ts` | 월 문자열("YYYY-MM") 계산 — `baseMonthKst`(전월)/`addMonths`/월초·월말/표시 포맷 |
 | `hotstocks/universe.ts` | KIS 종목 마스터 zip 다운로드·EUC-KR 고정폭 파싱 — ST(주권)만, 스팩 제외, 코드 오름차순. 핫종목 잡 + 종목명 검색(`market:stockMaster`) 공용 |
-| `hotstocks/summary.ts` | 홈 핫종목 카드 요약 + 갱신 지연 판정 `isHotStocksStale` |
+| `hotstocks/summary.ts` | 월간 랭킹 갱신 지연 판정 `isHotStocksStale` (핫종목 페이지 월간 뷰용) |
+| `hotstocks/dailyCard.ts` | 홈 핫종목 카드 요약 `getDailyHotCardSummary` — `market:dailyFluctuation` 당일 등락률 상위 3 |
 | `jobs/refreshMarketData.ts` | **시세 갱신 잡 파이프라인 본체** (§4.1) — 지수·종목·포트폴리오 갱신에 더해 당일 등락률 상위 30(`refreshDailyFluctuation`)·종목 마스터(`refreshStockMaster`, 1일 1회) 저장. 둘 다 부수·실패 격리 |
 | `jobs/refreshHotStocks.ts` | **핫종목 갱신 잡 파이프라인 본체** (§4.2) |
-| `jobs/refreshFeeds.ts` | **피드(공시) 갱신 잡 파이프라인 본체** (§4.5) |
+| `jobs/refreshFeeds.ts` | **피드(공시·뉴스·수출입) 갱신 잡 파이프라인 본체** (§4.5) — corpCode 매핑→종목별 공시(DART)+뉴스(네이버, 종목명 키워드) 조회·저장. 소스·종목별 실패 격리. + `refreshTradeStats`(17-4) — 종목 무관 월 1회성(스냅샷 최신월<직전 완결월일 때만), 12개월 한도 때문에 2회 호출(최근 12개월+전년동월)→13개월 연속 저장. 잡 `ok` 게이팅 제외(다음 회차 가드가 재시도) |
 | `jobs/collectTargets.ts` | 잡 공용 수집 대상 조회 — `collectHoldings`/`collectWatchlists`/`unionSymbolCodes`/`errorMessage` (시세·피드 잡 공유, Phase 17-1에서 refreshMarketData 로컬 함수를 추출) |
 | `jobs/verifyJobRequest.ts` | 잡 공용 인증 — QStash 서명 → CRON_SECRET Bearer 폴백(timingSafeEqual) |
 | `watchlist/store.ts` | 관심종목 store — 암호화 (신규 키라 평문 하위호환 없음) |
@@ -126,7 +132,7 @@
 |---|---|---|
 | `indices/IndexDashboard` | Server | 홈 카드 7종 조립 + 헤더(테마 토글·로그아웃) |
 | `indices/SummaryCard` | Server | **홈 요약 카드 공용 프리미티브** — value/change/footnote/placeholder/staleness 배지. 카드 전체가 Link |
-| `indices/HotStocksCard` | Server | 핫종목 전용 카드 (TOP 3 리스트라 SummaryCard 미사용) |
+| `indices/HotStocksCard` | Server | 핫종목 전용 카드 — 당일 등락률 TOP 3 리스트 (SummaryCard 미사용) |
 | `indices/IndexDetailScreen` | Server(async) | **지표 상세 5종 공용 화면** — `getIndexDetail`/`getOverseasDetail` 분기, 카드+차트+일별 리스트+푸터 |
 | `indices/IndexCard` / `IndexDailyList` / `DataAsOfFooter` | Server | 상세 스냅샷 카드 / 일별 시세 리스트 / 홈 푸터 |
 | `indices/IndexChartClient` → `IndexLineChart` | Client | Recharts 래핑 패턴: Client 셸이 `dynamic(…, { ssr: false })` + 스켈레톤 → 실제 차트 |
@@ -134,8 +140,8 @@
 | `holdings/HoldingsChartClient` → `HoldingsChart` | Client | 동일 패턴, LineChart + 수익률%↔원단위 토글. **보유종목 홈/상세·관심종목 상세 3곳 공용** (관심종목에선 totalValue 자리에 종가를 넣어 재활용) |
 | `stocks/StockInfoBlocks` | Server | 정보 블록 4종(시총·배당·실적·투자지표) — 보유·관심 상세 공용, `formatRatio` export |
 | `stocks/StockSearchInput` | Client | 등록 폼 종목명 검색 입력 — 디바운스 250ms→`searchStocks` 액션, 결과 드롭다운(키보드 ↑↓/Enter/Esc), 선택 시 hidden `symbolCode` 채우고 배지 표시. 보유·관심 추가 폼 공용 |
-| `feeds/FeedTabsClient` | **Client** | 뉴스/공시/수출입 3탭 + 게시판 + 아코디언 (Phase 17-2). 데이터는 Server가 props로 주입, Client는 탭 선택·아코디언 open/close만. 공시 탭만 실동작(제출인·접수일 메타+DART 원문 새 탭), 뉴스·수출입은 자리표시자. **17-2b에서 홈 전체폭→`/feeds/page.tsx`로 렌더 위치만 이동**(컴포넌트 무변경). ~~`stocks/StockDisclosures`~~는 A안 철회로 **삭제** |
-| `indices/FeedSummaryCard` | Server | 홈 "뉴스·공시" 그리드 요약 카드 (Phase 17-2b) — 핫종목형 3줄(공시/뉴스/수출입 당일 건수, 뉴스·수출입은 "준비 중"). 골격은 SummaryCard `composes`, 카드 전체가 `/feeds` 링크. `getTodayFeedCounts` 결과를 prop으로 받음 |
+| `feeds/FeedTabsClient` | **Client** | 뉴스/공시/수출입 3탭 + 게시판 + 아코디언 (Phase 17-2/17-3/17-4). 데이터는 Server가 props로 주입, Client는 탭 선택·아코디언 open/close만. 3탭 모두 실동작(공시=제출인·접수일+DART 원문, 뉴스=출처·발행일+원문 새 탭 / 기본 선택 뉴스, 수출입=`TradeBoard` 최신월 3지표+YoY 요약 + 최근 13개월 표, 아코디언 없음). **17-2b에서 홈 전체폭→`/feeds/page.tsx`로 렌더 위치만 이동**. ~~`stocks/StockDisclosures`~~는 A안 철회로 **삭제** |
+| `indices/FeedSummaryCard` | Server | 홈 "뉴스·공시" 그리드 요약 카드 (Phase 17-2b/17-3) — 공시·뉴스 당일 건수 2줄(수출입은 월간 데이터라 제외). 골격은 SummaryCard `composes`, 카드 전체가 `/feeds` 링크. `getTodayFeedCounts` 결과를 prop으로 받음 |
 | `nav/NavIconLink` | Server | 헤더 이동 아이콘 버튼(home/back) — 36px 아이콘 버튼 통일 규격 |
 | `theme/ThemeToggle` | Client | `useSyncExternalStore`로 `data-theme` 구독·토글 |
 | `auth/SignOutButton` | Server | Server Action `signOut` 폼 |
@@ -227,17 +233,21 @@ QStash 스케줄 (매일 08~22시 정시 KST, CRON_TZ=Asia/Seoul 0 8-22 * * *)
   → POST /api/jobs/refresh-feeds
       verifyJobRequest만 — isWithinKisCallWindow 가드 없음 (KIS 아님, 공시는 장외·주말에도 발생)
   → refreshFeeds(trigger)  [lib/jobs/refreshFeeds.ts]
+      0. refreshTradeStats (종목 무관·월 1회성): 스냅샷 최신월<직전 완결월일 때만
+         관세청 2회 호출(최근 12개월+전년동월) → market:tradeStats 13개월 연속 저장
+         (잡 ok 게이팅 제외 — 실패 시 다음 회차 가드가 재시도)
       1. collectHoldings + collectWatchlists (collectTargets.ts 공용) → 종목코드 union
       2. ensureCorpCodeMap: dart:corpCodeMap 30일 주기 갱신
          (+매핑에 없는 신규 종목 발견 시 1일 1회 보정 갱신 — 미매핑 코드가 매 회차
           zip을 받지 않게 제한). corpCode.xml zip → 상장사(6자리 종목코드)만 매핑
       3. 종목별 순차(150ms 간격): DART list.json 최근 90일 최대 10건
          → market:disclosures:{code} SET 덮어쓰기 (종목별 실패 격리)
+      4. 종목별 순차(150ms 간격): 네이버 뉴스 검색(종목명 키워드) 최신 10건
+         → market:news:{code} SET 덮어쓰기 (종목별 실패 격리, 종목명 미확정은 skip)
   → 응답: report (실패 시 500 → QStash 재시도, 멱등)
 ```
 
-- 17-2(뉴스, 네이버 검색 API)·17-3(정부자료, 관세청 API)은 이 파이프라인에 소스별로
-  증분 추가 예정 (plan.md §17.6).
+- 17-4(수출입, 관세청 API)는 이 파이프라인에 스텝 0(월 1회성)으로 증분 추가됨 (plan.md §17.14).
 
 ### 4.3 화면 읽기 경로 (전부 Redis만)
 
@@ -251,11 +261,11 @@ QStash 스케줄 (매일 08~22시 정시 KST, CRON_TZ=Asia/Seoul 0 8-22 * * *)
   `getPortfolioHistory`. 상세는 + `getStockInfo`(스냅샷+정보 블록 조합) + `getStockHistory`.
 - **관심종목**: `getWatchlist` + `getStockSnapshots` + `computeWatchReturnRate`.
   상세는 보유종목 상세와 동일 구성에 기준가 대비 차트.
-- **홈 "뉴스·공시" 카드**: `getTodayFeedCounts(email)`(feeds/homeFeed) — 오늘 공시 건수만
-  집계 → `FeedSummaryCard`. 홈 `Promise.all`에 `.catch(() => 기본 0/null)` 격리로 합류.
-- **뉴스·공시 상세(`/feeds`)**: `getDisclosureBoard(email)` — `market:disclosures:{code}`
-  MGET 병합·상위 40건 → `FeedTabsClient`. (Phase 17-2에서 A안 철회 — 보유·관심 상세
-  페이지는 더 이상 공시를 읽지 않는다. 17-2b에서 게시판을 홈 전체폭→`/feeds`로 이동.)
+- **홈 "뉴스·공시" 카드**: `getTodayFeedCounts(email)`(feeds/homeFeed) — 오늘 공시·뉴스 건수
+  집계 → `FeedSummaryCard`. 홈 `Promise.all`에 `.catch(() => 기본 0)` 격리로 합류.
+- **뉴스·공시 상세(`/feeds`)**: `getDisclosureBoard`·`getNewsBoard(email)` — `market:disclosures:{code}`·
+  `market:news:{code}` MGET 병합·상위 40건 → `FeedTabsClient`. (Phase 17-2에서 A안 철회 — 보유·관심
+  상세 페이지는 더 이상 공시를 읽지 않는다. 17-2b에서 게시판을 홈 전체폭→`/feeds`로 이동.)
 - **핫종목**: `?mode` 서버 분기 — 월간은 `getHotStocks` 통짜 1건→`?period` 탭, 당일은 `getDailyFluctuation` 1건(상위 30)+`resolveStaleness`. (검증: 알 수 없는 mode→monthly, period→1m).
 - **변동성**: `getVolatilityHistory` → `aggregateMonthlyAverages`(최근 6개월).
 
@@ -282,15 +292,16 @@ QStash 스케줄 (매일 08~22시 정시 KST, CRON_TZ=Asia/Seoul 0 8-22 * * *)
 | `market:lastRefreshAt` | `LastRefreshRecord` (at·trigger·ok) | ✕ | 시세 잡(전부 성공 시) | 홈 배지·각 페이지 「마지막 갱신」 |
 | `stock:{code}:history` | `StockDailyPrice[]` 2년 (날짜 오름차순) | ✕ | 시세 잡(백필/확정 갱신) | 상세 차트·기준가 확정 |
 | `kospiVolatility:history` | `KospiVolatilityRecord[]` | ✕ | 시세 잡 | 변동성 카드·상세 |
-| `market:hotStocks` | `StoredHotStocks` (구간 4종 TOP 100) | ✕ | 핫종목 잡 | 핫종목 카드·페이지 |
+| `market:hotStocks` | `StoredHotStocks` (구간 4종 TOP 100) | ✕ | 핫종목 잡 | 핫종목 페이지 월간 뷰 |
 | `market:hotStocks:progress` | `HotStocksProgress` (커서) | ✕ | 핫종목 잡 (완료 시 삭제) | 핫종목 잡 |
-| `market:dailyFluctuation` | `StoredDailyFluctuation` (당일 등락률 상위 30+fetchedAt) | ✕ | 시세 잡 | 핫종목 페이지 `?mode=daily` |
+| `market:dailyFluctuation` | `StoredDailyFluctuation` (당일 등락률 상위 30+fetchedAt) | ✕ | 시세 잡 | 핫종목 페이지(기본 탭)·홈 핫종목 카드 |
 | `market:stockMaster` | `StoredStockMaster` (코드↔종목명 ~2,650+fetchedAt) | ✕ | 시세 잡 (1일 1회) | 종목명 검색 `searchStocks` |
 | `holdings:{email}` | `Holding[]` | **○** | Server Action + 잡(종목명 채움) | 보유종목 화면·잡 |
 | `holdings:{email}:history` | `PortfolioDailyRecord[]` | **○** | 시세 잡 | 보유종목 화면 |
 | `watchlist:{email}` | `WatchItem[]` | **○** | Server Action + 잡(종목명·기준가) | 관심종목 화면·잡 |
 | `kis:access_token` (+`:lock`) | 토큰 캐시 (TTL=만료 시각) | ✕ | KIS auth | KIS auth |
 | `market:disclosures:{code}` | `StoredDisclosures` (최근 90일 공시 최대 10건+fetchedAt) | ✕ | 피드 잡 | 홈 통합 피드(`homeFeed` MGET) |
+| `market:news:{code}` | `StoredNews` (최신 뉴스 최대 10건+fetchedAt) | ✕ | 피드 잡 | 홈 통합 피드(`homeFeed` MGET) |
 | `dart:corpCodeMap` | `StoredCorpCodeMap` (종목코드→DART 고유번호, 30일 주기) | ✕ | 피드 잡 | 피드 잡 |
 
 - 이메일 키는 항상 `normalizeEmail`(trim+lowercase) 후 사용.
@@ -337,6 +348,7 @@ QStash 스케줄 (매일 08~22시 정시 KST, CRON_TZ=Asia/Seoul 0 8-22 * * *)
   `formatBasDtDisplay`(2026.06.01) / `formatBasDtLabel`(06/01, kisMapper에 위치).
   `formatRatio`(StockInfoBlocks에서 export) — PER/PBR 등.
   `formatMonthDisplay`/`formatMonthRangeDisplay` (hotstocks/months).
+  `format/trade.ts`(17-4) — `formatUsdEok`/`formatUsdEokSigned`("607.5억 달러", 1억 달러=1e8 USD)·`formatYyyymm`(2026.06)·`formatYoy`(전년동월비 %, null→"—").
 
 ### 6.3 타입
 

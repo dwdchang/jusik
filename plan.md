@@ -2376,6 +2376,36 @@ interface WatchItem {
 - **설계 유지 근거**: 등록 액션의 "형식 검증만·종목명은 잡이 채움" 철학(§11.10-A4)을 그대로 유지. 검색 실패·미선택 시에도 서버 액션이 `invalid_code`로 재차 방어.
 - **검증**: tsc·lint·build(20/20 라우트) PASS. `market:stockMaster` 시드(10종) + 세션 쿠키 + 헤드리스 크롬 E2E — `/holdings`에서 "삼성" 입력 → 드롭다운 4종(삼성물산/삼성바이오로직스/삼성전자/삼성SDI, 가나다 정렬) → 삼성물산 선택 → hidden `symbolCode="028260"`·배지 렌더 확인. 시드 키는 검증 후 삭제(fetchedAt=오늘이라 안 지우면 잡이 실제 다운로드를 skip하므로 필수).
 
+#### 17.12 화면 확인 수정 4건 (2026-07-14) — 17-3/17-4 착수 전 정리
+
+- **요청 근거**: `phase9.request.md`(화면 확인 중 발견). 17-3(뉴스)·17-4(수출입) 백엔드 착수 전 UI 수정 4건.
+- **1) 등록 폼 취소 UI 누락**: 보유·관심 목록의 "+ 종목 추가" `<details>` 폼에 취소(접기) 경로가 안 보였다. summary에 라벨 2개(`addToggleOpenLabel`="+ 종목 추가" / `addToggleCloseLabel`="✕ 취소")를 두고 `details[open]`으로 전환 — 열리면 summary 자체가 "✕ 취소" 버튼이 되어 클릭 시 폼이 접힌다. 클라이언트 상태 없이 순수 CSS(열림 hover는 `--color-rise`로 취소 성격 강조). `holdings/page.tsx`·`watchlist/page.tsx` + 각 `page.module.css`.
+- **2) 핫종목 탭 순서**: `[월간 핫종목 | 당일 등락률]` → `[당일 등락률 | 월간 핫종목]`. `MODES` 배열 순서 교체 + 기본 모드를 `daily`로(무 param → 당일). `daily`=`/hot-stocks`, `monthly`=`/hot-stocks?mode=monthly`. `hot-stocks/page.tsx`.
+- **3) 홈 핫종목 카드 → 당일 등락률 위주**: 월간 1개월 TOP 3 → 당일 등락률 TOP 3. `lib/hotstocks/dailyCard.ts`(신규 `getDailyHotCardSummary` — `getDailyFluctuation` 스냅샷 상위 3) + `HotStocksCard` 재작성(당일 등락률·`resolveStaleness(fetchedAt)` 지연 표기·footnote "당일 등락률 TOP 3 · 전일 종가 대비"). `summary.ts`의 `getHotStocksCardSummary`/`HotStocksCardSummary` 제거(`isHotStocksStale`은 월간 뷰가 계속 사용해 유지). `page.tsx`·`IndexDashboard.tsx` 배선 교체. 카드는 여전히 `/hot-stocks`(이제 기본=당일)로 이동해 2)와 정합.
+- **4) 당일 등락률 목록 빈 공간**: 원인 = 당일 뷰가 5열(순위/종목명/**종목코드**/등락률/현재가)뿐이라 `width:100%` 테이블에서 좌측 정렬 종목명 열이 슬랙을 크게 흡수 → 종목명↔종목코드 사이 빈 폭. 별도 종목코드 열을 없애고 **종목명 뒤 인라인**(`codeInline`, 보유·관심 목록의 코드 표기와 동일 패턴)으로 붙여 4열로 축소 — 슬랙이 라벨(종목명)↔숫자 사이 자연스러운 여백으로 흡수돼 어색한 빈 공간 소멸. 월간 뷰(6열) 무변경. `hot-stocks/page.tsx`·`page.module.css`.
+- **검증**: tsc·lint PASS. (실브라우저 E2E는 사용자 화면 확인으로 대체 — 시각 확인 대기.)
+
+#### 17.13 뉴스 백엔드 (17-3) — 네이버 검색 API (2026-07-14)
+
+- **요청 근거**: `phase9.request.md`(17-3). §17.7에서 예고한 뉴스 탭 활성화. **홈 "뉴스·공시" 카드에서는 수출입 줄 제외**(월간 데이터라 "오늘 N건" 모델에 안 맞음 — 사용자 지시). 수출입은 17-4에서 `/indices/market`·`/feeds` 탭에만 노출 예정.
+- **구조**: 공시(17-1)와 1:1 대응 — 종목별 스냅샷 키 + MGET 병합 + FeedTabsClient 탭. 신규 잡·라우트 없이 기존 `refreshFeeds` 파이프라인에 스텝만 증분.
+- **소스·필터 (실데이터 확인)**: `openapi.naver.com/v1/search/news.json`, 종목명 키워드·`sort=date`·display 20. `sort=date`만으로는 본문에만 종목명이 스친 저관련 기사가 섞여(예: "삼성전자" 검색에 "국산 체리" 매칭) **제목+요약에 종목명이 실제로 포함된 기사만** 남기는 경량 필터를 client에 둔다. 네이버가 이미 검색어를 매칭하므로 대부분 통과하고 오탐만 제거되는 안전망. 상위 10건 저장. `<b>`·HTML 엔티티 제거, `pubDate`(RFC822 `+0900`)는 **저장 시점에 `kstYyyyMmDd`로 KST "YYYYMMDD"로 굳혀**(§17.8 방침) 읽기 경로가 문자열 비교만 하게 함.
+- **구현**: ① `lib/api/naver/client.ts` `fetchNaverNews(query, display)` — 인증키(`NAVER_CLIENT_ID/SECRET`) 헤더·15초 타임아웃·필터·pubDate ms 파싱 ② `feeds/store.ts` `NewsItem`/`StoredNews` + `newsKey(code)=market:news:{code}` + `setNews` ③ `jobs/collectTargets.ts` `unionSymbolNames`(code→name, 뉴스 검색어용) ④ `jobs/refreshFeeds.ts` `refreshNews` 스텝 — 종목명 union 순회·150ms 유량제한·종목별 실패 격리·`report.news[]`·잡 `ok`에 합류(종목명 미확정은 `skipped:"no_name"`) ⑤ `feeds/homeFeed.ts` `getNewsBoard(email)`(MGET→pubDateMs 내림차순 병합→상위 40, `FeedBoardItem` 재사용, id=종목코드+링크로 유일화, meta=출처 호스트) + `getTodayFeedCounts`에 뉴스 오늘 건수 추가하고 **`trade` 필드 제거** ⑥ `FeedTabsClient` 뉴스 탭 실동작(`NewsBoard` 아코디언, 기본 선택 탭을 뉴스로) + `/feeds` 페이지가 `getNewsBoard` 합류 ⑦ `FeedSummaryCard`에서 수출입 행·`.pending` 제거(공시·뉴스 2행, 값은 항상 number).
+- **env**: `NAVER_CLIENT_ID`/`NAVER_CLIENT_SECRET` — 사용자 발급·`.env.local`+Vercel 등록 완료. 신규 의존성 0.
+- **검증**: tsc·lint·build(20/20 라우트) PASS. **라이브 API 프로브**(로컬 `.env.local` 키)로 fetch→`<b>`/엔티티 제거→종목명 필터(체리 등 오탐 drop 확인)→pubDate→KST 날짜 변환→출처 호스트까지 전 경로 실데이터 확인(삼성전자·SK하이닉스·한화오션·삼성물산, 각 10건 저장 형태). 화면 렌더는 다음 `refresh-feeds` 잡 회차가 `market:news:{code}`를 채운 뒤 `/feeds` 뉴스 탭에서 확인(사용자 화면 확인 대기).
+
+#### 17.14 수출입 백엔드 (17-4) — 관세청 수출입총괄(GW) API (2026-07-14)
+
+- **요청 근거**: §17.7/§17.13 예고. 관세청 GW API 활용신청 승인(엔드포인트 `https://apis.data.go.kr/1220000/Newtrade`). **홈 "뉴스·공시" 카드엔 수출입 줄 추가 안 함**(월간 데이터, §17.13 지시 유지) — `/indices/market` 미니 카드 + `/feeds` 수출입 탭에만 노출.
+- **라이브 실측 확정 (2026-07)**: `getNewtradeList`(소문자 t), params `serviceKey`/`strtYymm`/`endYymm`(YYYYMM), **XML** 응답(`<resultCode>00</resultCode>`=정상).
+  - `<item>` 필드: `year` 문자열 **"YYYY.MM"**, 매 응답 끝에 **`<year>총계</year>` 합계행**이 붙어 파싱 시 제외. `expDlr`·`impDlr`·`balPayments`는 모두 **USD 달러 원값**(`bal = exp - imp` 전 행 산술 검증). `expCnt`/`impCnt`는 신고 건수. plan 이전 추정의 `expWgt/impWgt` 중량 필드는 **실응답에 없음**.
+  - **단위 판정**: 2025.07~2026.02가 607·582·659…억 달러($58~70B)로 한국 월 수출 실규모와 일치 → USD 확정(표시는 **억 달러 = 1e8 USD** 환산).
+  - **조회 범위 최대 12개월(inclusive)** — 13개월↑는 `resultCode 99`("조회기간은 1년이내") 거부. `end=현재월`이면 **부분월**(월중 집계, 예 2026.07 미완결)이 섞여 나옴 → 필터 필요.
+  - **현재 KST 월은 미완결** → "최신 확정월"은 **직전 달**로 판정.
+- **구현**: ① `lib/api/customs/client.ts` `fetchTradeStats(strt,end)` — `DATA_GO_KR_SERVICE_KEY` 서버 전용·15초 타임아웃·XML 정규식 파싱(`parseNum` 경유)·`총계`/비정형 year 제외·`year "YYYY.MM"→"YYYYMM"` 정규화·`resultCode≠00` throw. ② `date/kst.ts` `currentKstMonth()`/`subtractMonths(ym,n)`(연 경계). ③ `feeds/store.ts` `TradeStatMonth`/`StoredTradeStats` + `tradeStatsKey="market:tradeStats"`(종목 무관 단일 키) + `getTradeStats`/`setTradeStats`. ④ `feeds/tradeStats.ts` `buildTradeStatsView`(순수: 최신월 + 전년동월 `find`로 YoY %)/`getTradeStatsView`(리더). ⑤ `jobs/refreshFeeds.ts` `refreshTradeStats` 스텝 — **월 1회성 가드**(스냅샷 최신월 ≥ 직전 완결월이면 skip). 12개월 한도 때문에 **2회 호출**: A) 최근 12개월(전월까지, 부분월 방어 필터), B) 전년동월 1개월(YoY용, 실패 무시) → 월별 dedupe·최신순 **13개월 연속** 저장. **잡 전체 `ok` 게이팅 제외**(월간 소스 실패로 뉴스·공시 재실행 안 시킴 — 다음 회차 가드가 자연 재시도). ⑥ `FeedTabsClient` 수출입 탭 실동작(`TradeBoard`: 최신월 수출/수입/무역수지+YoY 요약 + 최근 13개월 표, 아코디언 없음) — 자리표시자 제거. ⑦ `/indices/market`에 수출입 미니 카드(최신 확정월 3지표+YoY, `/feeds` 링크) + `format/trade.ts`(억 달러·YoY·YYYYMM 포맷).
+- **env**: `DATA_GO_KR_SERVICE_KEY` — 사용자 발급·`.env.local`+Vercel 등록 완료(64자 hex, dotenv가 따옴표 자동 제거). 신규 의존성 0.
+- **검증**: tsc·lint·build(20/20 라우트) PASS. **라이브 E2E**: dev 서버 → `refresh-feeds` 잡 실호출(`CRON_SECRET` Bearer) → `tradeStats {refreshed:true, latest:202606}`·`report.ok:true`, 재실행 시 가드 `refreshed:false` skip 확인. **실 Redis read-back**으로 13개월 연속(202606~202506)·`bal=exp-imp`·YoY(전년동월 202506, 수출 +70.7%·수입 +30.0%) 검증. 인증 UI 렌더는 Google OAuth 때문에 헤드리스 미구동(라우트는 307→/login 정상, 컴포넌트 prop 타입은 build 검증) — 사용자 화면 확인 대기.
+
 ---
 
 ## 7. PR 분리 권장 (선택)
