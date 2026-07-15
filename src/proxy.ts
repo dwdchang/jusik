@@ -16,8 +16,14 @@ export default auth((req) => {
   return NextResponse.redirect(new URL("/login", req.nextUrl));
 });
 
+/**
+ * 잡 라우트는 세션이 아니라 QStash 서명·CRON_SECRET으로 스스로 인증하므로
+ * (`verifyJobRequest` — 미인증이면 401) 세션 리다이렉트 대상에서 제외한다.
+ * 라우트를 하나씩 열거하면 새 잡을 추가할 때 빠뜨려 307 → /login으로 새는데,
+ * 실제로 그래서 `api/jobs` 접두사로 묶었다 (§17.15).
+ */
 export const config = {
   matcher: [
-    "/((?!api/auth|api/jobs/refresh-market-data|api/jobs/refresh-hot-stocks|api/jobs/refresh-feeds|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api/auth|api/jobs/|_next/static|_next/image|favicon.ico).*)",
   ],
 };
