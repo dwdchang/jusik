@@ -2404,7 +2404,26 @@ interface WatchItem {
   - **현재 KST 월은 미완결** → "최신 확정월"은 **직전 달**로 판정.
 - **구현**: ① `lib/api/customs/client.ts` `fetchTradeStats(strt,end)` — `DATA_GO_KR_SERVICE_KEY` 서버 전용·15초 타임아웃·XML 정규식 파싱(`parseNum` 경유)·`총계`/비정형 year 제외·`year "YYYY.MM"→"YYYYMM"` 정규화·`resultCode≠00` throw. ② `date/kst.ts` `currentKstMonth()`/`subtractMonths(ym,n)`(연 경계). ③ `feeds/store.ts` `TradeStatMonth`/`StoredTradeStats` + `tradeStatsKey="market:tradeStats"`(종목 무관 단일 키) + `getTradeStats`/`setTradeStats`. ④ `feeds/tradeStats.ts` `buildTradeStatsView`(순수: 최신월 + 전년동월 `find`로 YoY %)/`getTradeStatsView`(리더). ⑤ `jobs/refreshFeeds.ts` `refreshTradeStats` 스텝 — **월 1회성 가드**(스냅샷 최신월 ≥ 직전 완결월이면 skip). 12개월 한도 때문에 **2회 호출**: A) 최근 12개월(전월까지, 부분월 방어 필터), B) 전년동월 1개월(YoY용, 실패 무시) → 월별 dedupe·최신순 **13개월 연속** 저장. **잡 전체 `ok` 게이팅 제외**(월간 소스 실패로 뉴스·공시 재실행 안 시킴 — 다음 회차 가드가 자연 재시도). ⑥ `FeedTabsClient` 수출입 탭 실동작(`TradeBoard`: 최신월 수출/수입/무역수지+YoY 요약 + 최근 13개월 표, 아코디언 없음) — 자리표시자 제거. ⑦ `/indices/market`에 수출입 미니 카드(최신 확정월 3지표+YoY, `/feeds` 링크) + `format/trade.ts`(억 달러·YoY·YYYYMM 포맷).
 - **env**: `DATA_GO_KR_SERVICE_KEY` — 사용자 발급·`.env.local`+Vercel 등록 완료(64자 hex, dotenv가 따옴표 자동 제거). 신규 의존성 0.
-- **검증**: tsc·lint·build(20/20 라우트) PASS. **라이브 E2E**: dev 서버 → `refresh-feeds` 잡 실호출(`CRON_SECRET` Bearer) → `tradeStats {refreshed:true, latest:202606}`·`report.ok:true`, 재실행 시 가드 `refreshed:false` skip 확인. **실 Redis read-back**으로 13개월 연속(202606~202506)·`bal=exp-imp`·YoY(전년동월 202506, 수출 +70.7%·수입 +30.0%) 검증. 인증 UI 렌더는 Google OAuth 때문에 헤드리스 미구동(라우트는 307→/login 정상, 컴포넌트 prop 타입은 build 검증) — 사용자 화면 확인 대기.
+- **검증**: tsc·lint·build(20/20 라우트) PASS. **라이브 E2E**: dev 서버 → `refresh-feeds` 잡 실호출(`CRON_SECRET` Bearer) → `tradeStats {refreshed:true, latest:202606}`·`report.ok:true`, 재실행 시 가드 `refreshed:false` skip 확인. **실 Redis read-back**으로 13개월 연속(202606~202506)·`bal=exp-imp`·YoY(전년동월 202506, 수출 +70.7%·수입 +30.0%) 검증. 인증 UI 렌더는 Google OAuth 때문에 헤드리스 미구동(라우트는 307→/login 정상, 컴포넌트 prop 타입은 build 검증) — **사용자 화면 확인 완료(2026-07-15)**.
+
+---
+
+#### 17.15 수출입 상세 (17-5) — 월별 클릭 → 품목별·국가별 (2026-07-15)
+
+- **요청 근거**: 사용자 지시 — `/feeds` 수출입 탭의 월을 클릭하면 상세로. 범위를 **앱·서버·API 호출 부담 최소화** 방향으로 좁힘: ① 품목별은 **국가 구분 없이**(국가 정보 제외) ② 국가별은 **상위 N개국 + 나머지 전부 "기타" 한 줄** ③ 상위 국가 클릭 시 **그 나라 품목을 미니멀한 팝업으로 아주 간단히**. 조사·계획 보고 후 승인: **상위 8개국 · 품목 97개 류 전수 · 경로 `/indices/trade/[yyyymm]`**.
+- **라이브 실측 확정 (2026-07)**: `nitemtrade/getNitemtradeList`(품목별 국가별 수출입실적 GW, **이미 활용승인**. `Itemtrade`는 403 미승인이라 이 API가 유일한 상세 소스).
+  - **`hsSgn`·`cntyCd` 중 최소 하나 필수** — 둘 다 없으면 code 99("품목코드 혹은 국가코드 중 1개 이상은 입력"). `cntyCd=ALL`도 거부. **전체 조회 모드가 없어** 반드시 팬아웃해야 한다. `hsSgn`은 **2·4·6·10자리만** (0 → code 99).
+  - **`numOfRows`/`pageNo` 무시** — 조건에 해당하는 전 행이 통째로 온다(CN 2.0MB/7,964행). 총계행만 싸게 받을 방법이 없다.
+  - **핵심 발견 — 류 조회 1회가 (국가 × HS 4단위) 행렬을 통째로 준다**(27류 = 125개국). 따라서 **97개 류 전수만으로 국가별 집계·국가별 품목까지 전부 파생**된다 — 계획서의 국가별 8회 추가 호출은 불필요해져 뺐다(승인 범위 내 호출 축소, 방향과 일치). 팝업도 파생이라 **클릭당 API 0회**.
+  - **`item`행 합 = `총계`행 정확히 일치**(27류 exp/imp 둘 다 검증) → 총계행은 버려도 무손실.
+  - **품목명은 API 제공값**(`statKor`, hsCd별 충돌 0건 실측) → **계획서의 "97개 류명 정적 매핑"이 불필요해짐**. 손으로 쓸 이름이 없어져 오기 위험 제거. 대신 4단위 실명이라 표시 입도를 류(2단위)→**HS 4단위**로 올렸다(더 정확·더 유용). XML 엔티티는 미사용(7개 류 표본) → 기존 정규식 파싱 그대로.
+  - **비용 실측**: 97개 류·동시성 4 = **51~61초 / 13.5MB** (계획서 추정 48MB보다 크게 저렴). `maxDuration=300` 안에 여유.
+  - **합계 정합**: 97류 합 1021.3억 vs 수출입총괄 1021.7억(**0.03% 차이**). 98·99류는 빈 응답이라 못 메운다 → 출처를 섞지 않고 자체 정합 유지 + 화면 각주로 명시.
+- **구현**: ① `api/customs/client.ts` `fetchNitemTradeChapter(hsSgn, yyyymm)`(30초 타임아웃, 총계·비정형 제외) + `assertOk` 공통화. ② `feeds/store.ts` `TradeDetailItem`/`TradeDetailCountry`/`StoredTradeDetail` + `market:tradeDetail:{yyyymm}`(월별 키·자연 누적, ~8KB) + `market:tradeDetail:months`(인덱스 — 어느 달에 링크를 걸지 판단, SCAN 회피). ③ `jobs/refreshTradeDetail.ts` — 월 1회성 가드, 동시성 4 워커풀, 집계(품목 15·국가 8·국가별 품목 5). **일부 류 실패 시 저장 생략**(왜곡 영구 고착 방지 — 저장하면 가드에 걸려 재시도가 막힌다). ④ `api/jobs/refresh-trade-detail/route.ts` **별도 라우트**(61초 전수 조회를 매일 도는 뉴스·공시 잡의 시간 예산·실패 범위와 분리). ⑤ `feeds/tradeDetail.ts` 뷰 빌더 — "기타"=전체−Σ상위N 복원(잔차 1달러 미만이면 생략). ⑥ `components/indices/CountryTradeTable.tsx` **최소 Client**(네이티브 `<dialog>` — 포커스 트랩·Esc·백드롭을 브라우저가 처리, 신규 의존성 0. 데이터는 props로 이미 내려와 팝업 fetch 0). ⑦ `/indices/trade/[yyyymm]` Server Component + `tradeStats.ts`에 `detailMonths` 추가 → 탭 월 링크(상세 있는 달만).
+- **부수 수정**: `proxy.ts` matcher가 잡 라우트를 **하나씩 열거**해 신규 라우트가 307→/login으로 샘(실제 발생). `api/jobs/` 접두사로 묶어 재발 차단 — 잡 4개 전부 `verifyJobRequest`로 자체 인증함을 확인 후 변경. research.md §8-13의 "3곳 동기화"도 갱신.
+- **검증**: tsc·lint·build(22/22 라우트) PASS. **라이브 E2E**: 미인증 401·기존 잡 401·보호 페이지 307 확인 → 잡 실호출 `{ok:true, refreshed:true, yyyymm:202606, failed:0}` **51초**, 재실행 가드 `refreshed:false` **0.34초**. **실 Redis read-back**: 8.2KB·상위8국(CN 200.0억 등)·기타=279.5억(=전체−Σ상위8)·중국 팝업 5품목. **실브라우저 E2E(Chrome 390×844)**: 탭 전환 → 13개월 중 202606만 링크 → 상세 진입 → 중국 클릭 시 dialog open true·품목 5행 → Esc 닫힘 → 재클릭 정상, **JS 에러 0**. 다크 모드 정상. 스크린샷으로 발견해 고친 것: 품목명 우측 정렬(`.table th` 특이도에 짐)·금액 줄바꿈·제목 "2026.06 수출/입" 분리.
+- **한계(명시)**: 상세는 **잡이 도는 달부터 쌓인다** — 현재 202606 하나뿐이고, 백필은 12개월×97콜=1,164콜이라 하지 않는다. 상세 없는 달은 링크를 걸지 않고, 직접 URL 진입 시 안내문을 보여준다.
+- **미완료**: **QStash 월 1회 스케줄 등록**(예: 매월 5일 03:00 KST, `CRON_TZ=Asia/Seoul`) — 콘솔 작업이라 사용자 몫. 미등록 상태에서도 `CRON_SECRET` Bearer로 수동 트리거 가능.
 
 ---
 

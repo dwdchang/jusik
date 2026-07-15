@@ -62,6 +62,7 @@
 | `login/page.tsx` | Google 로그인 버튼 (Server Action으로 `signIn("google")`). 세션 있으면 `/` redirect, 인라인 `GoogleIcon` SVG 로컬 정의 |
 | `indices/kospi` `kosdaq` `usdkrw` `us10y` `oil/page.tsx` | 지표 상세 5종 — 전부 `ensureAllowedSession()` 후 `<IndexDetailScreen market=…>` 한 줄 위임 |
 | `indices/market/page.tsx` | 시장 요약(환율·금리·유가 미니 카드 3종). `getMarketDetails` MGET 1회. + 수출입 미니 카드(Phase 17-4) — `getTradeStatsView`로 최신 확정월 수출/수입/무역수지+YoY, `/feeds` 링크 |
+| `indices/trade/[yyyymm]/page.tsx` | 수출입 상세(Phase 17-5) — 월 합계 3지표 + 품목별(국가 무관, HS 4단위 상위 15+기타) + 국가별(상위 8+기타, 클릭 시 품목 팝업). `getTradeDetailView` 1회. `/feeds` 수출입 탭의 월 링크로 진입 |
 | `indices/kospi-volatility/page.tsx` | 변동성 상세 — 월별 평균 막대 차트 |
 | `holdings/page.tsx` | 보유종목 목록·요약·연초 이후 추이·종목 추가 폼(`<details>` 토글, 종목명 검색 `<StockSearchInput>`) |
 | `holdings/[symbolCode]/page.tsx` | 보유종목 상세 — 평가 요약·수정/삭제(`?edit=1`)·2년 추이·정보 블록 4종 |
@@ -75,6 +76,7 @@
 | `api/jobs/refresh-market-data/route.ts` | 시세 갱신 잡 엔드포인트 (POST, §4.1) |
 | `api/jobs/refresh-hot-stocks/route.ts` | 핫종목 갱신 잡 엔드포인트 (POST, §4.2) |
 | `api/jobs/refresh-feeds/route.ts` | 피드(공시) 갱신 잡 엔드포인트 (POST, §4.5) — KIS가 아니라 **시간창 가드 없음** |
+| `api/jobs/refresh-trade-detail/route.ts` | 수출입 상세 갱신 잡 엔드포인트 (POST, §4.6, Phase 17-5) — 월 1회·시간창 가드 없음 |
 
 라우트별 `page.module.css` 동반. 오류 UI는 별도 error.tsx 없이 각 page의 try/catch 인라인 처리.
 
@@ -90,7 +92,9 @@
 | `api/naver/client.ts` | 네이버 뉴스 검색 클라이언트 (Phase 17-3) — 종목명 키워드·`sort=date`, `<b>`/엔티티 제거, **제목+요약에 종목명 포함 기사만** 필터(저관련·오탐 제거), pubDate ms 파싱. 상위 10건 |
 | `api/customs/client.ts` | 관세청 수출입총괄(GW) 클라이언트 (Phase 17-4) — `getNewtradeList`(XML), `fetchTradeStats(strt,end)`. `총계`/비정형 year 제외·`year "YYYY.MM"→"YYYYMM"` 정규화·`parseNum` 경유·`resultCode≠00` throw. **조회 범위 최대 12개월(inclusive)** 제약 |
 | `feeds/store.ts` | 피드 store — `market:disclosures:{code}`(공시)·`market:news:{code}`(뉴스) 스냅샷 라이터·`disclosuresKey`/`newsKey` export·`dart:corpCodeMap`(종목코드→고유번호) 리더·라이터·`market:tradeStats`(수출입, 종목 무관 단일 키) `TradeStatMonth`/`StoredTradeStats`+`getTradeStats`/`setTradeStats`(Phase 17-4). (단일 종목 리더 `getDisclosures`는 Phase 17-2에서 제거 — 화면은 `homeFeed`의 MGET로 통합) |
-| `feeds/tradeStats.ts` | 수출입 뷰 빌더 (Phase 17-4) — `buildTradeStatsView`(순수: 최신 확정월 + 전년동월 `find`로 YoY %)/`getTradeStatsView`(리더). `/indices/market` 카드·`/feeds` 탭 공용 |
+| `feeds/tradeStats.ts` | 수출입 뷰 빌더 (Phase 17-4) — `buildTradeStatsView`(순수: 최신 확정월 + 전년동월 `find`로 YoY %)/`getTradeStatsView`(리더, 상세 인덱스 `detailMonths` 동봉). `/indices/market` 카드·`/feeds` 탭 공용 |
+| `feeds/tradeDetail.ts` | 수출입 상세 뷰 빌더 (Phase 17-5) — `buildTradeDetailView`(순수: 상위 N + "기타"=전체−Σ상위N 복원)/`getTradeDetailView(yyyymm)`(리더). `/indices/trade/[yyyymm]` 전용 |
+| `jobs/refreshTradeDetail.ts` | 수출입 상세 갱신 잡 (Phase 17-5) — 97개 류 전수 조회(동시성 4, 실측 51~61초/13.5MB)를 집계해 `market:tradeDetail:{yyyymm}`(~8KB) 저장. 월 1회성 가드 |
 | `feeds/homeFeed.ts` | 홈 피드 리더 (Phase 17-2/17-2b/17-3) — ① `getDisclosureBoard`/`getNewsBoard`(`/feeds`용): 보유+관심 `{code→name}` → `market:disclosures:{code}`/`market:news:{code}` MGET 병합·최신순(접수번호/pubDate)·상위 40건 컷(공통 `FeedBoardItem`). ② `getTodayFeedCounts`(홈 요약 카드용): 공시·뉴스 MGET 2회로 오늘(`rceptDt`/`pubDateKst`===KST 오늘) 건수 카운트(수출입 제외 — 월간 데이터). `collectOwnedStocks` 공유. 읽기 전용(누적 없음 — 종목별 원본이 SET 덮어쓰기라 컷·카운트는 조회 시점 계산만) |
 | `auth/allowedEmails.ts` | `ALLOWED_EMAILS` 파싱(모듈 로드 시 1회) — `isEmailAllowed` / `getAllowedEmails`(잡용 전체 목록) |
 | `auth/ensureAllowedSession.ts` | 상세 페이지 공용 가드 — 미로그인→`/login`, 허용 외→`/`(access-denied) |
@@ -248,6 +252,29 @@ QStash 스케줄 (매일 08~22시 정시 KST, CRON_TZ=Asia/Seoul 0 8-22 * * *)
 ```
 
 - 17-4(수출입, 관세청 API)는 이 파이프라인에 스텝 0(월 1회성)으로 증분 추가됨 (plan.md §17.14).
+
+### 4.6 수출입 상세 갱신 잡 — Phase 17-5
+
+```
+QStash 스케줄 (월 1회 권장, 예: 매월 5일 03:00 KST) → POST /api/jobs/refresh-trade-detail
+    verifyJobRequest만 — 시간창 가드 없음 (KIS 아님, 월간 확정 통계)
+  → refreshTradeDetail(trigger)  [lib/jobs/refreshTradeDetail.ts]
+      0. 대상 = 직전 달(현재 KST 월은 월중 집계라 미완결 — §17-4와 동일 규칙)
+         market:tradeDetail:{yyyymm}이 이미 있으면 관세청 호출 없이 즉시 skip
+      1. 97개 류(HS 2단위 01~97) 전수 조회, 동시성 4 (실측 51~61초·13.5MB)
+         류 조회 1회가 (국가 × HS 4단위) 행렬을 통째로 준다 → 국가별 추가 호출 0
+      2. 집계: 품목별 상위 15 / 국가별 상위 8(+국가별 상위 5품목) / 전체 합계
+      3. market:tradeDetail:{yyyymm}(~8KB) + market:tradeDetail:months(인덱스) 저장
+  → 응답: report (실패 시 500 → QStash 재시도, 멱등)
+```
+
+- **일부 류라도 실패하면 저장하지 않는다** — 빠진 류만큼 집계가 왜곡되는데, 한 번
+  저장하면 0번 가드에 걸려 왜곡이 영구 고착된다. 저장을 건너뛰면 다음 회차가 전수 재조회.
+- **품목명은 API 제공값**(`statKor`, hsCd별 일관성 실측 확인) — 정적 매핑 불필요.
+  다만 관세청 법령 원문이라 최대 182자로 길어, 화면은 HS 부호 병기 + 2줄 말줄임 + `title`.
+- **합계는 품목별 통계 자체 집계** — 수출입총괄과 0.03% 차이(202606 실측 1021.3 vs
+  1021.7억). 98·99류는 빈 응답이라 더 돌아도 안 메워진다. 출처를 섞으면 "기타"가
+  틀어지므로 자체 정합을 지키고 차이는 화면 각주로 밝힌다.
 
 ### 4.3 화면 읽기 경로 (전부 Redis만)
 
@@ -452,10 +479,14 @@ QStash 스케줄 (매일 08~22시 정시 KST, CRON_TZ=Asia/Seoul 0 8-22 * * *)
     `fillRegistrationPrices`(needsFill), watchlist page, watchlist 상세 page.
 12. **차트 축·그리드·툴팁 Recharts 설정** — IndexLineChart/VolatilityChart/HoldingsChart
     3곳에 유사 코드 (tick 스타일·margin 등). 디자인 변경 시 3곳 동시 수정.
-13. **잡 라우트 신설 시 3곳 동기화** — 새 `/api/jobs/*`는 ① `proxy.ts` matcher 제외
-    추가, ② `verifyJobRequest` 재사용(+KIS 호출 잡이면 `isWithinKisCallWindow` 가드),
-    ③ QStash 스케줄 등록이 세트다. 기존 잡에 로직을 얹을 수 있으면 신설하지 않는
-    편이 구조에 맞다 (refresh-feeds는 시간창 제약 차이로 신설한 예외 — plan.md §17.2).
+13. **잡 라우트 신설 시 2곳 동기화** — 새 `/api/jobs/*`는 ① `verifyJobRequest`
+    재사용(+KIS 호출 잡이면 `isWithinKisCallWindow` 가드), ② QStash 스케줄 등록이
+    세트다. 기존 잡에 로직을 얹을 수 있으면 신설하지 않는 편이 구조에 맞다
+    (refresh-feeds는 시간창 제약 차이로, refresh-trade-detail은 61초 전수 조회의
+    시간 예산·실패 격리 때문에 신설한 예외 — plan.md §17.2·§17.15).
+    ~~`proxy.ts` matcher 제외 추가~~는 §17.15에서 필요 없어졌다 — matcher가 잡을
+    하나씩 열거하다 신설 라우트를 빠뜨려 307→/login으로 새는 사고가 실제로 나서,
+    `api/jobs/` 접두사 하나로 묶었다 (잡은 전부 스스로 인증하므로 안전).
 14. **chartPoints 매핑 3벌** — `{ fullDate, date: slice(5).replace("-","/"), totalValue,
     returnRate }` 변환이 holdings 목록·상세, watchlist 상세에서 거의 동일하게 반복 —
     새 차트 화면 추가 시 4번째 사본이 생기기 쉽다 (§8.6 수익률 산식 반복과 같은 지점).
