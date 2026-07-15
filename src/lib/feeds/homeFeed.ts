@@ -1,6 +1,11 @@
 import { todayKstDate } from "@/lib/date/kst";
 import { getRedis } from "@/lib/redis/client";
-import { disclosuresKey, type StoredDisclosures } from "@/lib/feeds/store";
+import {
+  disclosuresKey,
+  newsKey,
+  type StoredDisclosures,
+  type StoredNews,
+} from "@/lib/feeds/store";
 import { getHoldings } from "@/lib/holdings/store";
 import { getWatchlist } from "@/lib/watchlist/store";
 
@@ -108,23 +113,75 @@ export async function getDisclosureBoard(email: string): Promise<FeedBoardItem[]
   return items.slice(0, HOME_FEED_LIMIT);
 }
 
+/** 링크 URL에서 표시용 출처 호스트 추출 ("www." 제거) — 실패 시 빈 문자열 */
+function sourceHost(link: string): string {
+  try {
+    return new URL(link).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * 뉴스 게시판 — 사용자 보유+관심종목의 뉴스 스냅샷을 MGET 일괄 조회 후
+ * 발행 최신순(pubDateMs 내림차순) 병합, 상위 HOME_FEED_LIMIT건으로 컷.
+ * 같은 기사가 여러 종목에 걸릴 수 있어 id는 종목코드+링크로 유일하게 만든다.
+ */
+export async function getNewsBoard(email: string): Promise<FeedBoardItem[]> {
+  const owned = await collectOwnedStocks(email);
+  const codes = [...owned.keys()];
+  if (codes.length === 0) {
+    return [];
+  }
+
+  const rows = await getRedis().mget<Array<StoredNews | null>>(
+    ...codes.map(newsKey)
+  );
+
+  const merged: Array<{ item: FeedBoardItem; ms: number }> = [];
+  rows.forEach((row, i) => {
+    if (row === null) {
+      return;
+    }
+    const symbolCode = codes[i];
+    const stockName = owned.get(symbolCode) ?? symbolCode;
+    for (const n of row.items) {
+      merged.push({
+        ms: n.pubDateMs,
+        item: {
+          id: `${symbolCode}:${n.link}`,
+          symbolCode,
+          stockName,
+          title: n.title,
+          sortKey: String(n.pubDateMs),
+          date: n.pubDateKst,
+          meta: sourceHost(n.link),
+          remark: "",
+          url: n.link,
+        },
+      });
+    }
+  });
+
+  merged.sort((a, b) => b.ms - a.ms);
+  return merged.slice(0, HOME_FEED_LIMIT).map((entry) => entry.item);
+}
+
 /**
  * 홈 그리드 요약 카드용 — 소스별 "오늘 업로드 건수" (Phase 17-2b, plan.md §17.8).
- * null = 백엔드 미구현 자리표시자("준비 중"), number = 실집계(0 포함).
+ * 수출입은 월간 데이터라 "오늘 N건" 모델에 맞지 않아 이 카드에서 제외한다 (§17.13).
  */
 export interface TodayFeedCounts {
   /** 오늘 접수(rceptDt===KST 오늘) 공시 건수 */
   disclosures: number;
-  /** 뉴스(17-3 이후) — 현재는 백엔드 없어 null */
-  news: number | null;
-  /** 수출입(17-4 이후) — 현재는 백엔드 없어 null */
-  trade: number | null;
+  /** 오늘 발행(pubDateKst===KST 오늘) 뉴스 건수 */
+  news: number;
 }
 
 /**
  * 게시판 40건을 만들지 않고 오늘 건수만 센다(sort/slice/종목명 결합 생략).
- * Redis 비용은 getDisclosureBoard와 동일한 MGET 1회, CPU만 절약.
- * DART 접수일·KST 오늘 모두 KST 캘린더 문자열이라 시간대 변환이 필요 없다.
+ * Redis 비용은 공시·뉴스 MGET 2회, CPU만 절약. 접수일·발행일 모두 저장 시점에
+ * 굳힌 KST 캘린더 문자열이라 읽기 경로에서 시간대 변환이 필요 없다.
  */
 export async function getTodayFeedCounts(
   email: string
@@ -133,18 +190,32 @@ export async function getTodayFeedCounts(
   const owned = await collectOwnedStocks(email);
   const codes = [...owned.keys()];
 
-  let disclosures = 0;
-  if (codes.length > 0) {
-    const rows = await getRedis().mget<Array<StoredDisclosures | null>>(
-      ...codes.map(disclosuresKey)
-    );
-    for (const row of rows) {
-      if (row === null) {
-        continue;
-      }
-      disclosures += row.items.filter((d) => d.rceptDt === todayYmd).length;
-    }
+  if (codes.length === 0) {
+    return { disclosures: 0, news: 0 };
   }
 
-  return { disclosures, news: null, trade: null };
+  const [disclosureRows, newsRows] = await Promise.all([
+    getRedis().mget<Array<StoredDisclosures | null>>(
+      ...codes.map(disclosuresKey)
+    ),
+    getRedis().mget<Array<StoredNews | null>>(...codes.map(newsKey)),
+  ]);
+
+  let disclosures = 0;
+  for (const row of disclosureRows) {
+    if (row === null) {
+      continue;
+    }
+    disclosures += row.items.filter((d) => d.rceptDt === todayYmd).length;
+  }
+
+  let news = 0;
+  for (const row of newsRows) {
+    if (row === null) {
+      continue;
+    }
+    news += row.items.filter((n) => n.pubDateKst === todayYmd).length;
+  }
+
+  return { disclosures, news };
 }

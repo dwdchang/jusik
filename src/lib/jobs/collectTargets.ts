@@ -73,3 +73,26 @@ export function unionSymbolCodes(
     ]),
   ];
 }
+
+/**
+ * 보유+관심종목의 `{종목코드 → 종목명}` — 뉴스 검색 키워드로 종목명이 필요할 때 사용 (§17.13).
+ * 종목명이 아직 안 채워진 항목(빈 문자열)은 건너뛰어, 첫 비어있지 않은 이름이 이긴다.
+ */
+export function unionSymbolNames(
+  holdingsByEmail: Map<string, Holding[]>,
+  watchlistsByEmail: Map<string, WatchItem[]>
+): Map<string, string> {
+  const byCode = new Map<string, string>();
+  const consider = (code: string, name: string) => {
+    if (name !== "" && !byCode.has(code)) {
+      byCode.set(code, name);
+    }
+  };
+  for (const holding of [...holdingsByEmail.values()].flat()) {
+    consider(holding.symbolCode, holding.name ?? "");
+  }
+  for (const item of [...watchlistsByEmail.values()].flat()) {
+    consider(item.symbolCode, item.name ?? "");
+  }
+  return byCode;
+}

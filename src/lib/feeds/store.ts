@@ -34,15 +34,44 @@ export interface StoredCorpCodeMap {
   fetchedAt: string;
 }
 
+/** 뉴스 1건 — 네이버 검색 API 기사 (§17.13) */
+export interface NewsItem {
+  /** 기사 제목 (HTML 태그 제거 완료) */
+  title: string;
+  /** 원문 링크 */
+  link: string;
+  /** 발행 시각 ms (정렬용) */
+  pubDateMs: number;
+  /** 발행일 KST "YYYYMMDD" — 오늘 판정·표시용(저장 시점에 굳힘) */
+  pubDateKst: string;
+}
+
+/** market:news:{symbolCode} — 최신 뉴스 스냅샷 (SET 덮어쓰기, 누적 저장 안 함) */
+export interface StoredNews {
+  symbolCode: string;
+  /** 발행 최신순 최대 10건 */
+  items: NewsItem[];
+  fetchedAt: string;
+}
+
 /** market:disclosures:{code} 키 조립 — 종목별 리더(homeFeed MGET)와 라이터가 공유 */
 export function disclosuresKey(symbolCode: string): string {
   return `market:disclosures:${symbolCode}`;
+}
+
+/** market:news:{code} 키 조립 — 종목별 리더(homeFeed MGET)와 라이터가 공유 */
+export function newsKey(symbolCode: string): string {
+  return `market:news:${symbolCode}`;
 }
 
 const CORP_CODE_MAP_KEY = "dart:corpCodeMap";
 
 export async function setDisclosures(value: StoredDisclosures): Promise<void> {
   await getRedis().set(disclosuresKey(value.symbolCode), value);
+}
+
+export async function setNews(value: StoredNews): Promise<void> {
+  await getRedis().set(newsKey(value.symbolCode), value);
 }
 
 export async function getCorpCodeMap(): Promise<StoredCorpCodeMap | null> {

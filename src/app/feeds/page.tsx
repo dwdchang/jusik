@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { FeedTabsClient } from "@/components/feeds/FeedTabsClient";
 import { NavIconLink } from "@/components/nav/NavIconLink";
 import { ensureAllowedSession } from "@/lib/auth/ensureAllowedSession";
-import { getDisclosureBoard } from "@/lib/feeds/homeFeed";
+import { getDisclosureBoard, getNewsBoard } from "@/lib/feeds/homeFeed";
 import styles from "./page.module.css";
 
 export const metadata: Metadata = {
@@ -24,10 +24,16 @@ export default async function FeedsPage() {
     redirect("/login");
   }
 
-  const disclosures = await getDisclosureBoard(email).catch((err) => {
-    console.error("[FeedsPage] getDisclosureBoard failed:", err);
-    return [];
-  });
+  const [disclosures, news] = await Promise.all([
+    getDisclosureBoard(email).catch((err) => {
+      console.error("[FeedsPage] getDisclosureBoard failed:", err);
+      return [];
+    }),
+    getNewsBoard(email).catch((err) => {
+      console.error("[FeedsPage] getNewsBoard failed:", err);
+      return [];
+    }),
+  ]);
 
   return (
     <main className={styles.page}>
@@ -37,7 +43,7 @@ export default async function FeedsPage() {
           <h1 className={styles.title}>뉴스·공시</h1>
         </header>
 
-        <FeedTabsClient disclosures={disclosures} />
+        <FeedTabsClient disclosures={disclosures} news={news} />
       </div>
     </main>
   );

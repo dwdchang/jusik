@@ -2,18 +2,22 @@ import {
   fetchDartCorpCodeMap,
   fetchDartDisclosures,
 } from "@/lib/api/dart/client";
-import { todayKstDate } from "@/lib/date/kst";
+import { fetchNaverNews } from "@/lib/api/naver/client";
+import { kstYyyyMmDd, todayKstDate } from "@/lib/date/kst";
 import {
   getCorpCodeMap,
   setCorpCodeMap,
   setDisclosures,
+  setNews,
   type DisclosureItem,
+  type NewsItem,
 } from "@/lib/feeds/store";
 import {
   collectHoldings,
   collectWatchlists,
   errorMessage,
   unionSymbolCodes,
+  unionSymbolNames,
   type EmailReadResult,
 } from "./collectTargets";
 
@@ -33,8 +37,12 @@ const CORP_CODE_MAP_RETRY_AGE_MS = 24 * 60 * 60 * 1000;
 const DISCLOSURE_WINDOW_DAYS = 90;
 /** 종목당 저장하는 최근 공시 최대 건수 */
 const DISCLOSURE_MAX_ITEMS = 10;
+/** 종목당 저장하는 최근 뉴스 최대 건수 */
+const NEWS_MAX_ITEMS = 10;
 /** DART 분당 과다 호출 차단 대비 종목 간 유량 제한 */
 const DART_CALL_INTERVAL_MS = 150;
+/** 네이버 검색 API 종목 간 유량 제한 (일 25,000콜 내 여유) */
+const NAVER_CALL_INTERVAL_MS = 150;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -69,6 +77,14 @@ export interface RefreshFeedsReport {
     count?: number;
     /** 매핑에 고유번호가 없는 종목(비상장·매핑 미반영) — 실패로 치지 않는다 */
     skipped?: "unlisted";
+    error?: string;
+  }>;
+  news: Array<{
+    symbolCode: string;
+    ok: boolean;
+    count?: number;
+    /** 종목명이 아직 안 채워져 검색어를 만들 수 없는 종목 — 실패로 치지 않는다 */
+    skipped?: "no_name";
     error?: string;
   }>;
   /** 데이터 갱신 성공 여부 — false면 잡 엔드포인트가 500을 반환(QStash 재시도) */
@@ -171,6 +187,44 @@ async function refreshDisclosures(
   return results;
 }
 
+/**
+ * 종목별 순차 뉴스 조회(종목명 키워드) → market:news:{code} 저장 (종목별 실패 격리).
+ * 종목명이 비어 있으면(잡이 아직 안 채운 신규 등록) 검색어를 만들 수 없어 건너뛴다.
+ */
+async function refreshNews(
+  codeNames: Map<string, string>,
+  fetchedAt: string
+): Promise<RefreshFeedsReport["news"]> {
+  const results: RefreshFeedsReport["news"] = [];
+
+  for (const [symbolCode, name] of codeNames) {
+    if (name === "") {
+      results.push({ symbolCode, ok: true, skipped: "no_name" });
+      continue;
+    }
+
+    try {
+      const articles = await fetchNaverNews(name, NEWS_MAX_ITEMS);
+      const items: NewsItem[] = articles.map((article) => ({
+        title: article.title,
+        link: article.link,
+        pubDateMs: article.pubDateMs,
+        pubDateKst: kstYyyyMmDd(article.pubDateMs),
+      }));
+
+      await setNews({ symbolCode, items, fetchedAt });
+      results.push({ symbolCode, ok: true, count: items.length });
+    } catch (error) {
+      console.error(`[job] news refresh failed (${symbolCode}):`, error);
+      results.push({ symbolCode, ok: false, error: errorMessage(error) });
+    }
+
+    await sleep(NAVER_CALL_INTERVAL_MS);
+  }
+
+  return results;
+}
+
 export async function refreshFeeds(
   trigger: string
 ): Promise<RefreshFeedsReport> {
@@ -190,6 +244,7 @@ export async function refreshFeeds(
       corpCodeMap: { ok: true, refreshed: false },
       watchlists,
       disclosures: [],
+      news: [],
       ok: true,
     };
   }
@@ -200,7 +255,14 @@ export async function refreshFeeds(
   // 3. 종목별 최근 공시 조회 → market:disclosures:{code} (SET 덮어쓰기)
   const disclosures = await refreshDisclosures(symbolCodes, map, startedAt);
 
-  const ok = corpCodeMap.ok && disclosures.every((row) => row.ok);
+  // 4. 종목별 최근 뉴스 조회(종목명 키워드) → market:news:{code} (SET 덮어쓰기)
+  const codeNames = unionSymbolNames(holdingsByEmail, watchlistsByEmail);
+  const news = await refreshNews(codeNames, startedAt);
+
+  const ok =
+    corpCodeMap.ok &&
+    disclosures.every((row) => row.ok) &&
+    news.every((row) => row.ok);
 
   return {
     trigger,
@@ -209,6 +271,7 @@ export async function refreshFeeds(
     corpCodeMap,
     watchlists,
     disclosures,
+    news,
     ok,
   };
 }
