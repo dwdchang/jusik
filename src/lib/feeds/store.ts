@@ -56,6 +56,46 @@ export interface StoredTradeStats {
   fetchedAt: string;
 }
 
+/** 품목(HS 4단위) 1행 — 수출입 상세 (§17.15), 금액은 모두 USD */
+export interface TradeDetailItem {
+  /** HS 4단위 부호 (예: "8542") */
+  hsCd: string;
+  /** 품목명 — 관세청 제공값 */
+  name: string;
+  expDlr: number;
+  impDlr: number;
+}
+
+/** 국가 1행 — 상위 N개국만 저장 (§17.15) */
+export interface TradeDetailCountry {
+  /** 국가 코드 (예: "CN") */
+  code: string;
+  /** 국가명 (예: "중국") */
+  name: string;
+  expDlr: number;
+  impDlr: number;
+  /** 그 나라의 교역액 상위 품목 — 클릭 팝업용 (추가 API 호출 없이 같은 조회에서 파생) */
+  items: TradeDetailItem[];
+}
+
+/**
+ * market:tradeDetail:{yyyymm} — 확정월 1개월치 수출입 상세 스냅샷 (SET 덮어쓰기).
+ * 97개 류 전수 조회를 집계한 파생 결과만 담아, 원본(13MB)이 아니라 표시분(수 KB)만 굳힌다.
+ * 월별 키라 자연 누적된다.
+ */
+export interface StoredTradeDetail {
+  /** 기준 확정월 "YYYYMM" */
+  yyyymm: string;
+  /** 전체 합계 (97개 류 총합) — "기타" 행을 빼기로 구하는 기준 */
+  totalExpDlr: number;
+  totalImpDlr: number;
+  /** 국가 무관 품목별 교역액 상위 — 내림차순 */
+  items: TradeDetailItem[];
+  /** 교역액 상위 국가 — 내림차순 */
+  countries: TradeDetailCountry[];
+  fetchedAt: string;
+}
+
 /** 뉴스 1건 — 네이버 검색 API 기사 (§17.13) */
 export interface NewsItem {
   /** 기사 제목 (HTML 태그 제거 완료) */
@@ -91,6 +131,18 @@ const CORP_CODE_MAP_KEY = "dart:corpCodeMap";
 /** market:tradeStats — 종목 무관 단일 키 (수출입은 시장 전체 지표) */
 const TRADE_STATS_KEY = "market:tradeStats";
 
+/** market:tradeDetail:{yyyymm} 키 조립 — 확정월별 상세 (§17.15) */
+function tradeDetailKey(yyyymm: string): string {
+  return `market:tradeDetail:${yyyymm}`;
+}
+
+/**
+ * market:tradeDetail:months — 상세를 확보한 확정월 목록(최신순).
+ * 상세는 갱신 시점 이후의 달만 쌓이므로, 어느 달에 상세 링크를 걸 수 있는지
+ * 알려면 목록이 필요하다. 월별 키를 SCAN 하지 않으려고 인덱스로 둔다.
+ */
+const TRADE_DETAIL_MONTHS_KEY = "market:tradeDetail:months";
+
 export async function setDisclosures(value: StoredDisclosures): Promise<void> {
   await getRedis().set(disclosuresKey(value.symbolCode), value);
 }
@@ -113,4 +165,22 @@ export async function getTradeStats(): Promise<StoredTradeStats | null> {
 
 export async function setTradeStats(value: StoredTradeStats): Promise<void> {
   await getRedis().set(TRADE_STATS_KEY, value);
+}
+
+export async function getTradeDetail(
+  yyyymm: string
+): Promise<StoredTradeDetail | null> {
+  return getRedis().get<StoredTradeDetail>(tradeDetailKey(yyyymm));
+}
+
+export async function setTradeDetail(value: StoredTradeDetail): Promise<void> {
+  await getRedis().set(tradeDetailKey(value.yyyymm), value);
+}
+
+export async function getTradeDetailMonths(): Promise<string[]> {
+  return (await getRedis().get<string[]>(TRADE_DETAIL_MONTHS_KEY)) ?? [];
+}
+
+export async function setTradeDetailMonths(months: string[]): Promise<void> {
+  await getRedis().set(TRADE_DETAIL_MONTHS_KEY, months);
 }
