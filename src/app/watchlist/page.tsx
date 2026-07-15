@@ -86,7 +86,11 @@ export default async function WatchlistPage({
         <section className={styles.section} aria-label="관심종목 추가">
           {/* 폼 검증 실패로 돌아온 경우엔 펼친 상태로 렌더 — 재입력 동선 유지 */}
           <details className={styles.addDetails} open={errorMessage !== null}>
-            <summary className={styles.addToggle}>+ 종목 추가</summary>
+            {/* 열림 상태에서 summary가 취소 버튼 역할 — 클릭 시 폼이 접힌다 (§17.12) */}
+            <summary className={styles.addToggle}>
+              <span className={styles.addToggleOpenLabel}>+ 종목 추가</span>
+              <span className={styles.addToggleCloseLabel}>✕ 취소</span>
+            </summary>
             <form action={addWatchItemAction} className={styles.addForm}>
               <StockSearchInput />
               <input

@@ -196,6 +196,15 @@
   color: var(--color-text-tertiary);
 }
 
+/* 당일 등락률 표 — 종목코드를 별도 열이 아니라 종목명 뒤 인라인으로 붙여
+   빈 코드 열이 남기던 어색한 여백을 없앤다(보유·관심 목록의 코드 표기와 동일 패턴) (§17.12) */
+.codeInline {
+  margin-left: var(--space-8);
+  font-size: var(--text-micro);
+  font-weight: 400;
+  color: var(--color-text-tertiary);
+}
+
 .rise {
   color: var(--color-rise);
   font-weight: var(--weight-semibold);

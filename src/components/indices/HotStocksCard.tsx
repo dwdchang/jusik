@@ -1,52 +1,49 @@
 import Link from "next/link";
 import { formatChangeRate } from "@/lib/format/change";
-import { formatMonthDisplay } from "@/lib/hotstocks/months";
-import type { HotStocksCardSummary } from "@/lib/hotstocks/summary";
+import type { DailyHotCardSummary } from "@/lib/hotstocks/dailyCard";
 import { resolveDirection } from "@/lib/indices/kisMapper";
+import { resolveStaleness } from "@/lib/market/staleness";
 import styles from "./HotStocksCard.module.css";
 
 /**
- * 홈 "핫종목" 카드 (7번째) — 최근 1개월 수익률 TOP 3 미리보기 (plan.md §14.5).
- * 매월 첫 평일에만 갱신되는 랭킹이라 staleness 배지 대신
- * 기준월이 밀렸을 때만 "갱신 지연" 안내 텍스트를 표시한다.
+ * 홈 "핫종목" 카드 (7번째) — 당일 등락률 상위 3종목 미리보기 (§17.12).
+ * 장중 시세 갱신 잡이 저장한 당일 등락률 스냅샷을 읽으며, 카드를 누르면
+ * 기본 탭이 "당일 등락률"인 핫종목 페이지로 이동한다.
  */
 export function HotStocksCard({
   summary,
 }: {
-  summary: HotStocksCardSummary | null;
+  summary: DailyHotCardSummary | null;
 }) {
+  const stale = summary !== null ? resolveStaleness(summary.fetchedAt) : null;
+
   return (
     <Link href="/hot-stocks" className={styles.card}>
       <h2 className={styles.title}>핫종목</h2>
       {summary !== null && summary.top3.length > 0 ? (
         <>
           <ol className={styles.list}>
-            {summary.top3.map((entry) => (
-              <li key={entry.code} className={styles.row}>
-                <span className={`${styles.rank} numeric`}>{entry.rank}</span>
-                <span className={styles.name}>{entry.name}</span>
+            {summary.top3.map((item) => (
+              <li key={item.code} className={styles.row}>
+                <span className={`${styles.rank} numeric`}>{item.rank}</span>
+                <span className={styles.name}>{item.name}</span>
                 <span
                   className={`${styles.rate} numeric ${
-                    styles[resolveDirection(entry.returnRate)]
+                    styles[resolveDirection(item.changeRate)]
                   }`}
                 >
-                  {formatChangeRate(entry.returnRate)}
+                  {formatChangeRate(item.changeRate)}
                 </span>
               </li>
             ))}
           </ol>
-          {summary.staleNotice ? (
-            <p className={styles.staleNotice}>
-              갱신 지연 — 최신 기준월이 아직 반영되지 않았습니다
-            </p>
+          {stale !== null ? (
+            <p className={styles.staleNotice}>갱신 지연 — 마지막 갱신 기준</p>
           ) : null}
-          <p className={styles.footnote}>
-            최근 1개월 TOP 3 · 기준: {formatMonthDisplay(summary.computedFor)}{" "}
-            월말
-          </p>
+          <p className={styles.footnote}>당일 등락률 TOP 3 · 전일 종가 대비</p>
         </>
       ) : (
-        <p className={styles.placeholder}>매월 첫 평일 갱신</p>
+        <p className={styles.placeholder}>장중 갱신 회차에 채워집니다</p>
       )}
     </Link>
   );

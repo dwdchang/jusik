@@ -8,7 +8,7 @@ import {
   formatPercentPoint,
 } from "@/lib/format/change";
 import { formatIndex } from "@/lib/format/index";
-import type { HotStocksCardSummary } from "@/lib/hotstocks/summary";
+import type { DailyHotCardSummary } from "@/lib/hotstocks/dailyCard";
 import { resolveDirection } from "@/lib/indices/kisMapper";
 import type { StalenessLevel } from "@/lib/market/staleness";
 import type { WatchlistCardSummary } from "@/lib/watchlist/summary";
@@ -61,7 +61,7 @@ export function IndexDashboard({
   data: IndexDashboardData;
   holdingsSummary: HoldingsCardSummary | null;
   volatilitySummary: VolatilityCardSummary | null;
-  hotStocksSummary: HotStocksCardSummary | null;
+  hotStocksSummary: DailyHotCardSummary | null;
   watchlistSummary: WatchlistCardSummary | null;
   staleness: DashboardStaleness;
   feedCounts: TodayFeedCounts;

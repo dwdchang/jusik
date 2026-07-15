@@ -39,9 +39,3 @@
   color: var(--color-text-primary);
   font-weight: var(--weight-semibold);
 }
-
-.pending {
-  flex-shrink: 0;
-  color: var(--color-text-tertiary);
-  font-size: var(--text-micro);
-}

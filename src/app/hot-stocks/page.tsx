@@ -25,15 +25,16 @@ import styles from "./page.module.css";
 export const metadata: Metadata = {
   title: "핫종목 — jusik",
   description:
-    "코스피·코스닥 구간 수익률 TOP 100(월간)과 당일 등락률 상위 30(장중)",
+    "당일 등락률 상위 30(장중)과 코스피·코스닥 구간 수익률 TOP 100(월간)",
 };
 
 /** 보기 모드 — 월간 구간 수익률 / 당일 등락률 순위 */
 type Mode = "monthly" | "daily";
 
+// 당일 등락률을 기본(왼쪽) 탭으로, 월간 핫종목을 오른쪽으로 (§17.12)
 const MODES: ReadonlyArray<{ key: Mode; label: string; href: string }> = [
-  { key: "monthly", label: "월간 핫종목", href: "/hot-stocks" },
-  { key: "daily", label: "당일 등락률", href: "/hot-stocks?mode=daily" },
+  { key: "daily", label: "당일 등락률", href: "/hot-stocks" },
+  { key: "monthly", label: "월간 핫종목", href: "/hot-stocks?mode=monthly" },
 ];
 
 /** ?period 값 검증 — 알 수 없는 값은 기본 구간(최근 1개월)으로 (§14.5) */
@@ -57,7 +58,7 @@ export default async function HotStocksPage({
   await ensureAllowedSession();
 
   const { period, mode } = await searchParams;
-  const activeMode: Mode = mode === "daily" ? "daily" : "monthly";
+  const activeMode: Mode = mode === "monthly" ? "monthly" : "daily";
 
   return (
     <main className={styles.page}>
@@ -84,10 +85,10 @@ export default async function HotStocksPage({
           ))}
         </nav>
 
-        {activeMode === "daily" ? (
-          <DailyView />
-        ) : (
+        {activeMode === "monthly" ? (
           <MonthlyView activeKey={resolvePeriod(period)} />
+        ) : (
+          <DailyView />
         )}
       </div>
     </main>
@@ -140,9 +141,6 @@ async function DailyView() {
             <tr>
               <th>순위</th>
               <th>종목명</th>
-              <th>
-                <span className={styles.srOnly}>종목코드</span>
-              </th>
               <th>등락률</th>
               <th>현재가</th>
             </tr>
@@ -151,10 +149,15 @@ async function DailyView() {
             {daily.items.map((item) => (
               <tr key={item.code}>
                 <td className={`${styles.rankCell} numeric`}>{item.rank}</td>
-                <td className={styles.nameCell} title={item.name}>
+                <td
+                  className={styles.nameCell}
+                  title={`${item.name} ${item.code}`}
+                >
                   <span className={styles.nameText}>{item.name}</span>
+                  <span className={`${styles.codeInline} numeric`}>
+                    {item.code}
+                  </span>
                 </td>
-                <td className={`${styles.codeCell} numeric`}>{item.code}</td>
                 <td
                   className={`${styles.numCell} numeric ${
                     styles[resolveDirection(item.changeRate)]

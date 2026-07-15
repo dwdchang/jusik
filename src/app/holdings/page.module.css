@@ -167,6 +167,25 @@
   margin-bottom: var(--space-8);
 }
 
+/* 열림/닫힘에 따라 summary 라벨 전환 — 열리면 "✕ 취소"가 보여 접기(취소) 경로를
+   명확히 드러낸다. 별도 클라이언트 상태 없이 details[open]만으로 처리 (§17.12) */
+.addToggleCloseLabel {
+  display: none;
+}
+
+.addDetails[open] .addToggleOpenLabel {
+  display: none;
+}
+
+.addDetails[open] .addToggleCloseLabel {
+  display: inline;
+}
+
+.addDetails[open] .addToggle:hover {
+  border-color: var(--color-rise);
+  color: var(--color-rise);
+}
+
 .addForm {
   display: grid;
   grid-template-columns: repeat(2, 1fr);

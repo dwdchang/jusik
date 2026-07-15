@@ -7,7 +7,7 @@ import {
 import { isEmailAllowed } from "@/lib/auth/allowedEmails";
 import { getTodayFeedCounts } from "@/lib/feeds/homeFeed";
 import { getHoldingsCardSummary } from "@/lib/holdings/summary";
-import { getHotStocksCardSummary } from "@/lib/hotstocks/summary";
+import { getDailyHotCardSummary } from "@/lib/hotstocks/dailyCard";
 import { getDashboardData } from "@/lib/indices/getDashboard";
 import { getVolatilityCardSummary } from "@/lib/indices/volatility";
 import { resolveStaleness } from "@/lib/market/staleness";
@@ -51,7 +51,7 @@ export default async function HomePage() {
   let data: Awaited<ReturnType<typeof getDashboardData>>;
   let holdingsSummary: Awaited<ReturnType<typeof getHoldingsCardSummary>>;
   let volatilitySummary: Awaited<ReturnType<typeof getVolatilityCardSummary>>;
-  let hotStocksSummary: Awaited<ReturnType<typeof getHotStocksCardSummary>>;
+  let hotStocksSummary: Awaited<ReturnType<typeof getDailyHotCardSummary>>;
   let watchlistSummary: Awaited<ReturnType<typeof getWatchlistCardSummary>>;
   let lastRefresh: Awaited<ReturnType<typeof getLastRefreshRecord>>;
   let feedCounts: Awaited<ReturnType<typeof getTodayFeedCounts>>;
@@ -70,13 +70,12 @@ export default async function HomePage() {
       getDashboardData(),
       getHoldingsCardSummary(email),
       getVolatilityCardSummary(),
-      getHotStocksCardSummary(),
+      getDailyHotCardSummary(),
       getWatchlistCardSummary(email),
       getLastRefreshRecord().catch(() => null),
       getTodayFeedCounts(email).catch(() => ({
         disclosures: 0,
-        news: null,
-        trade: null,
+        news: 0,
       })),
     ]);
   } catch (error) {
