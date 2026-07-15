@@ -1,5 +1,6 @@
 import { subtractMonths } from "@/lib/date/kst";
 import {
+  getTradeDetailMonths,
   getTradeStats,
   type StoredTradeStats,
   type TradeStatMonth,
@@ -28,6 +29,11 @@ export interface TradeStatsView {
   latest: TradeStatsLatest;
   /** 최근 월 내림차순 (최신월 포함) — 탭 표 표시용 */
   months: TradeStatMonth[];
+  /**
+   * 상세(`/indices/trade/{yyyymm}`)를 확보한 달 — 탭 표가 링크를 걸 대상 (§17.15).
+   * 상세는 갱신 잡이 도는 달부터 쌓이므로 months의 부분집합이고, 초기엔 비어 있을 수 있다.
+   */
+  detailMonths: string[];
   fetchedAt: string;
 }
 
@@ -41,7 +47,8 @@ function yoy(current: number, base: number | undefined): number | null {
 
 /** 저장 스냅샷 → 뷰 모델 (순수). months가 비면 null. */
 export function buildTradeStatsView(
-  stored: StoredTradeStats | null
+  stored: StoredTradeStats | null,
+  detailMonths: string[] = []
 ): TradeStatsView | null {
   const months = stored?.months ?? [];
   const latest = months[0];
@@ -62,11 +69,20 @@ export function buildTradeStatsView(
       impYoy: yoy(latest.impDlr, base?.impDlr),
     },
     months,
+    detailMonths,
     fetchedAt: stored?.fetchedAt ?? "",
   };
 }
 
 /** Redis에서 읽어 뷰 모델로 — 화면(Server Component) 진입점 */
 export async function getTradeStatsView(): Promise<TradeStatsView | null> {
-  return buildTradeStatsView(await getTradeStats());
+  const [stored, detailMonths] = await Promise.all([
+    getTradeStats(),
+    // 상세 인덱스는 부가 정보라 실패해도 월별 표는 그대로 보여준다 (링크만 빠진다)
+    getTradeDetailMonths().catch((error): string[] => {
+      console.error("[tradeStats] getTradeDetailMonths failed:", error);
+      return [];
+    }),
+  ]);
+  return buildTradeStatsView(stored, detailMonths);
 }

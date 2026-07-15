@@ -239,3 +239,16 @@
 .tradeTable tbody td {
   color: var(--color-text-primary);
 }
+
+/* 상세가 있는 달만 링크 (§17.15) */
+.tradeMonthLink {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.tradeMonthLink:hover {
+  text-decoration: underline;
+}

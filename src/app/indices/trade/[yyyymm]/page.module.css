@@ -1,0 +1,158 @@
+.page {
+  flex: 1;
+  width: 100%;
+  min-height: 100%;
+  background-color: var(--color-bg);
+}
+
+.container {
+  width: 100%;
+  max-width: var(--layout-max-width);
+  margin: 0 auto;
+  padding: var(--space-16);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-16);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+}
+
+.title {
+  /* 좁은 화면에서 "2026.06 수출/입"으로 쪼개지지 않게 — 줄바꿈은 갱신 시각이 감당한다 */
+  white-space: nowrap;
+  font-size: var(--text-title);
+  font-weight: var(--weight-bold);
+  color: var(--color-text-primary);
+  letter-spacing: var(--tracking-tight);
+}
+
+.lastRefresh {
+  margin-left: auto;
+  text-align: right;
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+}
+
+.card {
+  padding: var(--space-16);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.cardTitle {
+  font-size: var(--text-caption);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.cardNote {
+  margin: var(--space-8) 0 var(--space-12);
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+}
+
+/* 월 합계 3지표 */
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  margin: 0;
+}
+
+.stat {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-12);
+}
+
+.stat dt {
+  font-size: var(--text-caption);
+  color: var(--color-text-tertiary);
+}
+
+.stat dd {
+  margin: 0;
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.rise {
+  color: var(--color-rise);
+}
+
+.fall {
+  color: var(--color-fall);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-caption);
+}
+
+.table th,
+.table td {
+  padding: var(--space-8);
+  text-align: right;
+  border-top: 1px solid var(--color-border);
+  vertical-align: top;
+}
+
+.table thead th {
+  border-top: none;
+  font-size: var(--text-micro);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-tertiary);
+}
+
+.table thead th:first-child {
+  text-align: left;
+}
+
+.table tbody td {
+  color: var(--color-text-primary);
+  white-space: nowrap;
+}
+
+/* `.table th`(특이도 0,2,0)의 오른쪽 정렬을 이기려면 같은 무게로 받아야 한다 */
+.table .itemCell {
+  max-width: 180px;
+  text-align: left;
+  font-weight: var(--weight-medium);
+}
+
+.hsCode {
+  display: block;
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+}
+
+/* 품목명은 관세청 법령 원문이라 최대 182자까지 온다 — 두 줄로 자르고 전체는 title로 */
+.itemName {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  color: var(--color-text-secondary);
+}
+
+.empty {
+  padding: var(--space-20) var(--space-16);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-caption);
+  color: var(--color-text-tertiary);
+}
+
+.source {
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+}

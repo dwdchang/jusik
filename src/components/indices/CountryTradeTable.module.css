@@ -1,0 +1,168 @@
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-caption);
+}
+
+.table th,
+.table td {
+  padding: var(--space-8);
+  text-align: right;
+  border-top: 1px solid var(--color-border);
+}
+
+.table thead th {
+  border-top: none;
+  font-size: var(--text-micro);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-tertiary);
+}
+
+.table thead th:first-child,
+.table tbody th {
+  text-align: left;
+}
+
+.table tbody td {
+  color: var(--color-text-primary);
+}
+
+.nameCell {
+  padding: 0;
+  font-weight: var(--weight-medium);
+}
+
+/* 행 전체가 눌리도록 셀을 꽉 채운다 — 모바일 터치 타깃 확보 */
+.nameButton {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  width: 100%;
+  padding: var(--space-8);
+  background: none;
+  border: none;
+  font: inherit;
+  color: var(--color-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.nameButton:hover {
+  background-color: var(--color-bg);
+}
+
+.chevron {
+  color: var(--color-text-tertiary);
+}
+
+.otherName {
+  display: block;
+  padding: var(--space-8);
+  color: var(--color-text-secondary);
+}
+
+.dialog {
+  width: min(92vw, 420px);
+  padding: 0;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  color: var(--color-text-primary);
+}
+
+.dialog::backdrop {
+  background-color: rgb(0 0 0 / 45%);
+}
+
+.dialogBody {
+  padding: var(--space-16);
+}
+
+.dialogHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-12);
+  margin-bottom: var(--space-12);
+}
+
+.dialogTitle {
+  font-size: var(--text-title);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tight);
+}
+
+.closeButton {
+  padding: var(--space-8);
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: var(--text-caption);
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+}
+
+.closeButton:hover {
+  color: var(--color-text-primary);
+}
+
+.dialogTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-caption);
+}
+
+.dialogTable th,
+.dialogTable td {
+  padding: var(--space-8);
+  text-align: right;
+  border-top: 1px solid var(--color-border);
+  vertical-align: top;
+}
+
+.dialogTable thead th {
+  border-top: none;
+  font-size: var(--text-micro);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-tertiary);
+}
+
+.dialogTable thead th:first-child {
+  text-align: left;
+}
+
+/* "115.9억 달 / 러"로 쪼개지지 않게 — 금액은 한 덩어리로 읽힌다 */
+.dialogTable tbody td {
+  white-space: nowrap;
+  color: var(--color-text-primary);
+}
+
+/* `.dialogTable th`(특이도 0,2,0)의 오른쪽 정렬을 이기려면 같은 무게로 받아야 한다 */
+.dialogTable .itemCell {
+  max-width: 180px;
+  text-align: left;
+  font-weight: var(--weight-medium);
+}
+
+.hsCode {
+  display: block;
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+}
+
+/* 품목명은 관세청 법령 원문이라 최대 182자까지 온다 — 두 줄로 자르고 전체는 title로 */
+.itemName {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  color: var(--color-text-secondary);
+}
+
+.dialogNote {
+  margin-top: var(--space-12);
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+}

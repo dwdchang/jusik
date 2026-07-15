@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { formatBasDtDisplay } from "@/lib/format/basDt";
 import {
@@ -266,6 +267,7 @@ function TradeBoard({ view }: { view: TradeStatsView | null }) {
   }
 
   const { latest, months } = view;
+  const hasDetail = new Set(view.detailMonths);
 
   return (
     <>
@@ -314,7 +316,18 @@ function TradeBoard({ view }: { view: TradeStatsView | null }) {
           {months.map((m) => (
             <tr key={m.yyyymm}>
               <th scope="row" className="numeric">
-                {formatYyyymm(m.yyyymm)}
+                {/* 상세는 갱신 잡이 도는 달부터 쌓인다 — 없는 달엔 링크를 걸지 않는다 */}
+                {hasDetail.has(m.yyyymm) ? (
+                  <Link
+                    href={`/indices/trade/${m.yyyymm}`}
+                    className={styles.tradeMonthLink}
+                  >
+                    {formatYyyymm(m.yyyymm)}
+                    <span aria-hidden="true">›</span>
+                  </Link>
+                ) : (
+                  formatYyyymm(m.yyyymm)
+                )}
               </th>
               <td className="numeric">{formatUsdEok(m.expDlr)}</td>
               <td className="numeric">{formatUsdEok(m.impDlr)}</td>
