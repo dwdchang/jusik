@@ -150,3 +150,92 @@
   font-size: var(--text-micro);
   color: var(--color-text-tertiary);
 }
+
+/* ── 수출입 탭 (§17-4) ── */
+.rise {
+  color: var(--color-rise);
+  font-weight: var(--weight-semibold);
+}
+
+.fall {
+  color: var(--color-fall);
+  font-weight: var(--weight-semibold);
+}
+
+.flat {
+  color: var(--color-text-tertiary);
+}
+
+.tradeSummary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  margin: 0;
+  padding: var(--space-12) var(--space-8) var(--space-8);
+}
+
+.tradeStat {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-12);
+}
+
+.tradeStat dt {
+  font-size: var(--text-caption);
+  color: var(--color-text-tertiary);
+}
+
+.tradeStat dd {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-8);
+  margin: 0;
+  font-size: var(--text-body);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.tradeStat dd span:last-child {
+  font-size: var(--text-caption);
+}
+
+.tradeCaption {
+  padding: 0 var(--space-8) var(--space-12);
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+}
+
+.tradeTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-caption);
+}
+
+.tradeTable th,
+.tradeTable td {
+  padding: var(--space-8);
+  text-align: right;
+  border-top: 1px solid var(--color-border);
+}
+
+.tradeTable thead th {
+  border-top: none;
+  font-size: var(--text-micro);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-tertiary);
+}
+
+.tradeTable thead th:first-child,
+.tradeTable tbody th {
+  text-align: left;
+}
+
+.tradeTable tbody th {
+  font-weight: var(--weight-medium);
+  color: var(--color-text-secondary);
+}
+
+.tradeTable tbody td {
+  color: var(--color-text-primary);
+}

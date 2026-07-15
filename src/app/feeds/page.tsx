@@ -4,6 +4,7 @@ import { FeedTabsClient } from "@/components/feeds/FeedTabsClient";
 import { NavIconLink } from "@/components/nav/NavIconLink";
 import { ensureAllowedSession } from "@/lib/auth/ensureAllowedSession";
 import { getDisclosureBoard, getNewsBoard } from "@/lib/feeds/homeFeed";
+import { getTradeStatsView } from "@/lib/feeds/tradeStats";
 import styles from "./page.module.css";
 
 export const metadata: Metadata = {
@@ -24,7 +25,7 @@ export default async function FeedsPage() {
     redirect("/login");
   }
 
-  const [disclosures, news] = await Promise.all([
+  const [disclosures, news, tradeStats] = await Promise.all([
     getDisclosureBoard(email).catch((err) => {
       console.error("[FeedsPage] getDisclosureBoard failed:", err);
       return [];
@@ -32,6 +33,10 @@ export default async function FeedsPage() {
     getNewsBoard(email).catch((err) => {
       console.error("[FeedsPage] getNewsBoard failed:", err);
       return [];
+    }),
+    getTradeStatsView().catch((err) => {
+      console.error("[FeedsPage] getTradeStatsView failed:", err);
+      return null;
     }),
   ]);
 
@@ -43,7 +48,11 @@ export default async function FeedsPage() {
           <h1 className={styles.title}>뉴스·공시</h1>
         </header>
 
-        <FeedTabsClient disclosures={disclosures} news={news} />
+        <FeedTabsClient
+          disclosures={disclosures}
+          news={news}
+          tradeStats={tradeStats}
+        />
       </div>
     </main>
   );

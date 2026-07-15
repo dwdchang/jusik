@@ -12,12 +12,19 @@ import {
   type MarketDetailKey,
   type StoredMarketDetail,
 } from "@/lib/market/store";
+import { getTradeStatsView } from "@/lib/feeds/tradeStats";
+import {
+  formatUsdEok,
+  formatUsdEokSigned,
+  formatYoy,
+  formatYyyymm,
+} from "@/lib/format/trade";
 import { KIS_DATA_NOTICE } from "@/types/indices";
 import styles from "./page.module.css";
 
 export const metadata: Metadata = {
   title: "시장 — jusik",
-  description: "원/달러 환율 · 미국 10년물 금리 · 국제유가 WTI 요약",
+  description: "원/달러 환율 · 미국 10년물 금리 · 국제유가 WTI · 수출입 통계 요약",
 };
 
 /** 미니 카드 3종 — 각 개별 상세 페이지로 링크 (plan.md §15.2) */
@@ -26,6 +33,14 @@ const MARKET_ITEMS: Array<{ key: MarketDetailKey; href: string }> = [
   { key: "us10y", href: "/indices/us10y" },
   { key: "oil", href: "/indices/oil" },
 ];
+
+/** 양수=상승색, 음수=하락색 (수출입 증감·수지) */
+function signClass(value: number | null): string {
+  if (value === null || value === 0) {
+    return styles.flat;
+  }
+  return value > 0 ? styles.rise : styles.fall;
+}
 
 export default async function MarketOverviewPage() {
   await ensureAllowedSession();
@@ -38,6 +53,11 @@ export default async function MarketOverviewPage() {
     console.error("[MarketOverviewPage] getMarketDetails failed:", error);
     rows = MARKET_ITEMS.map(() => null);
   }
+
+  const tradeStats = await getTradeStatsView().catch((error) => {
+    console.error("[MarketOverviewPage] getTradeStatsView failed:", error);
+    return null;
+  });
 
   const fetchedAts = rows
     .map((row) => row?.fetchedAt)
@@ -108,12 +128,81 @@ export default async function MarketOverviewPage() {
               </article>
             );
           })}
+
+          <article className={styles.card} aria-label="수출입 통계">
+            <div className={styles.cardHead}>
+              <div>
+                <h2 className={styles.cardTitle}>
+                  <Link href="/feeds" className={styles.cardLink}>
+                    수출입
+                  </Link>
+                </h2>
+                <p className={styles.basDt}>
+                  {tradeStats !== null
+                    ? `${formatYyyymm(tradeStats.latest.yyyymm)} 확정`
+                    : "월간 통계"}
+                </p>
+              </div>
+            </div>
+
+            {tradeStats !== null ? (
+              <>
+                <dl className={styles.tradeStats}>
+                  <div className={styles.tradeRow}>
+                    <dt>수출</dt>
+                    <dd>
+                      <span className="numeric">
+                        {formatUsdEok(tradeStats.latest.expDlr)}
+                      </span>
+                      <span
+                        className={`numeric ${signClass(tradeStats.latest.expYoy)}`}
+                      >
+                        {formatYoy(tradeStats.latest.expYoy)}
+                      </span>
+                    </dd>
+                  </div>
+                  <div className={styles.tradeRow}>
+                    <dt>수입</dt>
+                    <dd>
+                      <span className="numeric">
+                        {formatUsdEok(tradeStats.latest.impDlr)}
+                      </span>
+                      <span
+                        className={`numeric ${signClass(tradeStats.latest.impYoy)}`}
+                      >
+                        {formatYoy(tradeStats.latest.impYoy)}
+                      </span>
+                    </dd>
+                  </div>
+                  <div className={styles.tradeRow}>
+                    <dt>무역수지</dt>
+                    <dd>
+                      <span
+                        className={`numeric ${signClass(tradeStats.latest.balPayments)}`}
+                      >
+                        {formatUsdEokSigned(tradeStats.latest.balPayments)}
+                      </span>
+                    </dd>
+                  </div>
+                </dl>
+                <Link href="/feeds" className={styles.detailLink}>
+                  월별 추이 보기 →
+                </Link>
+              </>
+            ) : (
+              <p className={styles.emptyNotice}>
+                아직 수집된 수출입 통계가 없습니다. 매월 관세청 확정 통계 공표 후
+                갱신됩니다.
+              </p>
+            )}
+          </article>
         </section>
 
         <footer className={styles.footer}>
           <p className={styles.notice}>
             {KIS_DATA_NOTICE} 유가는 WTI 서부텍사스산 근월물 기준(USD/배럴)
-            입니다.
+            입니다. 수출입은 관세청 확정 통계(월간, 억 달러 = 1억 USD)이며 증감률은
+            전년동월비입니다.
           </p>
         </footer>
       </div>

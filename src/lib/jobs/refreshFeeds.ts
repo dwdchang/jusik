@@ -1,16 +1,25 @@
+import { fetchTradeStats } from "@/lib/api/customs/client";
 import {
   fetchDartCorpCodeMap,
   fetchDartDisclosures,
 } from "@/lib/api/dart/client";
 import { fetchNaverNews } from "@/lib/api/naver/client";
-import { kstYyyyMmDd, todayKstDate } from "@/lib/date/kst";
+import {
+  currentKstMonth,
+  kstYyyyMmDd,
+  subtractMonths,
+  todayKstDate,
+} from "@/lib/date/kst";
 import {
   getCorpCodeMap,
+  getTradeStats,
   setCorpCodeMap,
   setDisclosures,
   setNews,
+  setTradeStats,
   type DisclosureItem,
   type NewsItem,
+  type TradeStatMonth,
 } from "@/lib/feeds/store";
 import {
   collectHoldings,
@@ -43,6 +52,17 @@ const NEWS_MAX_ITEMS = 10;
 const DART_CALL_INTERVAL_MS = 150;
 /** 네이버 검색 API 종목 간 유량 제한 (일 25,000콜 내 여유) */
 const NAVER_CALL_INTERVAL_MS = 150;
+/**
+ * 관세청 API는 조회 범위를 최대 12개월(inclusive)로 제한한다(초과 시 code 99).
+ * 최신월+전년동월(13개월 스팬)은 한 번에 못 받으므로, 최근 12개월(A)과 전년동월(B)을
+ * 나눠 조회해 13개월 연속 시리즈로 합친다 (실측 확정 2026-07, §17-4).
+ */
+const TRADE_STATS_RECENT_SPAN = 11; // end 기준 과거로 11개월 → 12개월 inclusive
+/** 보관·표시 개월 수 — 최신 확정월 + 전년동월(YoY)까지 13개월 연속 */
+const TRADE_STATS_MONTHS = 13;
+
+const byMonthDesc = (a: { yyyymm: string }, b: { yyyymm: string }): number =>
+  a.yyyymm < b.yyyymm ? 1 : a.yyyymm > b.yyyymm ? -1 : 0;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -87,6 +107,15 @@ export interface RefreshFeedsReport {
     skipped?: "no_name";
     error?: string;
   }>;
+  /** 수출입 월간 통계 갱신 결과 — 월 1회성 (§17-4) */
+  tradeStats: {
+    ok: boolean;
+    /** 이번 실행에서 관세청 API를 실제로 호출·갱신했는지 (false=이미 최신) */
+    refreshed: boolean;
+    /** 저장된 최신 확정월 "YYYYMM" */
+    latest?: string;
+    error?: string;
+  };
   /** 데이터 갱신 성공 여부 — false면 잡 엔드포인트가 500을 반환(QStash 재시도) */
   ok: boolean;
 }
@@ -225,10 +254,84 @@ async function refreshNews(
   return results;
 }
 
+/**
+ * 수출입 월간 통계 갱신 — 월 1회성 (§17-4). 관세청 API 실측 확정 규칙 반영:
+ * 현재 KST 월은 월중 집계라 미완결 → "직전 달"을 기대 최신 확정월로 본다.
+ * 이미 그 달(이상)을 확보했으면 KIS 외 월간 소스를 다시 부르지 않는다.
+ * 실패는 report에만 남기고 throw하지 않으며, 잡 전체 ok도 게이팅하지 않는다
+ * — 다음 회차에 가드(haveLatest < expectedLatest)가 자연히 재시도한다.
+ */
+async function refreshTradeStats(
+  fetchedAt: string
+): Promise<RefreshFeedsReport["tradeStats"]> {
+  const thisMonth = currentKstMonth();
+  const expectedLatest = subtractMonths(thisMonth, 1);
+
+  const stored = await getTradeStats().catch((error): null => {
+    console.error("[job] tradeStats read failed:", error);
+    return null;
+  });
+
+  const haveLatest = stored?.months[0]?.yyyymm ?? "";
+  if (haveLatest >= expectedLatest && haveLatest !== "") {
+    return { ok: true, refreshed: false, latest: haveLatest };
+  }
+
+  try {
+    // A) 최근 12개월(전월까지) — end를 확정월로 잡아 부분월(현재 월)이 섞이지 않게 한다
+    const recent = (
+      await fetchTradeStats(
+        subtractMonths(expectedLatest, TRADE_STATS_RECENT_SPAN),
+        expectedLatest
+      )
+    ).filter((row) => row.yyyymm < thisMonth); // 방어적 부분월 제외
+
+    if (recent.length === 0) {
+      // 아직 직전 완결월이 공표되지 않았을 수 있음 — 저장 없이 다음 회차 재시도
+      return { ok: false, refreshed: false, error: "확정월 데이터 없음" };
+    }
+
+    const latest = [...recent].sort(byMonthDesc)[0].yyyymm;
+
+    // B) 전년동월 1개월 — YoY 기준(최신월-12). 12개월 한도상 A와 한 번에 못 받는다.
+    //    YoY는 부가 정보라 실패해도 스텝 전체를 실패로 보지 않는다.
+    let yoyBase: TradeStatMonth[] = [];
+    try {
+      const yoyMonth = subtractMonths(latest, 12);
+      yoyBase = await fetchTradeStats(yoyMonth, yoyMonth);
+    } catch (error) {
+      console.error("[job] tradeStats YoY base fetch failed:", error);
+    }
+
+    // A+B 합쳐 월별 중복 제거 → 최신순 13개월 (전년동월~최신월 연속)
+    const byMonth = new Map<string, TradeStatMonth>();
+    for (const row of [...recent, ...yoyBase]) {
+      byMonth.set(row.yyyymm, {
+        yyyymm: row.yyyymm,
+        expDlr: row.expDlr,
+        impDlr: row.impDlr,
+        balPayments: row.balPayments,
+      });
+    }
+    const months = [...byMonth.values()]
+      .sort(byMonthDesc)
+      .slice(0, TRADE_STATS_MONTHS);
+
+    await setTradeStats({ months, fetchedAt });
+    return { ok: true, refreshed: true, latest: months[0].yyyymm };
+  } catch (error) {
+    console.error("[job] tradeStats refresh failed:", error);
+    return { ok: false, refreshed: false, error: errorMessage(error) };
+  }
+}
+
 export async function refreshFeeds(
   trigger: string
 ): Promise<RefreshFeedsReport> {
   const startedAt = new Date().toISOString();
+
+  // 0. 수출입 월간 통계 — 종목 무관 시장 지표라 보유/관심종목 유무와 무관하게 갱신
+  const tradeStats = await refreshTradeStats(startedAt);
 
   // 1. 수집 대상 종목 = 전체 허용 이메일의 보유+관심종목 union (시세 잡과 동일 로직 공유)
   const [holdingsByEmail, { byEmail: watchlistsByEmail, results: watchlists }] =
@@ -245,6 +348,7 @@ export async function refreshFeeds(
       watchlists,
       disclosures: [],
       news: [],
+      tradeStats,
       ok: true,
     };
   }
@@ -259,6 +363,8 @@ export async function refreshFeeds(
   const codeNames = unionSymbolNames(holdingsByEmail, watchlistsByEmail);
   const news = await refreshNews(codeNames, startedAt);
 
+  // tradeStats는 ok 게이팅에서 제외 — 월간 소스 실패로 뉴스·공시 파이프라인을
+  // 반복 재실행시키지 않고, 가드가 다음 회차에 자연히 재시도한다 (§17-4).
   const ok =
     corpCodeMap.ok &&
     disclosures.every((row) => row.ok) &&
@@ -272,6 +378,7 @@ export async function refreshFeeds(
     watchlists,
     disclosures,
     news,
+    tradeStats,
     ok,
   };
 }

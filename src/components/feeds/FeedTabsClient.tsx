@@ -2,15 +2,30 @@
 
 import { useState } from "react";
 import { formatBasDtDisplay } from "@/lib/format/basDt";
+import {
+  formatUsdEok,
+  formatUsdEokSigned,
+  formatYoy,
+  formatYyyymm,
+} from "@/lib/format/trade";
 import type { FeedBoardItem } from "@/lib/feeds/homeFeed";
+import type { TradeStatsView } from "@/lib/feeds/tradeStats";
 import styles from "./FeedTabsClient.module.css";
 
 /**
  * 홈 통합 피드 카드 — 뉴스·공시·수출입 3탭 (Phase 17-2, plan.md §17.7).
  * 탭 전환·아코디언 펼침은 순수 상호작용이라 서버로 못 옮기는 최소 Client 예외.
  * 데이터는 전부 Server(page.tsx)에서 조회해 props로 받고, 여기선 표시 상태만 다룬다.
- * 뉴스·공시 탭이 실동작하고 수출입은 백엔드 준비 전 자리표시자다 (§17.13).
+ * 뉴스·공시·수출입 3탭 모두 실동작한다 (§17.13·§17-4).
  */
+
+/** 부호 → 색상 클래스 (양수=상승색, 음수=하락색) — 수출입 증감·수지 표기 공용 */
+function signClass(value: number | null): string {
+  if (value === null || value === 0) {
+    return styles.flat;
+  }
+  return value > 0 ? styles.rise : styles.fall;
+}
 
 type TabKey = "news" | "disclosure" | "trade";
 
@@ -23,9 +38,11 @@ const TABS: ReadonlyArray<{ key: TabKey; label: string }> = [
 export function FeedTabsClient({
   disclosures,
   news,
+  tradeStats,
 }: {
   disclosures: FeedBoardItem[];
   news: FeedBoardItem[];
+  tradeStats: TradeStatsView | null;
 }) {
   // 첫 탭(뉴스)이 실동작하므로 기본 선택. 탭 전환 시 열린 아코디언은 접는다.
   const [activeTab, setActiveTab] = useState<TabKey>("news");
@@ -62,9 +79,7 @@ export function FeedTabsClient({
         ) : activeTab === "news" ? (
           <NewsBoard items={news} openId={openId} onToggle={toggle} />
         ) : (
-          <p className={styles.placeholder}>
-            수출입 통계는 아직 준비 중입니다. 후속 갱신 회차에 반영됩니다.
-          </p>
+          <TradeBoard view={tradeStats} />
         )}
       </div>
     </div>
@@ -232,6 +247,85 @@ function DisclosureBoard({
         })}
       </ul>
       <p className={styles.source}>출처: 금융감독원 전자공시시스템(DART)</p>
+    </>
+  );
+}
+
+/**
+ * 수출입 게시판 (§17-4) — 최신 확정월 요약(수출·수입·무역수지 + 전년동월비) +
+ * 최근 월별 표. 월간 데이터라 아코디언 없이 정적 표만 보여준다.
+ */
+function TradeBoard({ view }: { view: TradeStatsView | null }) {
+  if (view === null) {
+    return (
+      <p className={styles.placeholder}>
+        수출입 통계가 아직 없습니다. 매월 관세청 확정 통계 공표 후 갱신 회차에
+        반영됩니다.
+      </p>
+    );
+  }
+
+  const { latest, months } = view;
+
+  return (
+    <>
+      <dl className={styles.tradeSummary}>
+        <div className={styles.tradeStat}>
+          <dt>수출</dt>
+          <dd>
+            <span className="numeric">{formatUsdEok(latest.expDlr)}</span>
+            <span className={`numeric ${signClass(latest.expYoy)}`}>
+              {formatYoy(latest.expYoy)}
+            </span>
+          </dd>
+        </div>
+        <div className={styles.tradeStat}>
+          <dt>수입</dt>
+          <dd>
+            <span className="numeric">{formatUsdEok(latest.impDlr)}</span>
+            <span className={`numeric ${signClass(latest.impYoy)}`}>
+              {formatYoy(latest.impYoy)}
+            </span>
+          </dd>
+        </div>
+        <div className={styles.tradeStat}>
+          <dt>무역수지</dt>
+          <dd>
+            <span className={`numeric ${signClass(latest.balPayments)}`}>
+              {formatUsdEokSigned(latest.balPayments)}
+            </span>
+          </dd>
+        </div>
+      </dl>
+      <p className={styles.tradeCaption}>
+        {formatYyyymm(latest.yyyymm)} 기준 · 증감률은 전년동월비
+      </p>
+
+      <table className={styles.tradeTable}>
+        <thead>
+          <tr>
+            <th scope="col">기준월</th>
+            <th scope="col">수출</th>
+            <th scope="col">수입</th>
+            <th scope="col">무역수지</th>
+          </tr>
+        </thead>
+        <tbody>
+          {months.map((m) => (
+            <tr key={m.yyyymm}>
+              <th scope="row" className="numeric">
+                {formatYyyymm(m.yyyymm)}
+              </th>
+              <td className="numeric">{formatUsdEok(m.expDlr)}</td>
+              <td className="numeric">{formatUsdEok(m.impDlr)}</td>
+              <td className={`numeric ${signClass(m.balPayments)}`}>
+                {formatUsdEokSigned(m.balPayments)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className={styles.source}>출처: 관세청 수출입무역통계</p>
     </>
   );
 }

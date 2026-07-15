@@ -123,6 +123,40 @@
   line-height: 1.5;
 }
 
+/* 수출입 미니 카드 (§17-4) */
+.tradeStats {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  margin: 0 0 var(--space-8);
+}
+
+.tradeRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-12);
+}
+
+.tradeRow dt {
+  font-size: var(--text-caption);
+  color: var(--color-text-tertiary);
+}
+
+.tradeRow dd {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-8);
+  margin: 0;
+  font-size: var(--text-body);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.tradeRow dd span:last-child {
+  font-size: var(--text-caption);
+}
+
 .footer {
   margin-top: var(--space-24);
   padding: var(--space-16);
