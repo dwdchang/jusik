@@ -19,3 +19,18 @@ export function kstYyyyMmDd(ms: number): string {
     String(kst.getUTCDate()).padStart(2, "0")
   );
 }
+
+/** KST 기준 이번 달 "YYYYMM" — 수출입 월간 잡의 부분월 판정 기준 (§17-4) */
+export function currentKstMonth(): string {
+  return todayKstDate().slice(0, 7).replace("-", "");
+}
+
+/** "YYYYMM"에서 n개월 뺀 "YYYYMM" — 연 경계 정확 처리 (전년동월·조회창 계산용) */
+export function subtractMonths(yyyymm: string, n: number): string {
+  const year = Number(yyyymm.slice(0, 4));
+  const month = Number(yyyymm.slice(4, 6));
+  const total = year * 12 + (month - 1) - n;
+  const y = Math.floor(total / 12);
+  const mo = (total % 12) + 1;
+  return `${y}${String(mo).padStart(2, "0")}`;
+}
