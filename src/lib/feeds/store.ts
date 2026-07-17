@@ -32,6 +32,18 @@ export interface StoredDisclosures {
 export interface StoredCorpCodeMap {
   map: Record<string, string>;
   fetchedAt: string;
+  /**
+   * 마지막 다운로드 **시도** 시각 — 성공·실패 무관하게 갱신한다.
+   * fetchedAt(=map이 언제 것인가)과 분리해야 실패가 재시도 간격을 소진한다.
+   * 선택 필드 — 이 필드 도입 전에 저장된 값은 fetchedAt으로 폴백한다.
+   */
+  attemptedAt?: string;
+  /**
+   * 다운로드에 성공한 map에도 끝내 없던 종목코드 — 우선주처럼 DART가 고유번호를
+   * 부여하지 않는 코드가 매번 보정 갱신을 유발하지 않게 막는 네거티브 캐시.
+   * 성공 회차마다 재계산하므로 나중에 매핑이 생기면 자동으로 빠진다.
+   */
+  unmappable?: string[];
 }
 
 /** 월별 수출입 실적 1행 — 관세청 수출입총괄 (§17-4), 금액은 모두 USD */

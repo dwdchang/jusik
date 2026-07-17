@@ -40,7 +40,11 @@ import {
 
 /** corpCode 매핑 저빈도 갱신 주기 — 상장·폐지 반영용 (§17.2) */
 const CORP_CODE_MAP_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
-/** 매핑에 없는 신규 종목 발견 시 보정 갱신 최소 간격 — 미매핑 코드가 매 회차 zip을 받지 않게 제한 */
+/**
+ * 캐시가 있을 때 corpCode.xml 재다운로드 최소 간격 — 성공·실패 모두에 적용한다.
+ * 실패해도 시도 시각을 남겨 이 간격을 소진시키므로, 다운로드가 계속 실패해도
+ * 매 회차(시간당)가 아니라 하루 1회만 수 MB zip을 시도한다.
+ */
 const CORP_CODE_MAP_RETRY_AGE_MS = 24 * 60 * 60 * 1000;
 /** 공시 조회 기간 — 최근 90일 */
 const DISCLOSURE_WINDOW_DAYS = 90;
@@ -121,8 +125,10 @@ export interface RefreshFeedsReport {
 }
 
 /**
- * corpCode 매핑 확보 — 30일 주기 갱신 + 미매핑 신규 종목 발견 시 1일 1회 보정.
- * 갱신 실패 시 기존 캐시가 있으면 그대로 사용하되 ok:false로 표면화한다.
+ * corpCode 매핑 확보 — 30일 주기 갱신 + 미매핑 신규 종목 발견 시 보정 갱신.
+ * 캐시가 있으면 성공·실패 무관하게 재다운로드를 1일 1회로 제한하고, 매핑이 없다고
+ * 확인된 코드(우선주 등)는 네거티브 캐시로 걸러 보정 갱신이 매 회차 반복되지 않게 한다.
+ * 갱신 실패 시 기존 캐시로 계속 진행하되 ok:false로 표면화한다.
  */
 async function ensureCorpCodeMap(symbolCodes: string[]): Promise<{
   map: Record<string, string>;
@@ -134,27 +140,56 @@ async function ensureCorpCodeMap(symbolCodes: string[]): Promise<{
   });
 
   const cached = stored?.map ?? null;
-  const age =
+  const dataAge =
     stored !== null ? Date.now() - Date.parse(stored.fetchedAt) : Infinity;
+  // attemptedAt 도입 전 값은 fetchedAt이 곧 마지막 시도 시각이었다
+  const attemptAge =
+    stored !== null
+      ? Date.now() - Date.parse(stored.attemptedAt ?? stored.fetchedAt)
+      : Infinity;
+
+  const knownUnmappable = new Set(stored?.unmappable ?? []);
   const hasUnknownCodes =
     cached !== null &&
-    symbolCodes.some((code) => cached[code] === undefined);
+    symbolCodes.some(
+      (code) => cached[code] === undefined && !knownUnmappable.has(code)
+    );
 
   const shouldRefresh =
     cached === null ||
-    age > CORP_CODE_MAP_MAX_AGE_MS ||
-    (hasUnknownCodes && age > CORP_CODE_MAP_RETRY_AGE_MS);
+    ((dataAge > CORP_CODE_MAP_MAX_AGE_MS || hasUnknownCodes) &&
+      attemptAge > CORP_CODE_MAP_RETRY_AGE_MS);
 
   if (shouldRefresh) {
+    const attemptedAt = new Date().toISOString();
     try {
       const map = await fetchDartCorpCodeMap();
-      await setCorpCodeMap({ map, fetchedAt: new Date().toISOString() });
+      // 이번 map에 없는 관심종목은 매핑이 없다고 확정된 것 — 기존 등재분도 함께
+      // 재검증해 매핑이 생긴 코드는 자연히 빠진다.
+      const unmappable = [
+        ...new Set([...knownUnmappable, ...symbolCodes]),
+      ].filter((code) => map[code] === undefined);
+      await setCorpCodeMap({
+        map,
+        fetchedAt: attemptedAt,
+        attemptedAt,
+        unmappable,
+      });
       return {
         map,
         report: { ok: true, refreshed: true, size: Object.keys(map).length },
       };
     } catch (error) {
       console.error("[job] corpCodeMap refresh failed:", error);
+      // 실패해도 시도 시각은 남겨 재시도 간격을 소진시킨다 — 안 그러면 매 회차 재시도한다.
+      // 캐시가 아예 없으면 남길 map이 없으므로 기록하지 않고 다음 회차에 다시 시도한다.
+      if (stored !== null) {
+        await setCorpCodeMap({ ...stored, attemptedAt }).catch(
+          (writeError: unknown) => {
+            console.error("[job] corpCodeMap attempt stamp failed:", writeError);
+          }
+        );
+      }
       // 기존 캐시로 계속 진행하되 실패를 report에 남긴다 (ok:false → 500 → QStash 재시도)
       return {
         map: cached ?? {},
