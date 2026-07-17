@@ -2254,7 +2254,7 @@ interface WatchItem {
 - **잡 신설 3곳 동기화 (research.md §8.13)**: ① `proxy.ts` matcher 제외 추가 ② `verifyJobRequest` 재사용 — 단 **시간창 가드는 적용하지 않음**(KIS 아님) ③ QStash 스케줄 등록.
 - **스케줄**: `CRON_TZ=Asia/Seoul 0 8-22 * * *` (매일 08~22시 정시, 15콜/일 — QStash Free 1,000/일 내 기존 42콜+15콜 여유).
 - **수집 대상 종목** = 전체 허용 이메일의 holdings+watchlist union·중복 제거 — 기존 `refreshMarketData`의 `collectHoldings`/`collectWatchlists`를 **공용 모듈 `lib/jobs/collectTargets.ts`로 추출**해 두 잡이 공유(§8 중복 방지 원칙 — 로직 복제 대신 이동).
-- **corpCode 매핑**: `corpCode.xml`(zip, 인증키 필요) → 상장사(6자리 종목코드 보유)만 `{stockCode: corpCode}`로 `dart:corpCodeMap`에 저장. **30일 주기 저빈도 갱신** + 매핑에 없는 신규 종목 발견 시 보정 갱신. 캐시가 있으면 재다운로드는 **성공·실패 무관 1일 1회로 제한**한다 — 시도 시각을 `attemptedAt`으로 `fetchedAt`과 분리해 남기므로, 다운로드가 계속 실패해도 매 회차 수 MB zip을 받지 않는다. 다운로드에 성공한 map에도 없던 관심종목 코드는 `unmappable`에 적어 보정 갱신 트리거에서 제외한다 — DART corpCode.xml은 **보통주만** 담아 우선주(예: 005935)는 영구 미매핑이라, 없으면 매 회차 보정 갱신이 재발한다. zip 해제는 기존 의존성 fflate 재사용(신규 의존성 0).
+- **corpCode 매핑**: `corpCode.xml`(zip, 인증키 필요) → 상장사(6자리 종목코드 보유)만 `{stockCode: corpCode}`로 `dart:corpCodeMap`에 저장. **30일 주기 저빈도 갱신** + 매핑에 없는 신규 종목 발견 시 보정 갱신. 캐시가 있으면 재다운로드는 **성공·실패 무관 1일 1회로 제한**한다 — 시도 시각을 `attemptedAt`으로 `fetchedAt`과 분리해 남기므로, 다운로드가 계속 실패해도 매 회차 수 MB zip을 받지 않는다. 다운로드에 성공한 map에도 없던 관심종목 코드는 `unmappable`에 적어 보정 갱신 트리거에서 제외한다 — DART corpCode.xml은 **보통주만** 담아 우선주(예: 005935)는 영구 미매핑이라, 없으면 매 회차 보정 갱신이 재발한다. zip 해제는 기존 의존성 fflate 재사용(신규 의존성 0). 이 다운로드는 배포 환경에서 30초 타임아웃(`DART_CORP_CODE_TIMEOUT_MS`)에 계속 걸렸는데, 함수가 기본 리전 `iad1`(버지니아)에서 돌아 서울의 DART까지 3.5MB를 받아야 했던 것이 원인으로 보인다 — 같은 다운로드가 국내에서는 0.9초에 끝난다. `vercel.json`으로 리전을 `icn1`(서울)에 고정해 대응했다(research.md §1).
 - 모든 저장은 멱등(SET 덮어쓰기) · 종목별 try-catch 실패 격리 · 실패 시 report `ok:false` → 500(QStash 재시도).
 
 #### 17.3 Redis 키 (신규, 전부 비암호화 — 공개 데이터)

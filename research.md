@@ -30,6 +30,11 @@
   (스케줄러) · Auth.js(next-auth v5 beta) Google OAuth · fflate (종목 마스터 zip 해제) ·
   lucide-react (아이콘). **Tailwind 금지 — 순수 CSS + CSS Modules만** (AGENTS.md 헌법).
 - **배포**: Vercel (jusik-app.vercel.app). 잡 라우트는 `maxDuration = 300`.
+  함수 리전은 `vercel.json`의 `regions`로 **서울(`icn1`)** 고정 — 원천(KIS·DART·관세청·
+  네이버)이 전부 한국이고 Upstash Redis도 도쿄(ap-northeast-1)라, 기본값 `iad1`(버지니아)
+  이면 모든 호출이 태평양을 왕복한다. Hobby 플랜은 단일 리전만 허용하므로 배열 원소는 1개를
+  유지해야 한다(초과 시 빌드 전 배포 실패). 이 `vercel.json`은 **리전 전용** — Phase 11에서
+  없앤 `crons`를 되살린 것이 아니다.
 - **데이터 원천**: 한국투자증권(KIS) OpenAPI 단일화. ~~공공데이터포털~~은 Phase 5에서
   마이그레이션 완료되어 **코드에 더 이상 존재하지 않는다** (§9.1 특이사항 참고).
 
