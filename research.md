@@ -46,6 +46,7 @@
 | `KIS_BASE_URL` | KIS 베이스 URL (기본값 내장, 선택) | `lib/api/kis/constants.ts` |
 | `UPSTASH_REDIS_REST_URL` / `_TOKEN` | Redis REST | `lib/redis/client.ts` |
 | `QSTASH_CURRENT_SIGNING_KEY` / `QSTASH_NEXT_SIGNING_KEY` | QStash 서명 검증 | `lib/jobs/verifyJobRequest.ts` |
+| `QSTASH_TOKEN` | QStash DLQ 읽기 전용 조회 (Phase 18) | `lib/qstash/dlq.ts` |
 | `CRON_SECRET` | 잡 수동 트리거 Bearer 폴백 | `lib/jobs/verifyJobRequest.ts` |
 | `GOOGLE_CLIENT_ID` / `_SECRET` | Google OAuth | `src/auth.ts` |
 | `ALLOWED_EMAILS` | 접근 허용 이메일 CSV 화이트리스트 | `lib/auth/allowedEmails.ts` |
@@ -77,6 +78,7 @@
 | `watchlist/actions.ts` | Server Actions: add/update(기준일 변경 시 기준가 null 리셋)/delete |
 | `hot-stocks/page.tsx` | 핫종목 — 서버 모드 탭 `[당일 등락률(기본) \| 월간 핫종목]`(`?mode=monthly`으로 월간). 당일: `market:dailyFluctuation` 상위 30 테이블(종목코드는 종목명 뒤 인라인)+`resolveStaleness` 배지. 월간: 구간 수익률 TOP 100(`?period=1m\|3m\|6m\|12m`, 시장 위첨자 ᴷ/ᴰ). 두 뷰는 async 서버 서브컴포넌트(`DailyView`/`MonthlyView`) |
 | `feeds/page.tsx` | 뉴스·공시 상세 (Phase 17-2b) — `ensureAllowedSession` + `getDisclosureBoard`·`getNewsBoard`·`getTradeStatsView`(17-4) + `FeedTabsClient`(뉴스/공시/수출입 탭+게시판+아코디언). 홈 "뉴스·공시" 요약 카드에서 이동 |
+| `dlq/page.tsx` | QStash DLQ 읽기 전용 목록 (Phase 18) — `ensureAllowedSession` + `listDlqMessages(cursor)` 직접 호출(Redis 아닌 QStash API — §4.3 예외), `?cursor=` 페이지네이션. 햄버거 사이드바 "DLQ 확인"에서 진입, 재발송·삭제 없음 |
 | `api/auth/[...nextauth]/route.ts` | Auth.js 핸들러 re-export (3줄) |
 | `api/jobs/refresh-market-data/route.ts` | 시세 갱신 잡 엔드포인트 (POST, §4.1) |
 | `api/jobs/refresh-hot-stocks/route.ts` | 핫종목 갱신 잡 엔드포인트 (POST, §4.2) |
@@ -131,6 +133,7 @@
 | `jobs/refreshFeeds.ts` | **피드(공시·뉴스·수출입) 갱신 잡 파이프라인 본체** (§4.5) — corpCode 매핑→종목별 공시(DART)+뉴스(네이버, 종목명 키워드) 조회·저장. 소스·종목별 실패 격리. + `refreshTradeStats`(17-4) — 종목 무관 월 1회성(스냅샷 최신월<직전 완결월일 때만), 12개월 한도 때문에 2회 호출(최근 12개월+전년동월)→13개월 연속 저장. 잡 `ok` 게이팅 제외(다음 회차 가드가 재시도) |
 | `jobs/collectTargets.ts` | 잡 공용 수집 대상 조회 — `collectHoldings`/`collectWatchlists`/`unionSymbolCodes`/`errorMessage` (시세·피드 잡 공유, Phase 17-1에서 refreshMarketData 로컬 함수를 추출) |
 | `jobs/verifyJobRequest.ts` | 잡 공용 인증 — QStash 서명 → CRON_SECRET Bearer 폴백(timingSafeEqual) |
+| `qstash/dlq.ts` | QStash DLQ 읽기 전용 조회(Phase 18) — `QSTASH_TOKEN`(서버 전용)으로 `Client.dlq.listMessages` 호출, 화면용 뷰 모델(`DlqMessageView`) 매핑. `/dlq` 페이지 전용 |
 | `watchlist/store.ts` | 관심종목 store — 암호화 (신규 키라 평문 하위호환 없음) |
 | `watchlist/summary.ts` | `computeWatchReturnRate`(순수 함수) + 홈 카드 요약 |
 | `theme.ts` | `THEME_STORAGE_KEY`·`Theme` 타입만 |
@@ -139,7 +142,7 @@
 
 | 컴포넌트 | 종류 | 역할 |
 |---|---|---|
-| `indices/IndexDashboard` | Server | 홈 카드 7종 조립 + 헤더(테마 토글·로그아웃) |
+| `indices/IndexDashboard` | Server | 홈 카드 7종 조립 + 헤더(햄버거 메뉴 `HeaderMenu` — Phase 18) |
 | `indices/SummaryCard` | Server | **홈 요약 카드 공용 프리미티브** — value/change/footnote/placeholder/staleness 배지. 카드 전체가 Link |
 | `indices/HotStocksCard` | Server | 핫종목 전용 카드 — 당일 등락률 TOP 3 리스트 (SummaryCard 미사용) |
 | `indices/IndexDetailScreen` | Server(async) | **지표 상세 5종 공용 화면** — `getIndexDetail`/`getOverseasDetail` 분기, 카드+차트+일별 리스트+푸터 |
@@ -152,8 +155,10 @@
 | `feeds/FeedTabsClient` | **Client** | 뉴스/공시/수출입 3탭 + 게시판 + 아코디언 (Phase 17-2/17-3/17-4). 데이터는 Server가 props로 주입, Client는 탭 선택·아코디언 open/close만. 3탭 모두 실동작(공시=제출인·접수일+DART 원문, 뉴스=출처·발행일+원문 새 탭 / 기본 선택 뉴스, 수출입=`TradeBoard` 최신월 3지표+YoY 요약 + 최근 13개월 표, 아코디언 없음). **17-2b에서 홈 전체폭→`/feeds/page.tsx`로 렌더 위치만 이동**. ~~`stocks/StockDisclosures`~~는 A안 철회로 **삭제** |
 | `indices/FeedSummaryCard` | Server | 홈 "뉴스·공시" 그리드 요약 카드 (Phase 17-2b/17-3) — 공시·뉴스 당일 건수 2줄(수출입은 월간 데이터라 제외). 골격은 SummaryCard `composes`, 카드 전체가 `/feeds` 링크. `getTodayFeedCounts` 결과를 prop으로 받음 |
 | `nav/NavIconLink` | Server | 헤더 이동 아이콘 버튼(home/back) — 36px 아이콘 버튼 통일 규격 |
-| `theme/ThemeToggle` | Client | `useSyncExternalStore`로 `data-theme` 구독·토글 |
-| `auth/SignOutButton` | Server | Server Action `signOut` 폼 |
+| `nav/HeaderMenu` | Server | 햄버거 메뉴 조립 전용(Phase 18) — `MenuSidebar`에 `ThemeToggle`·`SignOutButton`을 슬롯으로 주입 (서버 액션 폼은 Client 안에서 정의 불가) |
+| `nav/MenuSidebar` | Client | 햄버거 버튼 + 우측 슬라이드 사이드바(Phase 18) — 열림 상태·오버레이·ESC 닫기, 화면 모드(위)/DLQ 확인 링크(중간)/로그아웃(아래) |
+| `theme/ThemeToggle` | Client | `useSyncExternalStore`로 `data-theme` 구독·토글 (Phase 18부터 사이드바 안에 배치) |
+| `auth/SignOutButton` | Server | Server Action `signOut` 폼 — Phase 18에서 아이콘+텍스트 행 스타일(사이드바 하단용) |
 
 ### 2.4 기타
 
@@ -300,6 +305,9 @@ QStash 스케줄 (월 1회, 매월 5일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 5 *
   상세 페이지는 더 이상 공시를 읽지 않는다. 17-2b에서 게시판을 홈 전체폭→`/feeds`로 이동.)
 - **핫종목**: `?mode` 서버 분기 — 월간은 `getHotStocks` 통짜 1건→`?period` 탭, 당일은 `getDailyFluctuation` 1건(상위 30)+`resolveStaleness`. (검증: 알 수 없는 mode→monthly, period→1m).
 - **변동성**: `getVolatilityHistory` → `aggregateMonthlyAverages`(최근 6개월).
+- **예외 — DLQ(`/dlq`, Phase 18)**: 유일하게 Redis가 아닌 외부 API(QStash)를 Server
+  Component에서 직접 읽는다(`listDlqMessages`, `QSTASH_TOKEN` 서버 전용). 운영 확인용
+  읽기 전용 화면이라 스냅샷 캐시 없음. KIS 금지 원칙(§3)과는 무관(QStash는 KIS 아님).
 
 ### 4.4 사용자 쓰기 경로 (Server Actions)
 
@@ -572,7 +580,8 @@ QStash 스케줄 (월 1회, 매월 5일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 5 *
 
 - Tailwind 금지, CSS Modules + `tokens.css` 토큰. 등락색은 rise=빨강/fall=파랑 (한국식).
 - Client Component는 차트 셸 3종 + ThemeToggle + `feeds/FeedTabsClient`(Phase 17-2 —
-  탭 전환·아코디언은 서버로 못 옮기는 정당한 최소 Client 예외) — 새 인터랙션도 최소 Client 원칙.
+  탭 전환·아코디언은 서버로 못 옮기는 정당한 최소 Client 예외) + `nav/MenuSidebar`(Phase 18 —
+  사이드바 열림 상태만) — 새 인터랙션도 최소 Client 원칙.
 - 테마는 `data-theme` 속성 + localStorage(`jusik-theme`), FOUC 방지 인라인 스크립트.
 - 레이아웃 max-width 480px 모바일 우선 (`--layout-max-width`).
 - `params`/`searchParams`는 Promise — Next 16 규약대로 항상 `await` 후 사용. 검증 실패

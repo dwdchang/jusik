@@ -1723,7 +1723,7 @@ page.tsx / 상세 페이지 [Server] ──► lib/market/store.ts (Redis 리더
 
 **용량 검토:** 장중 40회(09:00~15:30, 10분 간격) + 15:40 + 18:15 = **평일 42메시지/일**. 확정 재시도 정책(§11.4: 장중 1회·15:40 0회·18:15 1회)상 최악에도 +41건 = 83건 — Free 한도(1,000/일)의 9% 이내. 스케줄도 4개로 한도(10개) 내. **Free 플랜으로 충분.**
 
-**의존성:** `@upstash/qstash` 미설치 → 추가 필요. env 추가: `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY` (스케줄은 Upstash 콘솔에서 생성하므로 `QSTASH_TOKEN`은 앱 코드에 불필요).
+**의존성:** `@upstash/qstash` 미설치 → 추가 필요. env 추가: `QSTASH_CURRENT_SIGNING_KEY`, `QSTASH_NEXT_SIGNING_KEY` (스케줄은 Upstash 콘솔에서 생성하므로 `QSTASH_TOKEN`은 앱 코드에 불필요). ~~`QSTASH_TOKEN` 불필요~~ — Phase 18에서 DLQ 읽기 전용 조회(`/dlq`)에 서버 전용으로 도입.
 
 #### 11.4 스케줄 설계 — 요청서 cron 표현식의 문제와 수정안
 
@@ -2429,6 +2429,16 @@ interface WatchItem {
 - **검증**: tsc·lint·build(22/22 라우트) PASS. **라이브 E2E**: 미인증 401·기존 잡 401·보호 페이지 307 확인 → 잡 실호출 `{ok:true, refreshed:true, yyyymm:202606, failed:0}` **51초**, 재실행 가드 `refreshed:false` **0.34초**. **실 Redis read-back**: 8.2KB·상위8국(CN 200.0억 등)·기타=279.5억(=전체−Σ상위8)·중국 팝업 5품목. **실브라우저 E2E(Chrome 390×844)**: 탭 전환 → 13개월 중 202606만 링크 → 상세 진입 → 중국 클릭 시 dialog open true·품목 5행 → Esc 닫힘 → 재클릭 정상, **JS 에러 0**. 다크 모드 정상. 스크린샷으로 발견해 고친 것: 품목명 우측 정렬(`.table th` 특이도에 짐)·금액 줄바꿈·제목 "2026.06 수출/입" 분리.
 - **한계(명시)**: 상세는 **잡이 도는 달부터 쌓인다** — 현재 202606 하나뿐이고, 백필은 12개월×97콜=1,164콜이라 하지 않는다. 상세 없는 달은 링크를 걸지 않고, 직접 URL 진입 시 안내문을 보여준다.
 - **운영**: QStash 월 1회 스케줄 **등록 완료** — `CRON_TZ=Asia/Seoul 0 3 5 * *`(매월 5일 03:00 KST, Retries 1) → `/api/jobs/refresh-trade-detail`. 2026-07-15 등록, 2026-07-17 QStash API로 활성 재확인. 스케줄과 별개로 `CRON_SECRET` Bearer 수동 트리거도 가능.
+
+---
+
+### Phase 18 — 홈 헤더 햄버거 메뉴·사이드바 + QStash DLQ 조회 화면 (2026-07-17)
+
+- **요청 근거**: 사용자 지시 — 홈 헤더 우측의 테마 토글·로그아웃 아이콘 2개를 햄버거(☰) 1개로 교체, 우측 슬라이드 사이드바에 ① 화면 모드 토글(위) ② "DLQ 확인" 메뉴(중간) ③ 로그아웃(아래) 배치. DLQ는 그간 Upstash 콘솔 육안 확인 항목(§11.11)이었던 것을 앱 내 **읽기 전용** 화면으로 전환.
+- **사이드바 구조** — Server/Client 경계 때문에 2단 조립: `components/nav/HeaderMenu.tsx`(Server, 조립 전용)가 `<MenuSidebar themeSlot={<ThemeToggle/>} logoutSlot={<SignOutButton/>}/>`로 슬롯 주입 — 로그아웃 폼의 서버 액션은 Client Component 안에서 정의 불가하기 때문. `components/nav/MenuSidebar.tsx`(`'use client'`) — `useState` 열림 상태, 오버레이+우측 패널(`translateX(100%)→0` transition, 닫힘 시 `visibility: hidden`으로 포커스 진입 차단), 닫기 4경로(오버레이 클릭·ESC·× 버튼·DLQ 링크 클릭). `ThemeToggle` 무변경 재사용, `SignOutButton`은 아이콘+텍스트 행 스타일로 조정(서버 액션 무변경). `IndexDashboard.tsx` headerActions는 `<HeaderMenu/>` 하나로 교체(토글·로그아웃 사용처는 홈뿐이라 스코프 홈 한정).
+- **DLQ 조회 — API 라우트 없이 Server Component 직접 조회**: `/api/dlq` 같은 공개 엔드포인트를 만들지 않고 `app/dlq/page.tsx`(Server)가 `lib/qstash/dlq.ts` `listDlqMessages(cursor)`를 직접 호출 — 토큰이 구조적으로 클라이언트에 못 가고, 인증 누락 위험 자체가 없음. `ensureAllowedSession()` 가드(미로그인 →/login, 허용 외 →/). SDK `Client.dlq.listMessages({cursor, count:50})` → 뷰 모델(`dlqId`/`messageId`/`url` pathname/`responseStatus`/실패사유 `responseBody` 300자/`createdAt` KST/`maxRetries`) 매핑. 페이지네이션은 `?cursor=` searchParam + "다음 페이지" 링크. 재발송·삭제 없음(읽기 전용). 빈 목록·토큰 미설정·조회 실패는 각각 안내 박스.
+- **env**: `QSTASH_TOKEN` 신규 (서버 전용, `.env.local`+Vercel — 사용자 등록 필요). `NEXT_PUBLIC_` 금지 준수.
+- **검증**: lint·tsc·build(23/23 라우트, `/dlq` dynamic) PASS. `.next/static` 클라이언트 번들에 `QSTASH_TOKEN` grep 0건.
 
 ---
 
