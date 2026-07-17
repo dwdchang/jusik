@@ -1,5 +1,4 @@
-import { SignOutButton } from "@/components/auth/SignOutButton";
-import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { HeaderMenu } from "@/components/nav/HeaderMenu";
 import type { TodayFeedCounts } from "@/lib/feeds/homeFeed";
 import { formatBasDtDisplay } from "@/lib/format/basDt";
 import {
@@ -77,8 +76,7 @@ export function IndexDashboard({
           </p>
         </div>
         <div className={styles.headerActions}>
-          <ThemeToggle />
-          <SignOutButton />
+          <HeaderMenu />
         </div>
       </header>
 

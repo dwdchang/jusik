@@ -1,0 +1,137 @@
+.trigger {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.trigger:hover {
+  background-color: var(--color-bg);
+}
+
+.trigger svg {
+  width: 18px;
+  height: 18px;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+  background-color: rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.25s ease, visibility 0s linear 0.25s;
+}
+
+.overlayOpen {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.25s ease;
+}
+
+.panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  width: min(280px, 80vw);
+  padding: var(--space-16);
+  background-color: var(--color-surface);
+  border-left: 1px solid var(--color-border);
+  transform: translateX(100%);
+  visibility: hidden;
+  transition: transform 0.25s ease, visibility 0s linear 0.25s;
+}
+
+.panelOpen {
+  transform: translateX(0);
+  visibility: visible;
+  transition: transform 0.25s ease;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-8);
+}
+
+.panelTitle {
+  font-size: var(--text-caption);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-tertiary);
+}
+
+.closeButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  border: none;
+  background: none;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.closeButton:hover {
+  background-color: var(--color-bg);
+}
+
+.closeButton svg {
+  width: 18px;
+  height: 18px;
+}
+
+.themeRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-8) var(--space-12);
+  border-radius: var(--radius-md);
+}
+
+.themeLabel {
+  font-size: 15px;
+  color: var(--color-text-primary);
+}
+
+.menuLink {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-12);
+  border-radius: var(--radius-md);
+  font-size: 15px;
+  color: var(--color-text-primary);
+  text-decoration: none;
+  transition: background-color 0.15s ease;
+}
+
+.menuLink:hover {
+  background-color: var(--color-bg);
+}
+
+.menuLink svg {
+  width: 18px;
+  height: 18px;
+  color: var(--color-text-secondary);
+}
+
+.footer {
+  margin-top: auto;
+}

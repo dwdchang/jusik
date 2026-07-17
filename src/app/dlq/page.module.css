@@ -1,0 +1,125 @@
+.page {
+  flex: 1;
+  width: 100%;
+  min-height: 100%;
+  background-color: var(--color-bg);
+}
+
+.container {
+  width: 100%;
+  max-width: var(--layout-max-width);
+  margin: 0 auto;
+  padding: var(--space-16);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  margin-bottom: var(--space-16);
+}
+
+.title {
+  font-size: var(--text-title);
+  font-weight: var(--weight-bold);
+  color: var(--color-text-primary);
+  letter-spacing: var(--tracking-tight);
+}
+
+.description {
+  margin-bottom: var(--space-16);
+  font-size: var(--text-caption);
+  color: var(--color-text-secondary);
+}
+
+.error {
+  padding: var(--space-16);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  color: var(--color-critical);
+  font-size: var(--text-caption);
+}
+
+.empty {
+  padding: var(--space-24) var(--space-16);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
+  text-align: center;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  list-style: none;
+}
+
+.item {
+  padding: var(--space-12) var(--space-16);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+}
+
+.itemHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+}
+
+.itemUrl {
+  font-size: 14px;
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+  word-break: break-all;
+}
+
+.itemStatus {
+  flex-shrink: 0;
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  color: var(--color-critical);
+}
+
+.itemReason {
+  margin-top: var(--space-8);
+  font-size: var(--text-caption);
+  color: var(--color-text-secondary);
+  word-break: break-all;
+}
+
+.itemMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8) var(--space-12);
+  margin-top: var(--space-8);
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+}
+
+.itemId {
+  word-break: break-all;
+}
+
+.moreLink {
+  display: block;
+  margin-top: var(--space-16);
+  padding: var(--space-12);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  color: var(--color-primary);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  text-align: center;
+  text-decoration: none;
+}
+
+.moreLink:hover {
+  background-color: var(--color-bg);
+}

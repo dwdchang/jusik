@@ -15,6 +15,16 @@ export function getAllowedEmails(): string[] {
   return [...allowedEmails];
 }
 
+/** 운영자(관리자) 이메일 — DLQ 확인 등 운영 화면은 이 계정만 접근 가능 */
+const ADMIN_EMAIL = "dwdchang@gmail.com";
+
+export function isAdminEmail(email: string | null | undefined): boolean {
+  if (!email) {
+    return false;
+  }
+  return email.trim().toLowerCase() === ADMIN_EMAIL;
+}
+
 export function isEmailAllowed(
   email: string | null | undefined
 ): email is string {
