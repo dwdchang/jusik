@@ -10,7 +10,7 @@ import { getRedis } from "@/lib/redis/client";
 export interface DisclosureItem {
   /** 보고서명 (예: "주요사항보고서(유상증자결정)") */
   reportNm: string;
-  /** 접수번호 — dart.fss.or.kr/dsaf001/main.do?rcptNo={rceptNo} */
+  /** 접수번호 — dart.fss.or.kr/dsaf001/main.do?rcpNo={rceptNo} */
   rceptNo: string;
   /** 접수일자 "YYYYMMDD" */
   rceptDt: string;

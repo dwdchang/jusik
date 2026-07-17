@@ -104,7 +104,7 @@ export async function getDisclosureBoard(email: string): Promise<FeedBoardItem[]
         date: d.rceptDt,
         meta: d.flrNm,
         remark: d.rm,
-        url: `${DART_VIEWER_URL}?rcptNo=${d.rceptNo}`,
+        url: `${DART_VIEWER_URL}?rcpNo=${d.rceptNo}`,
       });
     }
   });

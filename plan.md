@@ -2280,7 +2280,7 @@ interface WatchItem {
 
 - 공용 Server Component `components/stocks/StockDisclosures`(+ 전용 CSS Module) — 보유종목 상세·관심종목 상세의 "종목 정보"(StockInfoBlocks) 섹션 아래 "공시" 섹션으로 2곳 공용 적용.
 - 데이터는 페이지가 `getDisclosures(symbolCode)`(Redis 리더)로 읽어 프로프로 전달 — StockInfoBlocks와 동일 패턴. 실패는 `.catch(() => null)` 격리.
-- 각 공시는 DART 뷰어(`dart.fss.or.kr/dsaf001/main.do?rcptNo=…`) 외부 링크 + 출처 표기.
+- 각 공시는 DART 뷰어(`dart.fss.or.kr/dsaf001/main.do?rcpNo=…`) 외부 링크 + 출처 표기.
 - 17-3 정부자료는 시장 요약(`indices/market`) 미니 카드로 추가 예정(17-3에서 확정).
 
 #### 17.6 작업 목록
