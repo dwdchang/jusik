@@ -1,6 +1,6 @@
 # jusik 구현 계획서 — KIS API 연동 국내 지수 대시보드
 
-> **문서 상태:** 운영 중 — Phase 이력 관리 문서 (2026-07-12 기준: Phase 1~15 구현 완료, Phase 16 화면 시각 확인 대기)  
+> **문서 상태:** 운영 중 — Phase 이력 관리 문서 (2026-07-17 기준: Phase 1~17 구현 완료, QStash 스케줄 7개 등록·활성 확인)  
 > **기준 문서:** [`research.md`](./research.md) (코드 구조 사전 조사, 2026-07-12) — 구세대 원본은 [`research.legacy.md`](./research.legacy.md)로 보존  
 > **스택:** Next.js 16.2.6 · React 19.2.4 · Recharts · CSS Modules (Tailwind 없음)  
 > **제약:** 새 Phase 계획은 `research.md`와 대조해 승인받은 뒤 구현한다. 전반부 §0~§6(Phase 1~8)은 구세대 설계 이력 보존 구간 — 각 섹션 상단 배너 참고.  
@@ -8,7 +8,7 @@
 
 ---
 
-## 요약 (현재 상태, 2026-07-04)
+## 요약 (현재 상태, 2026-07-17)
 
 | Phase | 상태 |
 |-------|------|
@@ -22,12 +22,17 @@
 | 8 — 시간대별 캐시 최적화 (KIS 마감 후 갱신 패턴 반영) | ⚠️ 8-1~8-5 로컬 구현·검증 완료, 8-6 프로덕션 확인 남음 — **Phase 11 승인 시 구조 자체가 대체되어 8-6은 폐기** |
 | 9 — 홈 화면 지표 확장 및 보유종목 관리 | ✅ 그룹 1~7 구현·로컬 검증 완료 (2026-07-09) — 배포 후 cron 확인은 Phase 11로 대체 |
 | 10 — 보유종목 알림 기능 (Web Push) | 📋 조사·설계 완료, 구현 미착수 — **호출 방식(맥미니 crontab)은 Phase 11로 대체**, Web Push·조건 판정 설계는 유효 |
-| 11 — 데이터 갱신 구조 전면 재설계 (QStash Scheduled Push) | ✅ **구현 완료(2026-07-11, 그룹 1~8)** — KIS 호출을 QStash 잡(`/api/jobs/refresh-market-data`) 단일 경로로 이관(허용 시간 가드 09:00~18:40), 화면은 `market:*` Redis만 읽음(상세 정보 블록 4종 포함 — 같은 날 사용자 승인), `unstable_cache`/`revalidateTag`/Vercel cron 전부 제거, 2단계 staleness 배지·「마지막 갱신」 표기. lint·tsc·build·가드/staleness 실측 통과. **남은 작업: 배포 체크리스트(§11.11 — Vercel env·콘솔 스케줄 4개·장중 수동 시딩·첫 거래일 확인)** |
+| 11 — 데이터 갱신 구조 전면 재설계 (QStash Scheduled Push) | ✅ **구현 완료(2026-07-11, 그룹 1~8)** — KIS 호출을 QStash 잡(`/api/jobs/refresh-market-data`) 단일 경로로 이관(허용 시간 가드 09:00~18:40), 화면은 `market:*` Redis만 읽음(상세 정보 블록 4종 포함 — 같은 날 사용자 승인), `unstable_cache`/`revalidateTag`/Vercel cron 전부 제거, 2단계 staleness 배지·「마지막 갱신」 표기. lint·tsc·build·가드/staleness 실측 통과. **콘솔 스케줄 4개 등록 완료(2026-07-11) — §11.11 참고** |
 | 12 — 보유종목 데이터 암호화 저장 (AES-256-GCM) | ⚠️ **구현·로컬 검증 완료(2026-07-10, 12건 실측 PASS)** — 남은 작업: Vercel env 등록·키 백업(사용자), 배포 후 화면 확인·즉시 마이그레이션. **Phase 11보다 먼저 진행** |
 | 13 — 보유종목 페이지 개선 (`totalCost` 모델·종목명 자동 조회·종목 상세 페이지) | ✅ **구현 완료(2026-07-11, 13-1~13-6)** — `totalCost` 모델 전환(레거시 `avgPrice` 역산 하위호환), 종목명 CTPF1002R 자동 조회, `stock:{symbolCode}:history` 공용 저장소(2년 백필·cron 갱신), `/holdings/[symbolCode]` 상세 페이지(수정 모드·2년 차트·정보 블록 4종: 시가총액/배당/실적/투자지표), `/holdings` 메인 개편. lint·tsc·build·라이브 실측 통과. **다음: Phase 11 착수** |
-| 14 — 핫종목 (최근 1개월/분기/반기/연도 수익률 TOP 100) | ✅ **구현 완료(2026-07-11) — 배포·Upstash 스케줄 등록만 대기.** 완결된 달력 구간 4종(직전 월말 기준 최근 1/3/6/12개월) 수익률 랭킹, 매월 첫 평일 1회 배치(월봉 종목당 1콜 × 유니버스 2,647 실측 = 약 2,650콜), 홈 7번째 카드 + `/hot-stocks` 상세(구간 탭 4개). 2026-06 기준 전 구간 로컬 시딩 실측(3패스 이어받기·실패 0건) |
+| 14 — 핫종목 (최근 1개월/분기/반기/연도 수익률 TOP 100) | ✅ **구현 완료(2026-07-11) · Upstash 스케줄 등록 완료(2026-07-17).** 완결된 달력 구간 4종(직전 월말 기준 최근 1/3/6/12개월) 수익률 랭킹, 매월 첫 평일 1회 배치(월봉 종목당 1콜 × 유니버스 2,647 실측 = 약 2,650콜), 홈 7번째 카드 + `/hot-stocks` 상세(구간 탭 4개). 2026-06 기준 전 구간 로컬 시딩 실측(3패스 이어받기·실패 0건) |
 | 15 — 관심종목 + 시장 통합 카드 | ✅ **구현 완료(2026-07-11, 15-1~15-9 + 로컬 실측 9건 PASS)** — ① 유가(WTI `N`/`WTIF`) 지표 추가, 홈 "시장" 통합 카드, `/indices/market`(미니 카드 3종)·`/indices/oil`. ② 관심종목 `watchlist:{email}` 암호화 저장(`enc:v1:` 실측), 갱신 잡 통합(union 합류·이름 채움·기준가 확정/잠정 승격·멱등 — 전부 로컬 실측), `/watchlist` 목록·상세, 공용 `StockInfoBlocks` 추출(보유종목 상세 리팩터). lint·tsc·build·라우트 마운트 스모크 통과. **남은 실측(배포 후·평일 — §15.5 15-10): oil 첫 갱신 회차 저장, 브라우저 CRUD, 오늘 등록→18:15 승격** |
-| 16 — 핫종목 상세 테이블 시장 구분 위첨자 전환 | 📋 **설계 반영 완료, 구현 미착수 — 승인 대기.** "시장" 열 제거 + 종목명 뒤 위첨자(ᴷ/ᴰ)로 대체해 가로 스크롤 해소. 기존 `entry.market` 필드만 사용(추가 API 호출 없음), 핫종목 상세 화면 한정 |
+| 16 — 핫종목 상세 테이블 시장 구분 위첨자 전환 | ✅ **구현 완료(16-1~16-19, §16.2 전 항목 ☑)** — "시장" 열 제거 + 종목명 뒤 위첨자(ᴷ/ᴰ)로 대체해 가로 스크롤 해소(`hot-stocks/page.tsx`의 `MARKET_SUP`·`page.module.css`의 `.marketSup`). 기존 `entry.market` 필드만 사용(추가 API 호출 없음), 핫종목 상세 화면 한정. 남은 것은 화면 시각 확인뿐(§16.2 검증행 ◐) |
+| 17-1 — 공시 수집 (DART OpenAPI) | ✅ **구현 완료(2026-07-12)** — 신규 잡 `refresh-feeds`(시간창 가드 없음 — KIS 아님), `corpCode.xml`→`dart:corpCodeMap` 매핑(30일 주기·재다운로드 1일 1회 상한·`unmappable` 제외), 종목별 `market:disclosures:{code}`(최근 90일 최대 10건). QStash 스케줄 `0 8-22 * * *` 등록 완료(2026-07-12). A안(상세 페이지 공시 섹션)은 17-2에서 철회 |
+| 17-2 / 17-2b — 피드 UI (홈 요약 카드 + `/feeds` 상세) | ✅ **구현 완료(2026-07-13)** — 17-2: 홈 통합 카드(뉴스·공시·수출입 탭, 공시만 실동작)·A안 철회. 17-2b: 홈은 핫종목형 3줄 요약 카드(당일 건수만, `getTodayFeedCounts`)로 축소하고 탭+게시판+아코디언은 `/feeds`로 이동. 당일 판정은 `rceptDt===KST 오늘` 문자열 비교. lint·tsc·build + 실브라우저 E2E PASS |
+| 17-3 — 뉴스 백엔드 (네이버 검색 API) | ✅ **구현 완료(2026-07-14)** — `refreshFeeds`에 `refreshNews` 스텝 증분(신규 잡 없음), 종목명 키워드·`sort=date`·상위 10건 → `market:news:{code}`, 제목+요약 종목명 필터로 오탐 제거, `pubDate`는 저장 시점에 KST "YYYYMMDD"로 고정. 라이브 API 프로브로 전 경로 실데이터 확인 |
+| 17-4 — 수출입 백엔드 (관세청 GW API) | ✅ **구현 완료(2026-07-14)** — `getNewtradeList` 실측 확정(USD 원값·`총계`행 제외·조회 최대 12개월·현재월 미완결). `market:tradeStats`에 13개월 연속 저장(월 1회성 가드·잡 `ok` 게이팅 제외), `/feeds` 수출입 탭 + `/indices/market` 미니 카드(최신 확정월 3지표+YoY). 라이브 E2E·Redis read-back·사용자 화면 확인 완료(2026-07-15) |
+| 17-5 — 수출입 상세 (`/indices/trade/[yyyymm]`) | ✅ **구현 완료(2026-07-15)** — 별도 잡 `refresh-trade-detail`(97개 류 전수·동시성 4·51초, 일부 실패 시 저장 생략), `market:tradeDetail:{yyyymm}` + `months` 인덱스. 품목 HS 4단위·상위 8개국+기타·국가 클릭 팝업(네이티브 `<dialog>`, 클릭당 API 0회). QStash 월 1회 스케줄 `0 3 5 * *` 등록 완료(2026-07-15). 부수 수정: `proxy.ts` matcher를 `api/jobs/` 접두사로 통합. **한계: 상세는 잡이 도는 달부터 누적(현재 202606~) — 백필은 1,164콜이라 하지 않음** |
 
 **남은 작업 (6-6):** 프로덕션(Vercel) 배포 후 다중 인스턴스 환경에서 토큰 발급 횟수가 실제로 줄었는지 Vercel 로그로 확인.
 **이력 (2026-07-04):** KIS 서버 7/4~7/5 전산 점검 기간에 대시보드에서 "fetch failed"(KIS API 연결 실패)가 발생했었음 — 코드 문제 아니었고, 점검 종료 후 정상 동작 확인됨.
@@ -1854,18 +1859,18 @@ page.tsx / 상세 페이지 [Server] ──► lib/market/store.ts (Redis 리더
 - **A4 구체화:** 등록 액션은 `name: ""`으로 저장 → 다음 회차에 잡이 CTPF1002R로 채움(그 전까지 화면은 종목코드 표시). 시세 스냅샷 없는 종목은 평가 null(「시세 없음」)로 격리하고 합계에서 제외(`PortfolioValuation.missingPriceSymbols`).
 - `market:lastRefreshAt`은 **성공한 실행만** 기록 — 실패가 이어지면 배지가 정확히 낡은 시각 기준으로 판정된다.
 
-**배포 체크리스트 (남은 사용자 작업):**
+**배포 체크리스트 (2026-07-17 기준 — 1~4 전부 처리됨):**
 
-1. Vercel env에 `QSTASH_CURRENT_SIGNING_KEY`/`QSTASH_NEXT_SIGNING_KEY` 등록 (Upstash 콘솔 → QStash → Signing Keys). 로컬 `.env.local`에도 추가(로컬 서명 검증 테스트용 — 없으면 `CRON_SECRET` 폴백으로 동작).
+1. ◐ Vercel env에 `QSTASH_CURRENT_SIGNING_KEY`/`QSTASH_NEXT_SIGNING_KEY` 등록 (Upstash 콘솔 → QStash → Signing Keys). 로컬 `.env.local`에는 등록 완료. **현재 등록된 스케줄 7개는 전부 `Authorization` 헤더(`CRON_SECRET` Bearer)로 호출돼 서명 검증 폴백 경로로 정상 동작 중** — Vercel 등록 여부는 콘솔에서만 확인 가능하며, 미등록이어도 운영에 지장 없음.
 2. ✅ Upstash 콘솔 → QStash → Schedules 4개 등록 **완료(2026-07-11)**, Destination은 전부 `https://{배포 도메인}/api/jobs/refresh-market-data` (POST):
    - `CRON_TZ=Asia/Seoul */10 9-14 * * 1-5`, Retries **1**
    - `CRON_TZ=Asia/Seoul 0,10,20,30 15 * * 1-5`, Retries **1**
    - `CRON_TZ=Asia/Seoul 40 15 * * 1-5`, Retries **0**
    - `CRON_TZ=Asia/Seoul 15 18 * * 1-5`, Retries **1** — **콘솔에서 Retry-Delay 값이 저장되지 않는 문제로 고정 5분 지연은 폐기, 재실행 지연은 QStash 기본 백오프(1차 ≈ +12초)에 맡김 (2026-07-11 사용자 결정, §11.10-A3 개정)**
-3. 배포 직후 **장중(평일 09:00~18:40 KST)에 수동 1회 시딩**: `curl -X POST -H "Authorization: Bearer $CRON_SECRET" https://{도메인}/api/jobs/refresh-market-data` — 그 전까지 홈·상세는 "아직 수집된 시세 데이터가 없습니다" empty state.
-4. 첫 거래일: 스케줄 실행 로그·`market:lastRefreshAt`·15:40/18:15 확정 반영·DLQ 비어있음 확인.
+3. ✅ 시딩 완료 — 프로덕션 Redis에 시세·공시(7)·뉴스(9)·수출입 스냅샷 적재 확인(2026-07-17). empty state 해소.
+4. ✅ 스케줄 실행 확인 — `market:lastRefreshAt` = `{at:"2026-07-17T06:40:11Z"(15:40 KST), trigger:"qstash", ok:true}`로 QStash 트리거 성공 실증(2026-07-17). (DLQ 잔여 확인은 Upstash 콘솔 육안 확인 항목으로 남음.)
 
-**Phase 11 완료 조건:** ✅ 화면(홈·상세·보유종목)이 KIS를 직접 호출하는 경로 0건(코드 검색으로 확인 — KIS import는 잡 경로뿐), ✅ KIS 호출이 QStash 잡 + 허용 시간 가드 안에서만 발생(주말 no-op 200 실측), ☐ 스케줄 4개(재시도 정책 §11.4 포함) 실 실행 및 Redis 갱신 확인(**배포 후**), ✅ `unstable_cache`/`revalidateTag`/Vercel cron 완전 제거, ✅ 갱신 상태 UI 동작(카드 2단계 배지 — 장중 한정 판정·경고/심각 구분·장외 미표시, 상세 「마지막 갱신」 상시 표기, 다크/라이트), ◐ 장애 시나리오 핵심 3종 — 멱등성(저장 전부 SET/upsert)·빈 Redis empty state는 코드 확인, 회차 실패 자연 복구는 배포 후 확인.
+**Phase 11 완료 조건:** ✅ 화면(홈·상세·보유종목)이 KIS를 직접 호출하는 경로 0건(코드 검색으로 확인 — KIS import는 잡 경로뿐), ✅ KIS 호출이 QStash 잡 + 허용 시간 가드 안에서만 발생(주말 no-op 200 실측), ✅ 스케줄 4개(재시도 정책 §11.4 포함) 실 실행 및 Redis 갱신 확인 — 프로덕션 `market:lastRefreshAt` = `{at:"2026-07-17T06:40:11Z"(15:40 KST), trigger:"qstash", ok:true}`(2026-07-17 확인), ✅ `unstable_cache`/`revalidateTag`/Vercel cron 완전 제거, ✅ 갱신 상태 UI 동작(카드 2단계 배지 — 장중 한정 판정·경고/심각 구분·장외 미표시, 상세 「마지막 갱신」 상시 표기, 다크/라이트), ◐ 장애 시나리오 핵심 3종 — 멱등성(저장 전부 SET/upsert)·빈 Redis empty state는 코드 확인, 회차 실패 자연 복구는 배포 후 확인.
 
 ---
 
@@ -2006,7 +2011,7 @@ interface Holding {
 
 ### Phase 14 — 핫종목 (최근 1개월/분기/반기/연도 수익률 랭킹 TOP 100)
 
-**목표:** 홈 화면에 "핫종목" 카드(7번째)를 추가하고, 상세 페이지에서 **코스피+코스닥 전 보통주를 순수 수익률로만 줄 세운 TOP 100**을 구간 4종으로 보여준다. **구현 완료(2026-07-11) — 14-1~14-7 코드 작성·검증(lint/tsc/build) 및 14-8 로컬 시딩 실측 완료. 남은 것: 배포 후 Upstash 스케줄 5번째 등록.**
+**목표:** 홈 화면에 "핫종목" 카드(7번째)를 추가하고, 상세 페이지에서 **코스피+코스닥 전 보통주를 순수 수익률로만 줄 세운 TOP 100**을 구간 4종으로 보여준다. **구현 완료(2026-07-11) — 14-1~14-8 완료. Upstash 스케줄 5번째 등록 완료(2026-07-17).**
 
 **확정사항 (사용자 결정, 2026-07-11):**
 
@@ -2075,7 +2080,7 @@ interface Holding {
 | 14-5 | 잡 엔드포인트 — QStash 서명 검증 공용 모듈 추출 + `POST /api/jobs/refresh-hot-stocks`(가드 2종·`maxDuration=300`), `proxy.ts` matcher 예외 | `src/lib/jobs/verifyJobRequest.ts` (신규, 기존 라우트 리팩터), `app/api/jobs/refresh-hot-stocks/route.ts` (신규) | ✅ |
 | 14-6 | 홈 카드 — 7번째 "핫종목" 카드(최근 1개월 TOP 3·기준월 표기·갱신 지연 안내) | `app/page.tsx`, `components/indices/HotStocksCard.tsx`+css (신규), `lib/hotstocks/summary.ts` (신규) | ✅ |
 | 14-7 | 상세 페이지 — `/hot-stocks` (`?period` 탭 4개·TOP 100 테이블·안내문) + CSS Module | `app/hot-stocks/page.tsx`+css (신규) | ✅ |
-| 14-8 | 검증·배포 — lint·tsc·build, 로컬 수동 실행(CRON_SECRET)으로 2026-06 기준 전 구간 생성 실측, 배포 후 Upstash 콘솔 스케줄 5번째 등록(`CRON_TZ=Asia/Seoul 35 10 1-7 * *`, Retries 1) + 장중 수동 시딩 | Upstash 콘솔, — | ◐ 로컬 검증·시딩 완료(3패스 이어받기, 실패 0) — 배포 후 스케줄 등록만 남음 |
+| 14-8 | 검증·배포 — lint·tsc·build, 로컬 수동 실행(CRON_SECRET)으로 2026-06 기준 전 구간 생성 실측, 배포 후 Upstash 콘솔 스케줄 5번째 등록(`CRON_TZ=Asia/Seoul 35 10 1-7 * *`, Retries 1) + 장중 수동 시딩 | Upstash 콘솔, — | ☑ 로컬 검증·시딩 완료(3패스 이어받기, 실패 0) + Upstash 스케줄 `CRON_TZ=Asia/Seoul 35 10 1-7 * *`(Retries 1) 등록·활성 확인(2026-07-17, QStash API 조회) |
 
 **Phase 14 완료 조건:** ☑ 유니버스 실측치 확보(2,647 — 예측 ±0) 및 스팩·비주권 제외 확인, ☑ 구간 4종 TOP 100이 `market:hotStocks`에 저장(2026-06 기준 로컬 시딩 실측 — 1m: 2026-06, 3m: 2026-04~06, 6m: 2026-01~06, 12m: 2025-07~2026-06 각 100행), ☑ 홈 카드·상세 페이지 구현(기준월·"최근 …" 라벨·고정 명칭 미사용 — 빌드 통과, 화면 시각 확인은 배포 후), ☑ 화면의 KIS 직접 호출 0건 유지(화면은 store 리더만 import), ☑ 잡 재실행 멱등·이어받기 동작(3패스 커서 재개 + 완료 후 재실행 no-op·progress 삭제 실측), ☐ 스케줄 등록 후 다음 달 첫 평일 자동 갱신 확인(배포 후).
 
@@ -2291,11 +2296,11 @@ interface WatchItem {
 | 17-1-5 | 잡 라우트 신설 — `verifyJobRequest` 재사용, 시간창 가드 미적용, `maxDuration 300` + `proxy.ts` matcher 제외 추가 | `src/app/api/jobs/refresh-feeds/route.ts`, `src/proxy.ts` | ☑ |
 | 17-1-6 | 공시 섹션 UI — `StockDisclosures` 공용 컴포넌트(+CSS Module), 보유·관심 상세 2곳에 "공시" 섹션 추가 | `src/components/stocks/StockDisclosures.tsx`·`.module.css`, `src/app/holdings/[symbolCode]/page.tsx`, `src/app/watchlist/[symbolCode]/page.tsx` | ☑ |
 | 17-1-7 | 검증 — lint·tsc·build | — | ☑ PASS |
-| 17-1-8 | 운영(사용자 액션) — ① `DART_API_KEY` 발급 후 `.env.local`+Vercel 등록 ② QStash 스케줄 `0 8-22 * * *`(Asia/Seoul) 등록 ③ `?force` 불필요(시간창 없음), CRON_SECRET 수동 트리거로 최초 시딩 | — | ☐ 사용자 대기 |
+| 17-1-8 | 운영(사용자 액션) — ① `DART_API_KEY` 발급 후 `.env.local`+Vercel 등록 ② QStash 스케줄 `0 8-22 * * *`(Asia/Seoul) 등록 ③ `?force` 불필요(시간창 없음), CRON_SECRET 수동 트리거로 최초 시딩 | — | ☑ 완료 — `DART_API_KEY` 등록, QStash 스케줄 `CRON_TZ=Asia/Seoul 0 8-22 * * *`(Retries 1) 등록·활성 확인(2026-07-12 등록, 2026-07-17 QStash API로 재확인) |
 
 **17-2 뉴스 / 17-3 정부자료:** 17-1 골격 완성 후 착수(승인된 순서). 17-2는 종목명 키워드 검색 품질(동명이의어 오탐)을 실데이터로 확인 후 보정, 17-3은 C-1 확정에 따라 관세청 API 응답 구조 실측 후 설계.
 
-**Phase 17-1 완료 조건:** ☑ KIS 외 신규 소스(DART)도 "잡만 쓰고 화면은 Redis만 읽는" 대원칙 유지, ☑ 잡 신설 3곳 동기화 중 코드 2곳(proxy matcher·verifyJobRequest) 반영 — QStash 스케줄 등록은 사용자 액션, ☑ 공시 섹션이 보유·관심 상세 2곳에 공용 적용(A안), ☑ 신규 의존성 0(fflate 재사용), ☑ lint·tsc·build 통과, ☐ `DART_API_KEY` 등록 후 수동 트리거로 실데이터 확인(사용자 대기).
+**Phase 17-1 완료 조건:** ☑ KIS 외 신규 소스(DART)도 "잡만 쓰고 화면은 Redis만 읽는" 대원칙 유지, ☑ 잡 신설 3곳 동기화 중 코드 2곳(proxy matcher·verifyJobRequest) 반영 — QStash 스케줄 등록은 사용자 액션, ☑ 공시 섹션이 보유·관심 상세 2곳에 공용 적용(A안), ☑ 신규 의존성 0(fflate 재사용), ☑ lint·tsc·build 통과, ☑ `DART_API_KEY` 등록·스케줄 등록 후 실데이터 확인 — 프로덕션 Redis에 `market:disclosures:{code}` 7건 적재 확인(2026-07-17).
 
 #### 17.7 UI 설계 변경 — 홈 통합 카드(뉴스·공시·수출입 탭) — Phase 17-2 (2026-07-13)
 
@@ -2423,7 +2428,7 @@ interface WatchItem {
 - **부수 수정**: `proxy.ts` matcher가 잡 라우트를 **하나씩 열거**해 신규 라우트가 307→/login으로 샘(실제 발생). `api/jobs/` 접두사로 묶어 재발 차단 — 잡 4개 전부 `verifyJobRequest`로 자체 인증함을 확인 후 변경. research.md §8-13의 "3곳 동기화"도 갱신.
 - **검증**: tsc·lint·build(22/22 라우트) PASS. **라이브 E2E**: 미인증 401·기존 잡 401·보호 페이지 307 확인 → 잡 실호출 `{ok:true, refreshed:true, yyyymm:202606, failed:0}` **51초**, 재실행 가드 `refreshed:false` **0.34초**. **실 Redis read-back**: 8.2KB·상위8국(CN 200.0억 등)·기타=279.5억(=전체−Σ상위8)·중국 팝업 5품목. **실브라우저 E2E(Chrome 390×844)**: 탭 전환 → 13개월 중 202606만 링크 → 상세 진입 → 중국 클릭 시 dialog open true·품목 5행 → Esc 닫힘 → 재클릭 정상, **JS 에러 0**. 다크 모드 정상. 스크린샷으로 발견해 고친 것: 품목명 우측 정렬(`.table th` 특이도에 짐)·금액 줄바꿈·제목 "2026.06 수출/입" 분리.
 - **한계(명시)**: 상세는 **잡이 도는 달부터 쌓인다** — 현재 202606 하나뿐이고, 백필은 12개월×97콜=1,164콜이라 하지 않는다. 상세 없는 달은 링크를 걸지 않고, 직접 URL 진입 시 안내문을 보여준다.
-- **미완료**: **QStash 월 1회 스케줄 등록**(예: 매월 5일 03:00 KST, `CRON_TZ=Asia/Seoul`) — 콘솔 작업이라 사용자 몫. 미등록 상태에서도 `CRON_SECRET` Bearer로 수동 트리거 가능.
+- **운영**: QStash 월 1회 스케줄 **등록 완료** — `CRON_TZ=Asia/Seoul 0 3 5 * *`(매월 5일 03:00 KST, Retries 1) → `/api/jobs/refresh-trade-detail`. 2026-07-15 등록, 2026-07-17 QStash API로 활성 재확인. 스케줄과 별개로 `CRON_SECRET` Bearer 수동 트리거도 가능.
 
 ---
 

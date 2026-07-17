@@ -261,7 +261,7 @@ QStash 스케줄 (매일 08~22시 정시 KST, CRON_TZ=Asia/Seoul 0 8-22 * * *)
 ### 4.6 수출입 상세 갱신 잡 — Phase 17-5
 
 ```
-QStash 스케줄 (월 1회 권장, 예: 매월 5일 03:00 KST) → POST /api/jobs/refresh-trade-detail
+QStash 스케줄 (월 1회, 매월 5일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 5 * *) → POST /api/jobs/refresh-trade-detail
     verifyJobRequest만 — 시간창 가드 없음 (KIS 아님, 월간 확정 통계)
   → refreshTradeDetail(trigger)  [lib/jobs/refreshTradeDetail.ts]
       0. 대상 = 직전 달(현재 KST 월은 월중 집계라 미완결 — §17-4와 동일 규칙)
