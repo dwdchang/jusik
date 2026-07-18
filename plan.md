@@ -2539,6 +2539,26 @@ interface WatchItem {
 - **구현**: ① `watchlist/summary.ts` — `WatchlistCardSummary`를 `{ count, top3: WatchlistCardEntry[] }`로 개편(`avgReturnRate`·`best` 제거 — 소비처는 홈 카드뿐). 항목별 `returnRate`(등록 기준일 종가 대비, `computeWatchReturnRate` 재사용)·`dailyChangeRate`(스냅샷 `changeRate` 그대로 — 추가 API 호출 없음)를 계산해 수익률 내림차순 상위 3개(null은 `-Infinity`로 뒤 순위) ② **신규** `components/indices/WatchlistCard`(.tsx+.module.css) — HotStocksCard 폼(3행 리스트)을 본떠 행마다 `종목명 +12.34% (+1.20%)`, 수익률·괄호 등락률 각각 등락 색상, 기준가 확정 전은 「-」(tertiary), staleness 배지는 SummaryCard와 동일 마크업(`STALENESS_LABELS`를 SummaryCard에서 export해 재사용, CSS는 composes). footnote "등록 기준일 대비 · 괄호는 전일 대비"(4종목 이상이면 "N종목 중 수익률 상위 3 ·" 접두). 관심종목 없음/조회 실패(summary null)는 같은 카드 안 placeholder "종목을 등록해보세요" ③ `IndexDashboard` — 관심종목 자리의 SummaryCard 분기를 `<WatchlistCard summary staleness>`로 교체.
 - **검증**: lint·tsc PASS. 실제 화면 시각 확인은 사용자 확인 대기.
 
+### Phase 25 — 홈 "배당 일정" 카드 + 상세 화면 + 지급일 당일 알림 (2026-07-19, 계획 확정 — 코드 미착수)
+
+- **요청 근거**: 사용자 지시 — 홈에 배당 정보 항목 신설(항목명 "배당 일정" 채택). 배당 지급일이 확정되면 상세 화면에 종목명·배당금액·지급일 등을 **한 줄씩** 추가하고, 지급일 당일 푸시 알림 발송. 대안으로 조사한 **폰 기본 캘린더 연동(webcal:// ICS 구독 피드)은 사용자가 포기 확정** — 재제안 금지.
+- **후속 수정 (2026-07-19 같은 날 확정)**: ① 홈 카드 요약은 건수형이 아니라 **다가오는 배당일 3행**(종목명 포함) ② 상세 화면에 **주당배당금·보유수량·예상 지급액(주당배당금 × 수량)** 표시 ③ **대상은 보유종목만 — 관심종목은 배당 일정 항목 전부(홈 카드·상세 목록·지급일 당일 알림)에서 제외**. 기존 공시 알림 8유형의 "배당" 카테고리(보유+관심 대상, Phase 10 3단계)는 별개 기능이라 무변경.
+- **조사 결과 (2026-07-19, 코드 열람 + 실측 주석 근거)**:
+  - 최초 아이디어였던 "DART 공시에서 지급일 추출"은 부적합 — `list.json`은 보고서명·접수번호만 주고 배당금액·지급일 구조화 데이터가 없어 원문 문서 파싱이 필요(취약). 대신 **이미 사용 중인 KIS 예탁원 배당일정 API**(HHKDB669102C0, `fetchKisDividends`)가 기준일(`record_date`)·배당종류(`divi_kind`)·주당배당금(`per_sto_divi_amt`)·**현금배당 지급일(`divi_pay_dt`)**을 구조화 제공. 지급일 미정이면 빈 문자열 → 공시로 확정되면 이후 조회에 채워짐(예탁원 데이터가 공시를 반영하므로 "공시에 지급일 나오면 추가"와 결과 동일).
+  - 시세 잡이 이미 보유+관심 종목별로 이 API를 호출 중(확정 회차 1일 1회 + 신규 등록 시). 현재는 `stockInfo.ts` `buildDividendBlock`이 요약(연간 합계·최근 지급일)만 저장하고 **회차별 원본 행은 버림** — 행을 저장하도록 확장하면 **KIS 추가 호출 0건**.
+  - 조회 범위는 기준일 기준 최근 365일(`DIVIDEND_LOOKBACK_DAYS`) — 결산배당(기준일 과거·지급일 미래)의 미래 지급일은 이 범위로 커버됨.
+  - 공시 알림 8유형에 "배당" 키워드가 이미 있어 배당 **결정 공시** 알림은 기존 발송 중 — 본 Phase의 지급일 **당일** 알림은 별개 추가.
+  - 보유수량은 `Holding.quantity`(types/holdings.ts)로 이미 저장 — 예상 지급액은 화면 읽기 시 곱셈만으로 계산 가능하고, 공용 `rounds`에 개인 수량을 섞지 않는다(쓰기/읽기 분리 유지). 동일 종목 중복 등록은 액션이 차단하므로 종목당 수량 단일·합산 불필요. 보유종목 한정이라 수량 없는 행("—" 처리)도 발생하지 않는다.
+- **구현 계획 (파일 단위)**:
+  1. `lib/market/store.ts` — `StoredStockInfoBlocks.dividend`에 회차별 행 `rounds?: { recordDate, kind, amountPerShare, payDate: string | null }[]` 추가(별도 키 신설 대신 기존 `market:stockInfo:{code}` 확장 — 쓰기 주체·갱신 주기 동일). optional이라 구 스냅샷 호환(없으면 화면·알림에서 빈 취급). 시세 잡의 갱신 대상은 기존대로 보유+관심 union — **저장은 공용 무변경, 보유종목 필터는 배당 일정 리더·알림(3·6번)에서만** 적용.
+  2. `lib/holdings/stockInfo.ts` `buildDividendBlock` — 확정 회차(주당배당금 > 0) 행을 `rounds`로 함께 저장. 기존 요약 필드 유지 — 정보 블록 4종 화면 무변경.
+  3. **신규** `lib/dividends/summary.ts` — **보유종목만**(`getHoldings(email)` 기반 — 관심종목 제외)의 `market:stockInfo:*` MGET → 지급일 있는 행 병합·지급일순 정렬 + 수량 맵 합류(**예상 지급액 = 주당배당금 × 보유수량**, 읽기 시 계산). 상세 목록 빌더 + 홈 카드 요약(지급일 ≥ KST 오늘 행 오름차순 **상위 3** — `{종목명, 지급일, 주당배당금}`) 함수. 실패 시 null(홈 격리 관례).
+  4. **신규** `app/dividends/page.tsx`(+`page.module.css`) — `ensureAllowedSession` + 한 줄씩(종목명·배당종류·기준일·지급일·**주당배당금·보유수량·예상 지급액**, 지급일 미정 행은 "미정" 표기) 목록. 각주 2건 필수: ① 예상 지급액은 **현재 보유수량 기준**(실제 수령 자격은 배당 기준일 시점 보유 여부로 결정 — 수량 변경 이력 미보관) ② **세전 금액**(배당소득세 15.4% 원천징수 전). `/feeds` 게시판 폼·페이지 골격 관례 참고.
+  5. 홈 카드 — **3행 리스트 패턴**(HotStocksCard·WatchlistCard 폼)의 **신규** `components/indices/DividendCard`(가칭): **다가오는 배당일 상위 3행**(종목명+지급일+주당배당금), 3건 미만이면 있는 만큼·0건은 placeholder(기존 카드 관례). 카드 전체 `/dividends` 링크, staleness 배지는 SummaryCard 관례. `IndexDashboard`에 배치, 요약 조회는 홈 `Promise.all`에 `.catch(() => null)` 격리로 합류.
+  6. 알림 — **피드 잡(`refreshFeeds`) 훅에 추가**(매일 08~22시 매시 실행 · KIS 시간창 무관 · 첫 회차 08시에 당일 발송): Redis `rounds`에서 `payDate === KST 오늘`인 종목을 **보유 사용자에게만**(관심종목 제외) `sendPushToEmail`. 중복 방지는 `alerts:dividend:sent:{code}:{payDate}` 마커(EX 2일, 평문 — 쿨다운 키 관례). `alerts:{email}:muted` 음소거 공유, 이메일 단위 실패 격리, 잡 `ok` 게이팅 제외(기존 알림 훅 관례).
+- **실측 필요(구현 시)**: ① `T_DT`를 미래로 지정하면 기준일이 미래인 예고 행도 오는지(오면 조회 종료일 연장 검토) ② `divi_pay_dt`가 지급일 대비 얼마나 미리 확정되는지(상세 화면 "다가오는 지급" 구간 설계 근거).
+- **상태**: 계획 승인(2026-07-19) — 구현 착수 전. 구현 완료 시 research.md §2·§4·§5(신규 파일·잡 훅·`rounds` 필드)와 본 절 갱신.
+
 ---
 
 ## 7. PR 분리 권장 (선택)
