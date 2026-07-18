@@ -20,7 +20,7 @@ async function requireEmail(): Promise<string> {
 }
 
 function fail(code: string, basePath = "/watchlist"): never {
-  redirect(`${basePath}?error=${code}`);
+  redirect(`${basePath}${basePath.includes("?") ? "&" : "?"}error=${code}`);
 }
 
 /** "YYYY-MM-DD"에 일수를 더한 "YYYY-MM-DD" (달력일 기준) */
@@ -105,11 +105,12 @@ export async function updateWatchItemAction(formData: FormData): Promise<void> {
   const items = await getWatchlist(email);
   const target = items.find((item) => item.id === id);
 
+  // 편집 폼은 ?edit=1에서만 노출되므로 오류 시에도 편집 모드를 유지한다
   if (!target) {
-    fail("not_found");
+    fail("not_found", "/watchlist?edit=1");
   }
 
-  const registeredAt = parseRegisteredAt(formData, "/watchlist");
+  const registeredAt = parseRegisteredAt(formData, "/watchlist?edit=1");
 
   // 기준일이 바뀌면 기준가를 null로 리셋 — 다음 갱신 회차에서 잡이 재확정 (§15.4)
   target.registeredAt = registeredAt;
@@ -131,7 +132,7 @@ export async function deleteWatchItemAction(formData: FormData): Promise<void> {
   const next = items.filter((item) => item.id !== id);
 
   if (next.length === items.length) {
-    fail("not_found");
+    fail("not_found", "/watchlist?edit=1");
   }
 
   await saveWatchlist(email, next);

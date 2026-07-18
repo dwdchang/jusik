@@ -46,11 +46,29 @@
   margin-bottom: var(--space-16);
 }
 
+.sectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+  margin-bottom: var(--space-8);
+}
+
 .sectionTitle {
   font-size: var(--text-caption);
   font-weight: var(--weight-semibold);
   color: var(--color-text-secondary);
-  margin-bottom: var(--space-8);
+}
+
+.editToggle {
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.editToggle:hover {
+  text-decoration: underline;
 }
 
 .emptyNotice {

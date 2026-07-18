@@ -36,7 +36,7 @@ const ERROR_MESSAGES: Record<string, string> = {
 export default async function WatchlistPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; edit?: string }>;
 }) {
   const session = await ensureAllowedSession();
   const email = session.user?.email;
@@ -45,8 +45,9 @@ export default async function WatchlistPage({
     redirect("/login");
   }
 
-  const { error } = await searchParams;
+  const { error, edit } = await searchParams;
   const errorMessage = error ? (ERROR_MESSAGES[error] ?? null) : null;
+  const isEditMode = edit === "1";
   const today = todayKstDate();
 
   const [items, lastRefresh] = await Promise.all([
@@ -85,7 +86,10 @@ export default async function WatchlistPage({
 
         <section className={styles.section} aria-label="관심종목 추가">
           {/* 폼 검증 실패로 돌아온 경우엔 펼친 상태로 렌더 — 재입력 동선 유지 */}
-          <details className={styles.addDetails} open={errorMessage !== null}>
+          <details
+            className={styles.addDetails}
+            open={errorMessage !== null && !isEditMode}
+          >
             {/* 열림 상태에서 summary가 취소 버튼 역할 — 클릭 시 폼이 접힌다 (§17.12) */}
             <summary className={styles.addToggle}>
               <span className={styles.addToggleOpenLabel}>+ 종목 추가</span>
@@ -114,7 +118,20 @@ export default async function WatchlistPage({
         </section>
 
         <section className={styles.section} aria-label="관심종목 목록">
-          <h2 className={styles.sectionTitle}>관심종목 ({items.length})</h2>
+          <div className={styles.sectionHead}>
+            <h2 className={styles.sectionTitle}>관심종목 ({items.length})</h2>
+            {items.length > 0 ? (
+              isEditMode ? (
+                <Link href="/watchlist" className={styles.editToggle}>
+                  취소
+                </Link>
+              ) : (
+                <Link href="/watchlist?edit=1" className={styles.editToggle}>
+                  수정
+                </Link>
+              )
+            ) : null}
+          </div>
           {items.length === 0 ? (
             <p className={styles.emptyNotice}>
               등록된 관심종목이 없습니다. 위에서 종목을 추가해보세요.
@@ -180,29 +197,39 @@ export default async function WatchlistPage({
                     </dl>
 
                     <div className={styles.itemActions}>
-                      <form
-                        action={updateWatchItemAction}
-                        className={styles.editForm}
-                      >
-                        <input type="hidden" name="id" value={item.id} />
-                        <input
-                          name="registeredAt"
-                          className={styles.input}
-                          type="date"
-                          defaultValue={item.registeredAt}
-                          max={today}
-                          required
-                        />
-                        <button type="submit" className={styles.secondaryButton}>
-                          기준일 변경
-                        </button>
-                      </form>
-                      <form action={deleteWatchItemAction}>
-                        <input type="hidden" name="id" value={item.id} />
-                        <button type="submit" className={styles.dangerButton}>
-                          삭제
-                        </button>
-                      </form>
+                      {isEditMode ? (
+                        <>
+                          <form
+                            action={updateWatchItemAction}
+                            className={styles.editForm}
+                          >
+                            <input type="hidden" name="id" value={item.id} />
+                            <input
+                              name="registeredAt"
+                              className={styles.input}
+                              type="date"
+                              defaultValue={item.registeredAt}
+                              max={today}
+                              required
+                            />
+                            <button
+                              type="submit"
+                              className={styles.secondaryButton}
+                            >
+                              기준일 변경
+                            </button>
+                          </form>
+                          <form action={deleteWatchItemAction}>
+                            <input type="hidden" name="id" value={item.id} />
+                            <button
+                              type="submit"
+                              className={styles.dangerButton}
+                            >
+                              삭제
+                            </button>
+                          </form>
+                        </>
+                      ) : null}
                       <Link
                         href={`/watchlist/${item.symbolCode}`}
                         className={styles.detailLink}
