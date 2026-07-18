@@ -52,6 +52,23 @@ function stripHtml(raw: string): string {
     .trim();
 }
 
+/**
+ * http(s) URL만 통과 — 링크는 화면에서 <a href>로 그대로 렌더링되므로
+ * `javascript:` 등 다른 스킴은 저장 단계에서 차단한다 (보안 검토 2026-07-18).
+ */
+function toSafeHttpUrl(raw: string | undefined): string | null {
+  const trimmed = raw?.trim() ?? "";
+  if (trimmed === "") {
+    return null;
+  }
+  try {
+    const { protocol } = new URL(trimmed);
+    return protocol === "http:" || protocol === "https:" ? trimmed : null;
+  } catch {
+    return null;
+  }
+}
+
 /** 필터·정렬 여유분을 두고 API에서 받아오는 원본 건수 (반환은 display로 컷) */
 const NAVER_FETCH_SIZE = 20;
 
@@ -98,11 +115,13 @@ export async function fetchNaverNews(
     if (!`${title} ${stripHtml(item.description)}`.includes(query)) {
       continue;
     }
-    parsed.push({
-      title,
-      link: item.originallink?.trim() || item.link?.trim() || "",
-      pubDateMs,
-    });
+    // 원문 링크 우선, 부적합하면 네이버 링크 폴백 — 둘 다 http(s)가 아니면
+    // 링크 없는 기사는 쓸모가 없으므로 제외
+    const link = toSafeHttpUrl(item.originallink) ?? toSafeHttpUrl(item.link);
+    if (link === null) {
+      continue;
+    }
+    parsed.push({ title, link, pubDateMs });
     if (parsed.length >= display) {
       break;
     }
