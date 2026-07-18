@@ -1,0 +1,77 @@
+import Link from "next/link";
+import { formatChangeRate } from "@/lib/format/change";
+import { resolveDirection } from "@/lib/indices/kisMapper";
+import type { StalenessLevel } from "@/lib/market/staleness";
+import type { WatchlistCardSummary } from "@/lib/watchlist/summary";
+import { STALENESS_LABELS } from "./SummaryCard";
+import styles from "./WatchlistCard.module.css";
+
+/**
+ * 홈 "관심종목" 카드 — 수익률 상위 3종목 개별 표시 (§24).
+ * 행마다 등록 기준일 대비 수익률을 메인으로, 괄호에 전일 대비 등락률을
+ * 함께 표시한다. 기준가 확정 전 종목은 수익률 자리에 「-」.
+ * staleness 배지는 SummaryCard와 동일 정책(§11.10-B2) — 홈에서 판정값을 받는다.
+ */
+export function WatchlistCard({
+  summary,
+  staleness,
+}: {
+  summary: WatchlistCardSummary | null;
+  staleness: StalenessLevel | null;
+}) {
+  return (
+    <Link href="/watchlist" className={styles.card}>
+      {staleness !== null ? (
+        <span
+          className={`${styles.badge} ${
+            staleness === "critical" ? styles.badgeCritical : styles.badgeWarn
+          }`}
+          role="img"
+          aria-label={STALENESS_LABELS[staleness]}
+          title={STALENESS_LABELS[staleness]}
+        >
+          !
+        </span>
+      ) : null}
+      <h2 className={styles.title}>관심종목</h2>
+      {summary !== null && summary.top3.length > 0 ? (
+        <>
+          <ol className={styles.list}>
+            {summary.top3.map((entry) => (
+              <li key={entry.symbolCode} className={styles.row}>
+                <span className={styles.name}>{entry.name}</span>
+                <span
+                  className={`${styles.rate} numeric ${
+                    entry.returnRate !== null
+                      ? styles[resolveDirection(entry.returnRate)]
+                      : styles.pending
+                  }`}
+                >
+                  {entry.returnRate !== null
+                    ? formatChangeRate(entry.returnRate)
+                    : "-"}
+                </span>
+                {entry.dailyChangeRate !== null ? (
+                  <span
+                    className={`${styles.daily} numeric ${
+                      styles[resolveDirection(entry.dailyChangeRate)]
+                    }`}
+                  >
+                    ({formatChangeRate(entry.dailyChangeRate)})
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ol>
+          <p className={styles.footnote}>
+            {summary.count > 3
+              ? `${summary.count}종목 중 수익률 상위 3 · 등록 기준일 대비 · 괄호는 전일 대비`
+              : "등록 기준일 대비 · 괄호는 전일 대비"}
+          </p>
+        </>
+      ) : (
+        <p className={styles.placeholder}>종목을 등록해보세요</p>
+      )}
+    </Link>
+  );
+}

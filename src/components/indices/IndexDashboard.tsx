@@ -22,6 +22,7 @@ import { FeedSummaryCard } from "./FeedSummaryCard";
 import { HotStocksCard } from "./HotStocksCard";
 import styles from "./IndexDashboard.module.css";
 import { SummaryCard } from "./SummaryCard";
+import { WatchlistCard } from "./WatchlistCard";
 
 /** 카드 배지 판정 결과 — 장중(09:00~18:20 KST)에만 non-null (§11.10-B).
  * market은 환율·금리·유가 3종 중 가장 오래된 수집 시각 기준 (§15.2) */
@@ -163,46 +164,10 @@ export function IndexDashboard({
           />
         )}
         <HotStocksCard summary={hotStocksSummary} />
-        {watchlistSummary !== null ? (
-          <SummaryCard
-            title="관심종목"
-            href="/watchlist"
-            staleness={staleness.watchlist}
-            value={
-              watchlistSummary.avgReturnRate !== null
-                ? formatChangeRate(watchlistSummary.avgReturnRate)
-                : `${watchlistSummary.count}종목`
-            }
-            valueDirection={
-              watchlistSummary.avgReturnRate !== null
-                ? resolveDirection(watchlistSummary.avgReturnRate)
-                : undefined
-            }
-            change={
-              watchlistSummary.best !== null
-                ? {
-                    text: `최고 ${watchlistSummary.best.name} ${formatChangeRate(
-                      watchlistSummary.best.returnRate
-                    )}`,
-                    direction: resolveDirection(
-                      watchlistSummary.best.returnRate
-                    ),
-                  }
-                : undefined
-            }
-            footnote={
-              watchlistSummary.avgReturnRate !== null
-                ? `${watchlistSummary.count}종목 평균 · 등록 기준일 대비`
-                : "기준가 확정 중"
-            }
-          />
-        ) : (
-          <SummaryCard
-            title="관심종목"
-            href="/watchlist"
-            placeholder="종목을 등록해보세요"
-          />
-        )}
+        <WatchlistCard
+          summary={watchlistSummary}
+          staleness={staleness.watchlist}
+        />
         <FeedSummaryCard counts={feedCounts} />
       </section>
 

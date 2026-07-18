@@ -8,7 +8,7 @@ export interface SummaryCardChange {
   direction: PriceDirection;
 }
 
-const STALENESS_LABELS: Record<StalenessLevel, string> = {
+export const STALENESS_LABELS: Record<StalenessLevel, string> = {
   warn: "갱신 지연 — 20분 이상 경과",
   critical: "갱신 중단 — 1시간 이상 경과",
 };

@@ -23,13 +23,21 @@ export function computeWatchReturnRate(
   );
 }
 
-/** 홈 화면 관심종목 카드 요약 — 개수·평균 수익률·최고 수익률 1종목 (§15.4) */
+/** 홈 관심종목 카드 1행 — 종목별 수익률·전일 등락률 (§24) */
+export interface WatchlistCardEntry {
+  name: string;
+  symbolCode: string;
+  /** 등록 기준일 종가 대비 수익률(%) — 기준가 확정 전이면 null (「-」 표기) */
+  returnRate: number | null;
+  /** 전일 대비 등락률(%) — 스냅샷 없으면 null (괄호 생략) */
+  dailyChangeRate: number | null;
+}
+
+/** 홈 화면 관심종목 카드 요약 — 수익률 상위 3종목 개별 표시 (§24) */
 export interface WatchlistCardSummary {
   count: number;
-  /** 기준가 확정된 항목의 단순 평균 — 계산 가능한 항목이 없으면 null */
-  avgReturnRate: number | null;
-  /** 최고 수익률 종목 — 계산 가능한 항목이 없으면 null */
-  best: { name: string; symbolCode: string; returnRate: number } | null;
+  /** 수익률 내림차순 상위 3개 — 기준가 확정 전 항목은 뒤 순위 */
+  top3: WatchlistCardEntry[];
 }
 
 /**
@@ -49,32 +57,23 @@ export async function getWatchlistCardSummary(
       [...new Set(items.map((item) => item.symbolCode))]
     );
 
-    const rated = items.flatMap((item) => {
-      const returnRate = computeWatchReturnRate(
-        snapshots.get(item.symbolCode)?.price ?? null,
-        item
-      );
-      return returnRate !== null ? [{ item, returnRate }] : [];
+    const entries = items.map((item): WatchlistCardEntry => {
+      const snapshot = snapshots.get(item.symbolCode);
+      return {
+        name: item.name || item.symbolCode,
+        symbolCode: item.symbolCode,
+        returnRate: computeWatchReturnRate(snapshot?.price ?? null, item),
+        dailyChangeRate: snapshot?.changeRate ?? null,
+      };
     });
 
-    if (rated.length === 0) {
-      return { count: items.length, avgReturnRate: null, best: null };
-    }
-
-    const best = rated.reduce((max, row) =>
-      row.returnRate > max.returnRate ? row : max
+    entries.sort(
+      (a, b) =>
+        (b.returnRate ?? Number.NEGATIVE_INFINITY) -
+        (a.returnRate ?? Number.NEGATIVE_INFINITY)
     );
 
-    return {
-      count: items.length,
-      avgReturnRate:
-        rated.reduce((sum, row) => sum + row.returnRate, 0) / rated.length,
-      best: {
-        name: best.item.name || best.item.symbolCode,
-        symbolCode: best.item.symbolCode,
-        returnRate: best.returnRate,
-      },
-    };
+    return { count: items.length, top3: entries.slice(0, 3) };
   } catch (error) {
     console.error("[getWatchlistCardSummary] failed:", error);
     return null;
