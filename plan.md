@@ -1686,7 +1686,18 @@ interface StockPeak {
 - KRX 공식 Open API(openapi.krx.co.kr) — 지수/주식/채권 등 6개 카테고리 시세·기본정보뿐, **시장경보 서비스 없음**. data.go.kr 금융위 API 102종에도 시장경보 지정 데이터셋 없음. KIND·KRX 정보데이터시스템은 웹 화면/CSV 다운로드만(공식 API 아님).
 - **대안 실측 확인:** 이미 저장 중인 KIS 현재가 스냅샷 `raw`에 `mrkt_warn_cls_code`(00 없음/01 투자주의/02 투자경고/03 투자위험)·`invt_caful_yn`(투자주의환기)·`mang_issu_cls_code`(관리종목)·`short_over_yn`(단기과열)·`temp_stop_yn`(거래정지)·`sltr_yn`(정리매매) 필드 존재(프로덕션 Redis 9종목 실측). **보유·관심종목 한정이면 신규 API 없이 회차 간 상태 변화 감지로 시장경보 알림 구현 가능** — 3단계 범위 결정 시 반영.
 
-**남은 작업:** 3단계(공시 알림 — 기존 4유형 + 확장 3유형(증자·회사채·대출) 키워드 위 실측대로, 착수 승인 대기), iOS 실기기 수신 확인, 배포 후 거래일 잡 회차에서 시세 알림 실발송 확인.
+**3단계 구현 완료 (2026-07-18, 공시 8유형 + KRX 시장경보 — 사용자 범위 확정 승인):**
+- `lib/alerts/feedAlerts.ts` (신규) — feeds 잡 훅 전용 파이프라인 `evaluateFeedAlerts` + 순수 판정부 3종 분리:
+  - `matchDisclosureCategories` — 공시 8유형 키워드 분류(위 실측 확정 그대로): 상장폐지("상장폐지"+"상장적격성")·회계·감사("감사보고서"+"감사의견"+"회계처리")·관리종목·환기("관리종목"+"환기")·배당·무상증자·유상증자(+"일반공모증자")·회사채("사채"+"채무증권", **"파생결합" 포함 시 제외**)·대출·채무보증(5키워드).
+  - `extractMarketWarnState`/`diffMarketWarnStates` — 저장된 `market:stock:{code}` 스냅샷 `raw`의 경보 필드 6종(`mrkt_warn_cls_code`·`invt_caful_yn`·`mang_issu_cls_code`·`short_over_yn`·`temp_stop_yn`·`sltr_yn`)을 회차 간 비교해 지정·해제 문구 생성 — **신규 API 호출 없음**. 결측은 "경보 없음"으로 정규화(양쪽 결측이면 diff 없음 — 오탐 방지), 관리종목 필드는 Y/N·코드형("00"=없음) 둘 다 수용.
+- 중복 방지: 종목별 **전역** 커서 `alerts:disclosure:last:{code}`(마지막 통지 접수번호, 14자리 문자열 비교=시간순)·`alerts:marketwarn:last:{code}`(경보 상태) — 공개 데이터 파생이라 평문. 첫 회차는 기준점만 저장하고 발송 안 함(배포 직후 과거 공시 알림 폭주 방지). 커서는 발송 결과와 무관하게 전진 — 일시 발송 실패 시 중복 재발송보다 1회 누락을 택함. 쿨다운 불필요.
+- 잡 연결: `refreshFeeds.ts` 스텝 5로 훅 추가 — `refreshDisclosures`가 방금 받아온 공시를 `itemsBySymbol`로 메모리 전달(Redis 재조회 없음), 리포트 `alerts`(evaluated/summary — baselined·matched·changed·sent·mutedSkipped) 추가, 훅 실패는 로그만 남기고 잡 ok 게이팅 안 함(시세 잡과 동일).
+- 발송: 대상 = 각 사용자 **보유+관심종목**(피드 수집 범위와 동일), 음소거 `alerts:{email}:muted` 공유, 이메일 단위 실패 격리. 공시 클릭 → `/feeds`, 시장경보 클릭 → 보유면 `/holdings/{code}` 아니면 `/watchlist/{code}`. tag는 `disclosure-{code}-{rceptNo}`(공시별)·`marketwarn-{code}`.
+- 종목별 토글 확장: 공시·시장경보 알림은 관심종목도 대상이라 `/alerts` 토글 목록을 보유+관심 union으로 확장(보유 이름 우선), `setStockAlertEnabledAction` 소유 검증도 보유∪관심으로 확장 — 안 그러면 관심종목 알림을 끌 방법이 없음.
+- `KisStockPriceOutput`에 경보 필드 6종 명시 추가(기존 인덱스 시그니처로 저장은 이미 되고 있었음).
+- 검증: lint·tsc·build PASS. 판정 로직 esbuild 번들 실측 31 시나리오 전부 PASS(8유형 매칭·유무상증자 부분매칭·파생결합 제외·무관 공시 미매칭·결측 정규화·경보 지정/격상/해제·코드형 관리종목·복수 변화). 실발송은 배포 후 feeds 잡 회차에서 확인.
+
+**남은 작업:** iOS 실기기 수신 확인, 배포 후 거래일 잡 회차에서 시세 알림 실발송·feeds 잡 회차에서 공시 알림 기준점 저장(baselined) 확인.
 
 ---
 

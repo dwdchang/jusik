@@ -80,8 +80,8 @@
 | `hot-stocks/page.tsx` | 핫종목 — 서버 모드 탭 `[당일 등락률(기본) \| 월간 핫종목]`(`?mode=monthly`으로 월간). 당일: `market:dailyFluctuation` 상위 30 테이블(종목코드는 종목명 뒤 인라인)+`resolveStaleness` 배지. 월간: 구간 수익률 TOP 100(`?period=1m\|3m\|6m\|12m`, 시장 위첨자 ᴷ/ᴰ). 두 뷰는 async 서버 서브컴포넌트(`DailyView`/`MonthlyView`) |
 | `feeds/page.tsx` | 뉴스·공시 상세 (Phase 17-2b) — `ensureAllowedSession` + `getDisclosureBoard`·`getNewsBoard`·`getTradeStatsView`(17-4) + `FeedTabsClient`(뉴스/공시/수출입 탭+게시판+아코디언). 홈 "뉴스·공시" 요약 카드에서 이동 |
 | `dlq/page.tsx` | QStash DLQ 읽기 전용 목록 (Phase 18) — `ensureAllowedSession` + `listDlqMessages(cursor)` 직접 호출(Redis 아닌 QStash API — §4.3 예외), `?cursor=` 페이지네이션. 햄버거 사이드바 "DLQ 확인"에서 진입, 재발송·삭제 없음 |
-| `alerts/page.tsx` | 알림 설정 (Phase 10 1·2단계) — `ensureAllowedSession` + `VAPID_PUBLIC_KEY`를 `PushSubscriptionManager`에 prop 전달 + 보유종목별 알림 on/off(`StockAlertToggles`) + 등록 기기 수 표시. 햄버거 사이드바 "알림 설정"에서 진입 |
-| `alerts/actions.ts` | Server Actions: 푸시 구독 등록/해지(입력 형식 검증 — endpoint https·keys 필수)·테스트 발송·종목별 알림 on/off(`setStockAlertEnabledAction` — 보유종목만 허용, `alerts:{email}:muted` 갱신) |
+| `alerts/page.tsx` | 알림 설정 (Phase 10) — `ensureAllowedSession` + `VAPID_PUBLIC_KEY`를 `PushSubscriptionManager`에 prop 전달 + 보유·관심종목별 알림 on/off(`StockAlertToggles`, 3단계에서 관심종목까지 확장) + 등록 기기 수 표시. 햄버거 사이드바 "알림 설정"에서 진입 |
+| `alerts/actions.ts` | Server Actions: 푸시 구독 등록/해지(입력 형식 검증 — endpoint https·keys 필수)·테스트 발송·종목별 알림 on/off(`setStockAlertEnabledAction` — 보유·관심종목만 허용, `alerts:{email}:muted` 갱신) |
 | `manifest.ts` | PWA 매니페스트(`/manifest.webmanifest`, Phase 10) — standalone·아이콘 192/512+maskable. iOS 푸시의 전제 조건 |
 | `apple-icon.png` | iOS 홈 화면 아이콘 (파일 컨벤션 — link 태그 자동 생성) |
 | `api/auth/[...nextauth]/route.ts` | Auth.js 핸들러 re-export (3줄) |
@@ -139,8 +139,9 @@
 | `jobs/collectTargets.ts` | 잡 공용 수집 대상 조회 — `collectHoldings`/`collectWatchlists`/`unionSymbolCodes`/`errorMessage` (시세·피드 잡 공유, Phase 17-1에서 refreshMarketData 로컬 함수를 추출) |
 | `jobs/verifyJobRequest.ts` | 잡 공용 인증 — QStash 서명 → CRON_SECRET Bearer 폴백(timingSafeEqual) |
 | `qstash/dlq.ts` | QStash DLQ 읽기 전용 조회(Phase 18) — `QSTASH_TOKEN`(서버 전용)으로 `Client.dlq.listMessages` 호출, 화면용 뷰 모델(`DlqMessageView`) 매핑. `/dlq` 페이지 전용 |
-| `alerts/store.ts` | 시세 알림 store (Phase 10 2단계) — `alerts:{email}:peaks`(신고가, 암호화)·`:muted`(음소거 종목, 암호화)·`:cooldown:{code}`(EX 7200 평문) |
+| `alerts/store.ts` | 알림 store (Phase 10 2·3단계) — 개인: `alerts:{email}:peaks`(신고가, 암호화)·`:muted`(음소거 종목, 암호화)·`:cooldown:{code}`(EX 7200 평문). 전역(공개 데이터 파생, 평문): `alerts:disclosure:last:{code}`(마지막 통지 접수번호)·`alerts:marketwarn:last:{code}`(시장경보 상태 6필드) |
 | `alerts/evaluate.ts` | 시세 알림 판정·발송 (Phase 10 2단계) — `evaluatePriceAlerts`: 지수 MGET→종목별 조건 3종(매입가 −10%/신고가 −10%/지수 −2%+종목 −12%) OR 판정→발송·쿨다운. 순수 판정부 `evaluateHolding`·시장 매핑 `marketIndexOf` 분리 |
+| `alerts/feedAlerts.ts` | 공시·시장경보 알림 판정·발송 (Phase 10 3단계) — `evaluateFeedAlerts`(feeds 잡 훅 전용): 공시 8유형 키워드 분류기 `matchDisclosureCategories`(회사채는 "파생결합" 제외)·경보 상태 추출 `extractMarketWarnState`·diff `diffMarketWarnStates` 분리. 커서·상태는 발송 결과와 무관하게 전진(중복 방지 우선), 쿨다운 없음 |
 | `push/store.ts` | 웹 푸시 구독 store (Phase 10) — `push:subs:{email}` `secureJson` 암호화(endpoint가 곧 발송 권한), endpoint 기준 dedup 등록/해지/`prunePushSubscriptions`(발송 경로 전용) |
 | `push/send.ts` | 웹 푸시 발송 공용 유틸 (Phase 10) — `sendPushToEmail(email, payload)`: VAPID env 검증, 구독별 실패 격리, 410/404 자동 정리. 페이로드 계약 `{title, body, url?, tag?}`는 `public/sw.js`와 동기화 필수. 잡 훅(2·3단계)·테스트 발송 액션 공유 |
 | `watchlist/store.ts` | 관심종목 store — 암호화 (신규 키라 평문 하위호환 없음) |
@@ -167,7 +168,7 @@
 | `nav/HeaderMenu` | Server | 햄버거 메뉴 조립 전용(Phase 18) — `MenuSidebar`에 `ThemeToggle`·`SignOutButton`을 슬롯으로 주입 (서버 액션 폼은 Client 안에서 정의 불가) |
 | `nav/MenuSidebar` | Client | 햄버거 버튼 + 우측 슬라이드 사이드바(Phase 18) — 열림 상태·오버레이·ESC 닫기, 화면 모드(위)/알림 설정(Phase 10)·DLQ 확인 링크(중간)/로그아웃(아래) |
 | `alerts/PushSubscriptionManager` | Client | 이 기기의 푸시 구독 on/off + 테스트 발송 (Phase 10) — 지원 감지(iOS 미설치 시 홈 화면 추가 안내), `sw.js` 등록→`pushManager.subscribe`→Server Action 저장. VAPID 공개키는 prop으로 수신 |
-| `alerts/StockAlertToggles` | Client | 보유종목별 알림 on/off (Phase 10 2단계) — 서버가 내려준 목록·초기 상태를 로컬 상태로 토글, `setStockAlertEnabledAction` 저장. 끄면 시세·공시 알림 모두 음소거 |
+| `alerts/StockAlertToggles` | Client | 보유·관심종목별 알림 on/off (Phase 10 2·3단계) — 서버가 내려준 목록·초기 상태를 로컬 상태로 토글, `setStockAlertEnabledAction` 저장. 끄면 시세·공시·시장경보 알림 모두 음소거 |
 | `theme/ThemeToggle` | Client | `useSyncExternalStore`로 `data-theme` 구독·토글 (Phase 18부터 사이드바 안에 배치) |
 | `auth/SignOutButton` | Server | Server Action `signOut` 폼 — Phase 18에서 아이콘+텍스트 행 스타일(사이드바 하단용) |
 
@@ -274,6 +275,15 @@ QStash 스케줄 (매일 08~22시 정시 KST, CRON_TZ=Asia/Seoul 0 8-22 * * *)
          → market:disclosures:{code} SET 덮어쓰기 (종목별 실패 격리)
       4. 종목별 순차(150ms 간격): 네이버 뉴스 검색(종목명 키워드) 최신 10건
          → market:news:{code} SET 덮어쓰기 (종목별 실패 격리, 종목명 미확정은 skip)
+      5. 알림 훅 evaluateFeedAlerts(lib/alerts/feedAlerts.ts) — Phase 10 3단계:
+         ① 공시: 방금 받아온 공시(메모리 전달)를 종목별 전역 커서
+            alerts:disclosure:last:{code}(마지막 통지 접수번호)와 비교 →
+            새 공시만 8유형 키워드 분류 → 매칭분 발송. 첫 회차는 기준점만 저장
+         ② 시장경보: market:stock:{code} 스냅샷 raw의 경보 필드 6종을
+            alerts:marketwarn:last:{code}와 비교(KIS 추가 호출 없음) →
+            변화(지정·해제)만 발송. 첫 회차는 기준점만 저장
+         발송 대상 = 각 사용자 보유+관심종목, 음소거(alerts:{email}:muted) 공유,
+         이메일 단위 실패 격리. 훅 실패는 로그만 — 잡 ok 게이팅 안 함
   → 응답: report (실패 시 500 → QStash 재시도, 멱등)
 ```
 
@@ -362,7 +372,9 @@ QStash 스케줄 (월 1회, 매월 5일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 5 *
 | `push:subs:{email}` | `StoredPushSubscription[]` (기기별 구독, Phase 10) | **○** | 구독 Server Action + 발송 경로(410/404 prune) | `/alerts` 화면·발송 유틸 |
 | `alerts:{email}:peaks` | `StockPeakMap` (종목별 신고가+갱신 시점 지수) | **○** | 시세 잡(알림 훅 — 보유종목만 유지) | 알림 훅 |
 | `alerts:{email}:muted` | `string[]` (알림 끈 종목코드) | **○** | `/alerts` 종목별 토글 Server Action | 알림 훅·`/alerts` 화면 |
-| `alerts:{email}:cooldown:{code}` | 발송 시각 ISO (EX 7200 — 2시간 재알림 금지) | ✕ | 알림 훅 | 알림 훅 |
+| `alerts:{email}:cooldown:{code}` | 발송 시각 ISO (EX 7200 — 2시간 재알림 금지) | ✕ | 시세 알림 훅 | 시세 알림 훅 |
+| `alerts:disclosure:last:{code}` | 마지막 통지 접수번호 (종목별 전역 커서, Phase 10 3단계) | ✕ | 피드 알림 훅 | 피드 알림 훅 |
+| `alerts:marketwarn:last:{code}` | `MarketWarnState` (시장경보 상태 6필드, 종목별 전역) | ✕ | 피드 알림 훅 | 피드 알림 훅 |
 
 - 이메일 키는 항상 `normalizeEmail`(trim+lowercase) 후 사용.
 - 공용 시세는 비암호화(사용자 무관 공개 데이터), 개인 데이터 6키(holdings·history·watchlist·push:subs·alerts peaks·muted)만 `enc:v1:` 암호화 — 쿨다운 키는 TTL 기반 평문.
@@ -597,13 +609,14 @@ QStash 스케줄 (월 1회, 매월 5일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 5 *
 - 포트폴리오 히스토리 upsert는 스냅샷이 하나라도 없으면 그 사용자 전체 skip (과소 집계 방지).
 - 홈 `getDashboardData`는 필수 4종(kospi·kosdaq·usdkrw·us10y) 없으면 throw, **oil만
   null 허용** (Phase 15 추가 키 — 새 지표 추가 시 같은 전략 참고).
-- 알림(Web Push)은 **Phase 10 2단계(시세 알림)까지 구현** — PWA·구독 등록·발송
+- 알림(Web Push)은 **Phase 10 3단계까지 전부 구현** — PWA·구독 등록·발송
   유틸(`lib/push/*`)·`/alerts` 화면(1단계) + 시세 알림 조건 3종·신고가 추적·2시간
-  쿨다운·종목별 on/off(2단계, `lib/alerts/*`)가 동작한다. `evaluateAlertsHook`은
-  `evaluatePriceAlerts` 실구현으로 연결됨(거래일 가드는 호출 측). 공시 알림
-  4유형(상장폐지·감사·관리종목·배당 — `reportNm` 키워드 매칭)은 `refreshFeeds` 훅으로
-  3단계 예정 (plan.md §10.6). 시세 알림은 보유종목 한정이며 `alerts:{email}:muted`
-  음소거 목록은 3단계 공시 알림도 공유할 예정.
+  쿨다운(2단계, `lib/alerts/evaluate.ts`) + 공시 8유형·KRX 시장경보(3단계,
+  `lib/alerts/feedAlerts.ts` — `refreshFeeds` 훅, 종목별 전역 커서로 중복 차단,
+  첫 회차는 기준점만 저장하고 발송 안 함). 시세 알림은 보유종목 한정,
+  공시·시장경보 알림은 보유+관심종목 대상이며 `alerts:{email}:muted` 음소거
+  목록(보유·관심 토글)을 셋이 공유한다. 시장경보는 KIS 추가 호출 없이
+  `market:stock:{code}` raw의 경보 필드 6종 회차 간 비교로 감지.
 
 ### 9.6 프런트 규칙
 
