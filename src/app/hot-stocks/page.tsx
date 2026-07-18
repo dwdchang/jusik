@@ -18,22 +18,38 @@ import {
 } from "@/lib/hotstocks/store";
 import { isHotStocksStale } from "@/lib/hotstocks/summary";
 import { resolveDirection } from "@/lib/indices/kisMapper";
-import { getDailyFluctuation } from "@/lib/market/store";
+import {
+  getDailyFluctuation,
+  getWeeklyFluctuation,
+  type StoredDailyFluctuation,
+} from "@/lib/market/store";
 import { resolveStaleness } from "@/lib/market/staleness";
 import styles from "./page.module.css";
 
 export const metadata: Metadata = {
   title: "핫종목 — jusik",
   description:
-    "당일 등락률 상위 30(장중)과 코스피·코스닥 구간 수익률 TOP 100(월간)",
+    "당일·주간(5거래일 대비) 등락률 상위 30(장중)과 코스피·코스닥 구간 수익률 TOP 100(월간)",
 };
 
-/** 보기 모드 — 월간 구간 수익률 / 당일 등락률 순위 */
-type Mode = "monthly" | "daily";
+/** 보기 모드 — 당일/주간 등락률 순위 · 월간 구간 수익률 */
+type Mode = "daily" | "weekly" | "monthly";
 
-// 당일 등락률을 기본(왼쪽) 탭으로, 월간 핫종목을 오른쪽으로 (§17.12)
-const MODES: ReadonlyArray<{ key: Mode; label: string; href: string }> = [
+// 순서: 일별 → 주간 → 월별 (§17.12·§19). 주간은 달력 주가 아니라
+// 5거래일 전 대비 롤링이라 탭에 보조 설명(sub)을 붙여 오해를 막는다.
+const MODES: ReadonlyArray<{
+  key: Mode;
+  label: string;
+  sub?: string;
+  href: string;
+}> = [
   { key: "daily", label: "당일 등락률", href: "/hot-stocks" },
+  {
+    key: "weekly",
+    label: "주간 등락률",
+    sub: "최근 5거래일 대비",
+    href: "/hot-stocks?mode=weekly",
+  },
   { key: "monthly", label: "월간 핫종목", href: "/hot-stocks?mode=monthly" },
 ];
 
@@ -58,7 +74,8 @@ export default async function HotStocksPage({
   await ensureAllowedSession();
 
   const { period, mode } = await searchParams;
-  const activeMode: Mode = mode === "monthly" ? "monthly" : "daily";
+  const activeMode: Mode =
+    mode === "monthly" ? "monthly" : mode === "weekly" ? "weekly" : "daily";
 
   return (
     <main className={styles.page}>
@@ -81,6 +98,9 @@ export default async function HotStocksPage({
               aria-current={m.key === activeMode ? "page" : undefined}
             >
               {m.label}
+              {m.sub !== undefined ? (
+                <span className={styles.tabSub}>{m.sub}</span>
+              ) : null}
             </Link>
           ))}
         </nav>
@@ -88,44 +108,72 @@ export default async function HotStocksPage({
         {activeMode === "monthly" ? (
           <MonthlyView activeKey={resolvePeriod(period)} />
         ) : (
-          <DailyView />
+          <FluctuationView variant={activeMode} />
         )}
       </div>
     </main>
   );
 }
 
-/** 당일 등락률 상위 30 — 장중 시세 갱신 잡이 저장한 스냅샷을 그대로 읽는다 (§17.10). */
-async function DailyView() {
-  let daily: Awaited<ReturnType<typeof getDailyFluctuation>>;
+/** 당일/주간 등락률 뷰 문구 — 표 구조는 동일하고 데이터 소스와 텍스트만 다르다 (§19) */
+const FLUCTUATION_VIEWS = {
+  daily: {
+    load: getDailyFluctuation,
+    label: "당일 등락률",
+    rangeInfo: "전체시장 상승률 상위",
+    notice:
+      "당일 등락률은 전일 종가 대비 현재가의 등락률(장중 실시간)이며, 전체시장 " +
+      "상승률 상위 30종목입니다. 시세 갱신 회차(평일 09:00~15:30 KST 10분 간격, " +
+      "15:40·18:15)마다 갱신됩니다. 한국투자증권 OpenAPI 순위 조회는 1회 상위 " +
+      "30건이 상한이라 그 이하 순위는 제공되지 않습니다.",
+  },
+  weekly: {
+    load: getWeeklyFluctuation,
+    label: "주간 등락률",
+    rangeInfo: "전체시장 최근 5거래일 상승률 상위",
+    notice:
+      "주간 등락률은 5거래일 전 종가 대비 현재가의 등락률(장중 실시간)입니다 — " +
+      "달력 기준 1주일이 아니라 거래일 기준 롤링이라, 공휴일이 낀 주에는 달력상 " +
+      "1주일과 다를 수 있습니다. 시세 갱신 회차(평일 09:00~15:30 KST 10분 간격, " +
+      "15:40·18:15)마다 갱신됩니다. 한국투자증권 OpenAPI 순위 조회는 1회 상위 " +
+      "30건이 상한이라 그 이하 순위는 제공되지 않습니다. 기준가는 수정주가가 " +
+      "아닌 5거래일 전 원주가 종가라, 감자·액면병합 직후 종목은 실제 수익률과 " +
+      "다른 등락률로 상위에 나타날 수 있습니다.",
+  },
+} as const;
+
+/** 당일/주간 등락률 상위 30 — 시세 갱신 잡이 저장한 스냅샷을 그대로 읽는다 (§17.10·§19). */
+async function FluctuationView({ variant }: { variant: "daily" | "weekly" }) {
+  const view = FLUCTUATION_VIEWS[variant];
+  let stored: StoredDailyFluctuation | null;
 
   try {
-    daily = await getDailyFluctuation();
+    stored = await view.load();
   } catch (error) {
-    console.error("[HotStocksPage] getDailyFluctuation failed:", error);
+    console.error(`[HotStocksPage] ${variant} fluctuation load failed:`, error);
     return (
       <p className={styles.errorBanner} role="alert">
-        당일 등락률 순위를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.
+        {view.label} 순위를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.
       </p>
     );
   }
 
-  if (daily === null || daily.items.length === 0) {
+  if (stored === null || stored.items.length === 0) {
     return (
       <p className={styles.emptyNotice}>
-        당일 등락률 순위가 아직 없습니다. 장중(평일 09:00~15:30 KST, 10분 간격)
+        {view.label} 순위가 아직 없습니다. 장중(평일 09:00~15:30 KST, 10분 간격)
         갱신 회차에 채워집니다.
       </p>
     );
   }
 
-  const stale = resolveStaleness(daily.fetchedAt);
+  const stale = resolveStaleness(stored.fetchedAt);
 
   return (
     <>
       <p className={styles.rangeInfo}>
-        전체시장 상승률 상위 <span className="numeric">30</span>종목 · 갱신:{" "}
-        {formatKstDateTime(daily.fetchedAt)}
+        {view.rangeInfo} <span className="numeric">30</span>종목 · 갱신:{" "}
+        {formatKstDateTime(stored.fetchedAt)}
       </p>
 
       {stale !== null ? (
@@ -146,7 +194,7 @@ async function DailyView() {
             </tr>
           </thead>
           <tbody>
-            {daily.items.map((item) => (
+            {stored.items.map((item) => (
               <tr key={item.code}>
                 <td className={`${styles.rankCell} numeric`}>{item.rank}</td>
                 <td
@@ -175,12 +223,7 @@ async function DailyView() {
       </div>
 
       <footer className={styles.footer}>
-        <p className={styles.notice}>
-          당일 등락률은 전일 종가 대비 현재가의 등락률(장중 실시간)이며, 전체시장
-          상승률 상위 30종목입니다. 시세 갱신 회차(평일 09:00~15:30 KST 10분 간격,
-          15:40·18:15)마다 갱신됩니다. 한국투자증권 OpenAPI 순위 조회는 1회 상위
-          30건이 상한이라 그 이하 순위는 제공되지 않습니다.
-        </p>
+        <p className={styles.notice}>{view.notice}</p>
       </footer>
     </>
   );

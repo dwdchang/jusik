@@ -67,6 +67,19 @@
   border-color: var(--color-primary);
 }
 
+/* 탭 보조 설명 — "주간 등락률"이 달력 주가 아니라 5거래일 롤링임을 탭에서 바로 표기 */
+.tabSub {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--text-micro);
+  font-weight: 400;
+  color: var(--color-text-tertiary);
+}
+
+.tabActive .tabSub {
+  color: inherit;
+}
+
 .tabActive {
   border-color: var(--color-primary);
   color: var(--color-primary);
