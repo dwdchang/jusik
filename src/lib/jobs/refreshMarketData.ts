@@ -206,6 +206,8 @@ async function refreshIndices(fetchedAt: string): Promise<{
 /**
  * 당일 등락률 순위 상위 30 → market:dailyFluctuation 저장 (§17.10).
  * 전체시장 상승률순 1콜, 부수 데이터라 실패해도 잡 전체 ok에 영향 없이 로그만 남긴다.
+ * KIS 응답 순서에 의존하지 않고 changeRate(전일 대비율) 내림차순으로 재정렬·재순위해
+ * 저장한다 — 화면 정렬 기준과 저장 순서가 항상 일치하도록 보장.
  */
 async function refreshDailyFluctuation(
   fetchedAt: string
@@ -216,12 +218,14 @@ async function refreshDailyFluctuation(
     const items: DailyFluctuationItem[] = rows
       .filter((row) => row.stck_shrn_iscd && row.hts_kor_isnm)
       .map((row) => ({
-        rank: parseNum(row.data_rank),
+        rank: 0,
         code: row.stck_shrn_iscd as string,
         name: row.hts_kor_isnm as string,
         price: parseNum(row.stck_prpr),
         changeRate: applyKisSign(parseNum(row.prdy_ctrt), row.prdy_vrss_sign),
-      }));
+      }))
+      .sort((a, b) => b.changeRate - a.changeRate)
+      .map((item, i) => ({ ...item, rank: i + 1 }));
 
     await setDailyFluctuation({ items, fetchedAt });
     return { ok: true, count: items.length };

@@ -192,6 +192,8 @@ export async function fetchKisMarketCapRanking(): Promise<
 /**
  * 국내주식 등락률 순위 (FHPST01700000) — 전체시장 상위 30건 (2026-07-14 실측).
  * sort "0" 상승률순 / "1" 하락률순. 1콜 30건이 상한이라 페이지네이션은 하지 않는다.
+ * fid_prc_cls_code는 비교 기준가 선택으로 "0"이면 저가대비(당일 저가 대비 수익률)
+ * 순위가 나온다 — 전일 종가 대비 등락률순은 "1"(종가대비)이어야 한다 (2026-07-17 실측).
  * 시세 갱신 잡이 회차당 1회 호출해 `market:dailyFluctuation`에 저장한다.
  */
 export async function fetchKisFluctuationRanking(
@@ -207,7 +209,7 @@ export async function fetchKisFluctuationRanking(
       fid_input_iscd: "0000",
       fid_rank_sort_cls_code: sort,
       fid_input_cnt_1: "0",
-      fid_prc_cls_code: "0",
+      fid_prc_cls_code: "1",
       fid_input_price_1: "",
       fid_input_price_2: "",
       fid_vol_cnt: "",
