@@ -104,6 +104,18 @@ export interface KisStockPriceOutput {
   w52_lwpr_vrss_prpr_ctrt?: string;
   /** 상장주식수 */
   lstn_stcn?: string;
+  /** 시장경보 구분 (00 없음 / 01 투자주의 / 02 투자경고 / 03 투자위험) — 시장경보 알림용 (§10.6 실측) */
+  mrkt_warn_cls_code?: string;
+  /** 투자주의환기 여부 (Y/N) */
+  invt_caful_yn?: string;
+  /** 관리종목 여부 */
+  mang_issu_cls_code?: string;
+  /** 단기과열 여부 (Y/N) */
+  short_over_yn?: string;
+  /** 거래정지 여부 (Y/N) */
+  temp_stop_yn?: string;
+  /** 정리매매 여부 (Y/N) */
+  sltr_yn?: string;
   [key: string]: unknown;
 }
 

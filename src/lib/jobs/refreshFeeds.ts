@@ -1,3 +1,7 @@
+import {
+  evaluateFeedAlerts,
+  type FeedAlertsReport,
+} from "@/lib/alerts/feedAlerts";
 import { fetchTradeStats } from "@/lib/api/customs/client";
 import {
   fetchDartCorpCodeMap,
@@ -120,6 +124,8 @@ export interface RefreshFeedsReport {
     latest?: string;
     error?: string;
   };
+  /** 공시·시장경보 알림 훅 결과 — 실패해도 잡 ok는 게이팅하지 않는다 (§10.6 3단계) */
+  alerts: { evaluated: boolean; reason?: string; summary?: FeedAlertsReport };
   /** 데이터 갱신 성공 여부 — false면 잡 엔드포인트가 500을 반환(QStash 재시도) */
   ok: boolean;
 }
@@ -205,13 +211,20 @@ async function ensureCorpCodeMap(symbolCodes: string[]): Promise<{
   };
 }
 
-/** 종목별 순차 공시 조회 → market:disclosures:{code} 저장 (종목별 실패 격리) */
+/**
+ * 종목별 순차 공시 조회 → market:disclosures:{code} 저장 (종목별 실패 격리).
+ * 방금 받아온 공시는 알림 훅이 Redis 재조회 없이 쓰도록 itemsBySymbol로도 돌려준다.
+ */
 async function refreshDisclosures(
   symbolCodes: string[],
   corpCodeMap: Record<string, string>,
   fetchedAt: string
-): Promise<RefreshFeedsReport["disclosures"]> {
+): Promise<{
+  results: RefreshFeedsReport["disclosures"];
+  itemsBySymbol: Map<string, DisclosureItem[]>;
+}> {
   const results: RefreshFeedsReport["disclosures"] = [];
+  const itemsBySymbol = new Map<string, DisclosureItem[]>();
   const bgnDe = kstYyyyMmDdDaysAgo(DISCLOSURE_WINDOW_DAYS);
   const endDe = kstYyyyMmDdDaysAgo(0);
 
@@ -239,6 +252,7 @@ async function refreshDisclosures(
       }));
 
       await setDisclosures({ symbolCode, items, fetchedAt });
+      itemsBySymbol.set(symbolCode, items);
       results.push({ symbolCode, ok: true, count: items.length });
     } catch (error) {
       console.error(`[job] disclosures refresh failed (${symbolCode}):`, error);
@@ -248,7 +262,7 @@ async function refreshDisclosures(
     await sleep(DART_CALL_INTERVAL_MS);
   }
 
-  return results;
+  return { results, itemsBySymbol };
 }
 
 /**
@@ -384,6 +398,7 @@ export async function refreshFeeds(
       disclosures: [],
       news: [],
       tradeStats,
+      alerts: { evaluated: false, reason: "no target symbols" },
       ok: true,
     };
   }
@@ -392,11 +407,30 @@ export async function refreshFeeds(
   const { map, report: corpCodeMap } = await ensureCorpCodeMap(symbolCodes);
 
   // 3. 종목별 최근 공시 조회 → market:disclosures:{code} (SET 덮어쓰기)
-  const disclosures = await refreshDisclosures(symbolCodes, map, startedAt);
+  const { results: disclosures, itemsBySymbol } = await refreshDisclosures(
+    symbolCodes,
+    map,
+    startedAt
+  );
 
   // 4. 종목별 최근 뉴스 조회(종목명 키워드) → market:news:{code} (SET 덮어쓰기)
   const codeNames = unionSymbolNames(holdingsByEmail, watchlistsByEmail);
   const news = await refreshNews(codeNames, startedAt);
+
+  // 5. 공시·시장경보 알림 훅 — 실패해도 로그만 남기고 잡 ok는 게이팅하지 않는다
+  let alerts: RefreshFeedsReport["alerts"];
+  try {
+    const summary = await evaluateFeedAlerts({
+      disclosuresBySymbol: itemsBySymbol,
+      holdingsByEmail,
+      watchlistsByEmail,
+      names: codeNames,
+    });
+    alerts = { evaluated: true, summary };
+  } catch (error) {
+    console.error("[job] feed alert evaluation failed:", error);
+    alerts = { evaluated: false, reason: errorMessage(error) };
+  }
 
   // tradeStats는 ok 게이팅에서 제외 — 월간 소스 실패로 뉴스·공시 파이프라인을
   // 반복 재실행시키지 않고, 가드가 다음 회차에 자연히 재시도한다 (§17-4).
@@ -414,6 +448,7 @@ export async function refreshFeeds(
     disclosures,
     news,
     tradeStats,
+    alerts,
     ok,
   };
 }
