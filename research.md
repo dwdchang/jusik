@@ -645,6 +645,12 @@ QStash 스케줄 (월 1회, 매월 5일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 5 *
 - 레이아웃 max-width 480px 모바일 우선 (`--layout-max-width`).
 - `params`/`searchParams`는 Promise — Next 16 규약대로 항상 `await` 후 사용. 검증 실패
   값은 redirect 또는 기본값 폴백(핫종목 `resolvePeriod` 참고).
+- 핫종목 표(`hot-stocks/page.module.css` `.table`)는 3개 탭이 같은 클래스를 공유하며
+  `table-layout: fixed` + `th:nth-child` 고정 폭 6열 34/108/48/74/84/84px(합 432px ≤
+  min-width 440px)로 **탭·데이터와 무관하게 열 경계 동일**(plan.md §21 — auto 시절엔
+  행 내용 따라 배분돼 탭 간 미세하게 어긋났음). 종목명은 `.nameText`
+  `max-width: 88px`+ellipsis, 종목코드 값은 `.table .codeCell` 10px 직접 지정(토큰
+  없음), td 값은 12px 직접 지정.
 
 ---
 
