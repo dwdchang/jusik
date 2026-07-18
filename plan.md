@@ -2520,6 +2520,25 @@ interface WatchItem {
 - **구현**: `src/app/hot-stocks/page.module.css`만 수정(`<colgroup>` 불필요 — `th:nth-child` 폭 지정으로 page.tsx 무변경). ① `.table`에 `table-layout: fixed` + th 고정 폭 6열 34/108/48/74/84/84px(box-sizing: border-box라 padding 10px 포함, 합 432px ≤ min-width 440px — 잔여 폭은 비례 배분이라 폼 불변) ② `.table .codeCell` 11px→10px 직접 지정 ③ `.nameText` max-width 96→88px(한글 약 7자).
 - **검증**: lint·tsc PASS. **헤드리스 Chrome 목업 실측**(§16 4차와 동일 절차, 480px 컨테이너): 극단 대비 두 표(짧은 이름·1,234원·기준가 "—" vs 최장 이름·+687.50%·1,034,000원)의 6열 렌더 폭이 **완전 일치**(35.09/111.50/49.55/76.39/86.72/86.75), 표 폭 446px(가로 스크롤 없음)·셀 넘침 0건. 실제 화면 시각 확인은 사용자 확인 대기.
 
+### Phase 22 — 핫종목 갱신 시각 표기 월간 방식으로 통일 (2026-07-19)
+
+- **요청 근거**: 사용자 지적 — 월간 탭은 "갱신: …"이 구간 탭 위 별도 줄인데, 당일/주간 탭은 기준 문구 한 줄에 "… · 갱신: …"까지 합쳐져 있어 탭 간 표기가 다름. 월간 방식 통일 또는 추천 요청.
+- **결정 — 월간 방식(갱신 별도 줄) 채택**: ① 갱신 시각은 순위·기준과 성격이 다른 메타 정보라 분리가 읽기 좋고 ② 당일/주간의 합쳐진 한 줄은 길어 480px에서 줄바꿈되며 ③ 월간의 갱신 시각은 구간 탭 4개 전체에 걸치는 값이라 역방향(월간을 rangeInfo로 합침) 통일이 불가.
+- **구현**: `FluctuationView`에서 `rangeInfo`의 "· 갱신: {시각}"을 분리해 `lastRefresh` 줄(월간과 같은 클래스)로 rangeInfo 위에 표시. CSS는 `.lastRefresh + .rangeInfo { margin-top: var(--space-8) }`만 추가 — 당일/주간은 갱신 줄 바로 아래 기준 문구가 와서 간격이 필요하고, 월간(갱신 줄 다음이 구간 탭)은 인접 선택자에 안 걸려 무영향.
+- **검증**: lint·tsc PASS. 실제 화면 시각 확인은 사용자 확인 대기.
+
+### Phase 23 — 관심종목 편집 폼 숨김 + `?edit=1` 토글 (2026-07-19)
+
+- **요청 근거**: 사용자 지시 — `/watchlist` 각 종목 행에 항상 노출되던 날짜란·"기준일 변경"·"삭제" 버튼을 숨기고, 보유종목 상세(`/holdings/[symbolCode]`)의 조그만 "수정" 버튼처럼 토글로 전환.
+- **구현**: 보유종목 상세의 `?edit=1` 서버 사이드 토글 패턴 이식(클라이언트 상태 없음, 서버 컴포넌트 유지). ① `watchlist/page.tsx` — `searchParams.edit` 읽어 `isEditMode` 판정, 섹션 제목을 `.sectionHead`(flex space-between)로 감싸고 우측에 "수정"(`?edit=1`)/"취소"(쿼리 제거) `editToggle` 링크(목록 비면 미표시), 기준일 변경·삭제 폼 2개는 `isEditMode`일 때만 렌더("상세 보기 →"는 상시 유지), 추가 폼 `<details open>` 조건에 `!isEditMode` 추가(편집 오류 시 추가 폼이 엉뚱하게 펼쳐지던 동작 방지) ② `watchlist/actions.ts` — `fail()` 쿼리 결합을 `?`/`&` 분기로 수정하고 update/delete의 오류 basePath를 `/watchlist?edit=1`로 전달해 검증 오류 시 편집 모드 유지(성공 redirect `/watchlist`는 그대로 → 저장·삭제 시 편집 모드 자동 종료 — 보유종목과 동일 UX) ③ `page.module.css` — `.sectionHead`·`.editToggle`을 보유종목 상세 CSS에서 이식, `.sectionTitle`의 margin-bottom은 `.sectionHead`로 이동.
+- **검증**: lint·tsc PASS. 실제 화면 시각 확인은 사용자 확인 대기.
+
+### Phase 24 — 홈 관심종목 카드 평균 → 종목별 3행 표시 (2026-07-19)
+
+- **요청 근거**: 사용자 지시 — 홈 관심종목 카드의 평균 수익률 표시를 없애고 관심종목 3개의 등락률을 각각 조회되게. 표시 기준은 "등록일 기준 수익률 + 괄호로 전일 대비 등락률" 확정, 3개 초과 시 수익률 상위 3개(핫종목 카드 방식).
+- **구현**: ① `watchlist/summary.ts` — `WatchlistCardSummary`를 `{ count, top3: WatchlistCardEntry[] }`로 개편(`avgReturnRate`·`best` 제거 — 소비처는 홈 카드뿐). 항목별 `returnRate`(등록 기준일 종가 대비, `computeWatchReturnRate` 재사용)·`dailyChangeRate`(스냅샷 `changeRate` 그대로 — 추가 API 호출 없음)를 계산해 수익률 내림차순 상위 3개(null은 `-Infinity`로 뒤 순위) ② **신규** `components/indices/WatchlistCard`(.tsx+.module.css) — HotStocksCard 폼(3행 리스트)을 본떠 행마다 `종목명 +12.34% (+1.20%)`, 수익률·괄호 등락률 각각 등락 색상, 기준가 확정 전은 「-」(tertiary), staleness 배지는 SummaryCard와 동일 마크업(`STALENESS_LABELS`를 SummaryCard에서 export해 재사용, CSS는 composes). footnote "등록 기준일 대비 · 괄호는 전일 대비"(4종목 이상이면 "N종목 중 수익률 상위 3 ·" 접두). 관심종목 없음/조회 실패(summary null)는 같은 카드 안 placeholder "종목을 등록해보세요" ③ `IndexDashboard` — 관심종목 자리의 SummaryCard 분기를 `<WatchlistCard summary staleness>`로 교체.
+- **검증**: lint·tsc PASS. 실제 화면 시각 확인은 사용자 확인 대기.
+
 ---
 
 ## 7. PR 분리 권장 (선택)
