@@ -1653,6 +1653,41 @@ interface StockPeak {
 
 > **⚠️ Phase 11에 의한 대체 공지 (2026-07-10):** 본 Phase의 **호출 방식(맥미니 crontab + `/api/cron/check-alerts` + no-store 실시간 조회)은 Phase 11로 전면 대체**된다. Web Push 기반(PWA·VAPID·구독 저장), 신고가 추적, 알림 조건 3종, 쿨다운 정책 등 나머지 설계는 그대로 유효하며 Phase 11 갱신 잡 안에서 실행된다(§11.8.3 참고).
 
+#### 10.6 재검증·3단계 재편 및 1단계 구현 (2026-07-18)
+
+**설계 재검증 결과 (Phase 11~18 이후 기준):** §10.2~10.3(Web Push·StockPeak·조건 3종·2시간 쿨다운·Redis 키 형태)은 유효. §10.4(check-alerts 라우트)·§10.5 그룹 4~5(cron auth 추출·맥미니 문서)는 폐기 확정. §10.5 그룹 3의 "KIS 응답 확장"은 이미 구현됨 — `StoredStockSnapshot.changeRate`/`marketName`이 Phase 11부터 저장 중(잔여 검증은 `marketName` 실값→코스피/코스닥 매핑뿐). 신규 반영: ① 개인 키(`push:subs`·`alerts:{email}:peaks`)는 Phase 12 `secureJson` 암호화 적용(쿨다운 키는 TTL 기반 평문 유지) ② VAPID 공개키는 `NEXT_PUBLIC_` 금지 규칙에 따라 서버 env `VAPID_PUBLIC_KEY`를 Server Component가 읽어 클라이언트에 prop으로 전달 ③ proxy matcher에 PWA 자산(`sw.js`·`manifest.webmanifest`·`icons/`·`apple-icon.png`) 예외 추가.
+
+**알림 범위 확정 (사용자 승인):** 시세 알림 = 기존 조건 3종(보유종목 한정). 공시 알림 = 4개 유형만 제한 허용 — 상장폐지·회계감사 관련(감사의견 등)·관리종목/투자주의 지정·배당금 관련. 뉴스·등록가 승격·수출입 알림은 제외.
+
+**DART 필터링 실측 검증 (2026-07-18):** `list.json` 응답 행에 `pblntf_ty` **없음**(요청 필터 전용, 응답 필드는 corp_code/corp_name/stock_code/corp_cls/report_nm/rcept_no/flr_nm/rcept_dt/rm) → 필터링은 저장된 `DisclosureItem.reportNm` 키워드 매칭으로 수행(추가 API 호출 불필요). 최근 60일 + 사업보고서 시즌(2026-03~05) 총 3만 건 실스캔 결과: 배당="배당"(현금ㆍ현물배당결정 등), 상장폐지="상장폐지"+"상장적격성"(기타시장안내 괄호 주석 포함 — 주석은 report_nm 안에 포함됨), 관리종목="관리종목"(내부결산시점관리종목지정…·주권매매거래정지(관리종목지정사유발생) 등), 감사="감사보고서"+"감사의견"+"회계처리"로 전부 포착 확인. **한계:** KRX 시장경보(투자주의/투자경고/투자위험 지정)는 DART 미공시라 포착 불가 — DART로 잡히는 것은 투자주의환기종목·관리종목 계열("환기" 키워드 포함)뿐.
+
+**3단계 재편:** 1단계 = PWA 기반+구독 등록(발송 인프라·테스트 발송까지) / 2단계 = 시세 알림(StockPeak·조건 3종·쿨다운·`evaluateAlertsHook` 실구현, 지수 등락률은 훅 내 `market:detail:{kospi|kosdaq}` MGET) + 종목별 알림 on/off / 3단계 = 공시 알림(`refreshFeeds`에 별도 훅 — 시세 잡은 거래일 가드로 주말 공시를 놓치므로 feeds 잡(매시 08~22, 주말 포함)에 연동, 종목별 마지막 통지 `rceptNo` 비교로 중복 차단·쿨다운 불필요). 발송 유틸(`lib/push/send.ts`)은 두 잡 공유.
+
+**1단계 구현 완료 (2026-07-18):**
+- PWA: `src/app/manifest.ts`(standalone·아이콘 3종), `public/icons/icon-192/512.png`+`src/app/apple-icon.png`(Node 스크립트 자체 생성 — 브랜드 블루+상승 차트 라인, maskable 안전영역 준수), `public/sw.js`(push·notificationclick 리스너, 오프라인 캐싱 없음, 페이로드 계약 `{title, body, url?, tag?}`), `next.config.ts` `/sw.js` `Cache-Control: no-cache` 헤더, `src/proxy.ts` matcher PWA 자산 예외.
+- 발송 인프라: `web-push`+`@types/web-push` 설치, VAPID 키 생성·`.env.local` 등록(`VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/`VAPID_SUBJECT` — **Vercel env 등록은 사용자 작업 필요**), `lib/push/store.ts`(`push:subs:{email}` — `secureJson` 암호화, endpoint 기준 dedup/제거/prune), `lib/push/send.ts`(`sendPushToEmail` — 구독별 실패 격리, 410/404 자동 정리, VAPID env 검증).
+- UI: `/alerts` 페이지(`ensureAllowedSession` 가드, VAPID 공개키 prop 전달, 등록 기기 수 표시) + `components/alerts/PushSubscriptionManager.tsx`(`'use client'` — 지원 감지, iOS 미설치 시 홈 화면 추가 안내, 구독/해지/테스트 발송) + Server Actions(`app/alerts/actions.ts` — 구독 입력 형식 검증, `requireEmail` 가드). 햄버거 사이드바에 "알림 설정" 메뉴 추가(전체 허용 사용자 노출).
+- 검증: lint·tsc·build PASS(26 라우트, `/manifest.webmanifest`·`/apple-icon.png` 정적 생성). `next start` 스모크 — 미인증으로 `/manifest.webmanifest`·`/sw.js`·`/icons/*`·`/apple-icon.png` 전부 200(307 안 됨), `/alerts`는 307→/login, `sw.js` no-cache 헤더 확인. 실기기(iOS 홈 화면 설치)·실발송 검증은 배포 후 수행.
+
+**2단계 구현 완료 (2026-07-18):**
+- `lib/alerts/store.ts` — `alerts:{email}:peaks`(`StockPeakMap`, `secureJson` 암호화)·`alerts:{email}:muted`(음소거 종목코드 배열, 암호화 — 시세·공시 알림 공유 예정)·`alerts:{email}:cooldown:{code}`(발송 시각 ISO, `EX 7200` 평문). 매도한 종목의 신고가는 저장 시 보유종목만 남겨 자연 정리.
+- `lib/alerts/evaluate.ts` — 순수 판정부 `evaluateHolding`(신고가 갱신 + 조건 3종 OR: 매입가 대비 ≤−10%(totalCost 모델)/신고가 대비 ≥10% 하락/소속 시장 지수 ≤−2% AND 종목 ≤−12%) + 파이프라인 `evaluatePriceAlerts`(지수는 `market:detail:{kospi|kosdaq}` MGET 1회, 이메일 단위 실패 격리, 음소거→쿨다운 순 체크, **발송 성공(sent>0) 시에만 쿨다운 SET** — 전송 실패면 다음 회차 재시도). `marketIndexOf`: `rprs_mrkt_kor_name`에 KOSDAQ/코스닥 포함 시 코스닥, 그 외(null 포함) 코스피 폴백 — 실측값 "KOSPI"/"KOSPI200" 확인.
+- `refreshMarketData.ts` — `evaluateAlertsHook` no-op을 `evaluatePriceAlerts` 호출로 교체, 리포트 `alerts.summary`(evaluated/sent/cooldownSkipped/mutedSkipped) 추가. 거래일 가드·실패 시 로그+200은 기존 그대로.
+- 종목별 on/off UI — `/alerts`에 "종목별 알림" 카드(`StockAlertToggles` Client 컴포넌트, 보유종목 목록+토글) + `setStockAlertEnabledAction`(6자리 형식 검증 + **내 보유종목만 허용**).
+- 검증: lint·tsc·build PASS. 판정 로직 esbuild 번들 실측 10 시나리오 전부 PASS(최초 신고가 초기화·조건 1/2/3 및 −10% 경계·신고가 경신 시 미발송·코스닥 매핑·지수 결측 시 조건 3 skip·복수 사유). 실발송·쿨다운 동작은 배포 후 거래일 잡 회차에서 확인.
+
+**공시 알림 유형 확장 실측 (2026-07-18, 3단계 반영 예정 — 최근 60일 전체 상장사 21,135건·distinct 보고서명 1,148종 전수 스캔):**
+- **무상증자** = "무상증자" 키워드로 전부 포착 — `주요사항보고서(무상증자결정)`, `주요사항보고서(유무상증자결정)`(부분 문자열로 매칭됨), `권리락 (무상증자)` 등.
+- **유상증자** = "유상증자"+"일반공모증자" 2키워드 — `주요사항보고서(유상증자결정)` 계열, `유상증자1차발행가액결정`·`최종발행가액확정`, `증권발행결과(자율공시) (제3자배정 유상증자)` 등. 단독 예외 `증권발행결과(자율공시) (일반공모증자-소액공모)` 1건 때문에 "일반공모증자" 보조 키워드 필요. 한계: 공모 유상증자의 `증권신고서(지분증권)`은 키워드 미포함이지만 선행하는 `유상증자결정` 주요사항보고서가 항상 잡히므로 이벤트 누락은 없음.
+- **회사채 발행** = "사채"+"채무증권" 2키워드 — CB/BW/EB(`전환사채권발행결정` 등)와 `사채원리금미지급발생`은 "사채", 일반 공모 회사채(`증권신고서(채무증권)`)·신종자본증권(`자본으로인정되는채무증권발행결정`)은 "채무증권"으로 포착. **주의(노이즈):** `일괄신고추가서류(파생결합사채…)`(60일 660건+)는 증권사 ELB/DLB 상품 발행이라 "파생결합" 포함 시 제외 권장. 사모 일반회사채는 공시 의무 자체가 없어 원천적으로 포착 불가.
+- **대출(채무보증 등)** = "채무보증"+"담보제공"+"대여"+"차입"+"대출" 5키워드 — `타인에대한채무보증결정`, `타인에대한담보제공결정`, `최대주주변경을수반하는주식담보제공계약체결`, `금전대여결정`, `단기차입금증가결정`, `특수관계인에대한자금대여/담보제공`, `대출원리금연체사실발생` 등 전부 포착. 60일 내 오탐(무관 보고서명 매칭) 0건.
+
+**KRX 시장경보(투자주의·투자경고·투자위험) 데이터 소스 조사 (2026-07-18):**
+- KRX 공식 Open API(openapi.krx.co.kr) — 지수/주식/채권 등 6개 카테고리 시세·기본정보뿐, **시장경보 서비스 없음**. data.go.kr 금융위 API 102종에도 시장경보 지정 데이터셋 없음. KIND·KRX 정보데이터시스템은 웹 화면/CSV 다운로드만(공식 API 아님).
+- **대안 실측 확인:** 이미 저장 중인 KIS 현재가 스냅샷 `raw`에 `mrkt_warn_cls_code`(00 없음/01 투자주의/02 투자경고/03 투자위험)·`invt_caful_yn`(투자주의환기)·`mang_issu_cls_code`(관리종목)·`short_over_yn`(단기과열)·`temp_stop_yn`(거래정지)·`sltr_yn`(정리매매) 필드 존재(프로덕션 Redis 9종목 실측). **보유·관심종목 한정이면 신규 API 없이 회차 간 상태 변화 감지로 시장경보 알림 구현 가능** — 3단계 범위 결정 시 반영.
+
+**남은 작업:** 3단계(공시 알림 — 기존 4유형 + 확장 3유형(증자·회사채·대출) 키워드 위 실측대로, 착수 승인 대기), iOS 실기기 수신 확인, 배포 후 거래일 잡 회차에서 시세 알림 실발송 확인.
+
 ---
 
 ### Phase 11 — 데이터 갱신 구조 전면 재설계 (Pull → Scheduled Push)

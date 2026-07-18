@@ -54,6 +54,7 @@
 | `DART_API_KEY` | DART OpenAPI 인증키 (공시, Phase 17-1) | `lib/api/dart/client.ts` |
 | `NAVER_CLIENT_ID`·`NAVER_CLIENT_SECRET` | 네이버 검색 API 인증키 (뉴스, Phase 17-3) | `lib/api/naver/client.ts` |
 | `DATA_GO_KR_SERVICE_KEY` | 관세청 수출입총괄(GW) API 인증키 (수출입, Phase 17-4) | `lib/api/customs/client.ts` |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` | 웹 푸시 VAPID 키 (Phase 10) — 공개키도 서버 env로 두고 Server Component가 prop으로 전달 | `lib/push/send.ts`, `app/alerts/page.tsx` |
 
 ---
 
@@ -79,6 +80,10 @@
 | `hot-stocks/page.tsx` | 핫종목 — 서버 모드 탭 `[당일 등락률(기본) \| 월간 핫종목]`(`?mode=monthly`으로 월간). 당일: `market:dailyFluctuation` 상위 30 테이블(종목코드는 종목명 뒤 인라인)+`resolveStaleness` 배지. 월간: 구간 수익률 TOP 100(`?period=1m\|3m\|6m\|12m`, 시장 위첨자 ᴷ/ᴰ). 두 뷰는 async 서버 서브컴포넌트(`DailyView`/`MonthlyView`) |
 | `feeds/page.tsx` | 뉴스·공시 상세 (Phase 17-2b) — `ensureAllowedSession` + `getDisclosureBoard`·`getNewsBoard`·`getTradeStatsView`(17-4) + `FeedTabsClient`(뉴스/공시/수출입 탭+게시판+아코디언). 홈 "뉴스·공시" 요약 카드에서 이동 |
 | `dlq/page.tsx` | QStash DLQ 읽기 전용 목록 (Phase 18) — `ensureAllowedSession` + `listDlqMessages(cursor)` 직접 호출(Redis 아닌 QStash API — §4.3 예외), `?cursor=` 페이지네이션. 햄버거 사이드바 "DLQ 확인"에서 진입, 재발송·삭제 없음 |
+| `alerts/page.tsx` | 알림 설정 (Phase 10 1·2단계) — `ensureAllowedSession` + `VAPID_PUBLIC_KEY`를 `PushSubscriptionManager`에 prop 전달 + 보유종목별 알림 on/off(`StockAlertToggles`) + 등록 기기 수 표시. 햄버거 사이드바 "알림 설정"에서 진입 |
+| `alerts/actions.ts` | Server Actions: 푸시 구독 등록/해지(입력 형식 검증 — endpoint https·keys 필수)·테스트 발송·종목별 알림 on/off(`setStockAlertEnabledAction` — 보유종목만 허용, `alerts:{email}:muted` 갱신) |
+| `manifest.ts` | PWA 매니페스트(`/manifest.webmanifest`, Phase 10) — standalone·아이콘 192/512+maskable. iOS 푸시의 전제 조건 |
+| `apple-icon.png` | iOS 홈 화면 아이콘 (파일 컨벤션 — link 태그 자동 생성) |
 | `api/auth/[...nextauth]/route.ts` | Auth.js 핸들러 re-export (3줄) |
 | `api/jobs/refresh-market-data/route.ts` | 시세 갱신 잡 엔드포인트 (POST, §4.1) |
 | `api/jobs/refresh-hot-stocks/route.ts` | 핫종목 갱신 잡 엔드포인트 (POST, §4.2) |
@@ -134,6 +139,10 @@
 | `jobs/collectTargets.ts` | 잡 공용 수집 대상 조회 — `collectHoldings`/`collectWatchlists`/`unionSymbolCodes`/`errorMessage` (시세·피드 잡 공유, Phase 17-1에서 refreshMarketData 로컬 함수를 추출) |
 | `jobs/verifyJobRequest.ts` | 잡 공용 인증 — QStash 서명 → CRON_SECRET Bearer 폴백(timingSafeEqual) |
 | `qstash/dlq.ts` | QStash DLQ 읽기 전용 조회(Phase 18) — `QSTASH_TOKEN`(서버 전용)으로 `Client.dlq.listMessages` 호출, 화면용 뷰 모델(`DlqMessageView`) 매핑. `/dlq` 페이지 전용 |
+| `alerts/store.ts` | 시세 알림 store (Phase 10 2단계) — `alerts:{email}:peaks`(신고가, 암호화)·`:muted`(음소거 종목, 암호화)·`:cooldown:{code}`(EX 7200 평문) |
+| `alerts/evaluate.ts` | 시세 알림 판정·발송 (Phase 10 2단계) — `evaluatePriceAlerts`: 지수 MGET→종목별 조건 3종(매입가 −10%/신고가 −10%/지수 −2%+종목 −12%) OR 판정→발송·쿨다운. 순수 판정부 `evaluateHolding`·시장 매핑 `marketIndexOf` 분리 |
+| `push/store.ts` | 웹 푸시 구독 store (Phase 10) — `push:subs:{email}` `secureJson` 암호화(endpoint가 곧 발송 권한), endpoint 기준 dedup 등록/해지/`prunePushSubscriptions`(발송 경로 전용) |
+| `push/send.ts` | 웹 푸시 발송 공용 유틸 (Phase 10) — `sendPushToEmail(email, payload)`: VAPID env 검증, 구독별 실패 격리, 410/404 자동 정리. 페이로드 계약 `{title, body, url?, tag?}`는 `public/sw.js`와 동기화 필수. 잡 훅(2·3단계)·테스트 발송 액션 공유 |
 | `watchlist/store.ts` | 관심종목 store — 암호화 (신규 키라 평문 하위호환 없음) |
 | `watchlist/summary.ts` | `computeWatchReturnRate`(순수 함수) + 홈 카드 요약 |
 | `theme.ts` | `THEME_STORAGE_KEY`·`Theme` 타입만 |
@@ -156,7 +165,9 @@
 | `indices/FeedSummaryCard` | Server | 홈 "뉴스·공시" 그리드 요약 카드 (Phase 17-2b/17-3) — 공시·뉴스 당일 건수 2줄(수출입은 월간 데이터라 제외). 골격은 SummaryCard `composes`, 카드 전체가 `/feeds` 링크. `getTodayFeedCounts` 결과를 prop으로 받음 |
 | `nav/NavIconLink` | Server | 헤더 이동 아이콘 버튼(home/back) — 36px 아이콘 버튼 통일 규격 |
 | `nav/HeaderMenu` | Server | 햄버거 메뉴 조립 전용(Phase 18) — `MenuSidebar`에 `ThemeToggle`·`SignOutButton`을 슬롯으로 주입 (서버 액션 폼은 Client 안에서 정의 불가) |
-| `nav/MenuSidebar` | Client | 햄버거 버튼 + 우측 슬라이드 사이드바(Phase 18) — 열림 상태·오버레이·ESC 닫기, 화면 모드(위)/DLQ 확인 링크(중간)/로그아웃(아래) |
+| `nav/MenuSidebar` | Client | 햄버거 버튼 + 우측 슬라이드 사이드바(Phase 18) — 열림 상태·오버레이·ESC 닫기, 화면 모드(위)/알림 설정(Phase 10)·DLQ 확인 링크(중간)/로그아웃(아래) |
+| `alerts/PushSubscriptionManager` | Client | 이 기기의 푸시 구독 on/off + 테스트 발송 (Phase 10) — 지원 감지(iOS 미설치 시 홈 화면 추가 안내), `sw.js` 등록→`pushManager.subscribe`→Server Action 저장. VAPID 공개키는 prop으로 수신 |
+| `alerts/StockAlertToggles` | Client | 보유종목별 알림 on/off (Phase 10 2단계) — 서버가 내려준 목록·초기 상태를 로컬 상태로 토글, `setStockAlertEnabledAction` 저장. 끄면 시세·공시 알림 모두 음소거 |
 | `theme/ThemeToggle` | Client | `useSyncExternalStore`로 `data-theme` 구독·토글 (Phase 18부터 사이드바 안에 배치) |
 | `auth/SignOutButton` | Server | Server Action `signOut` 폼 — Phase 18에서 아이콘+텍스트 행 스타일(사이드바 하단용) |
 
@@ -164,13 +175,17 @@
 
 - `src/types/indices.ts` `holdings.ts` `watchlist.ts` — 도메인 타입 (§6.3).
 - `src/proxy.ts` — **미들웨어에 해당** (Next 16에서 파일명 proxy). 세션 쿠키만 낙관적
-  검사, 허용 이메일 판정은 page 레벨. matcher가 `api/auth`·잡 라우트 3종·정적 자산 제외.
+  검사, 허용 이메일 판정은 page 레벨. matcher가 `api/auth`·`api/jobs/` 접두사·정적 자산·
+  PWA 자산(`sw.js`·`manifest.webmanifest`·`icons/`·`apple-icon.png`, Phase 10) 제외.
   → **잡 라우트는 미들웨어 미보호이며 `verifyJobRequest`가 유일한 인증** — 새 잡 라우트를
   신설하면 이 matcher 제외 등록이 세트로 필요하다 (§8.13).
+- `public/sw.js` — 서비스 워커 (Phase 10) — push·notificationclick 리스너만(오프라인
+  캐싱 없음). 페이로드 계약은 `lib/push/send.ts`와 동기화 필수. `next.config.ts` 헤더로
+  `Cache-Control: no-cache` (수정이 기기에 즉시 전파되도록).
 - `src/styles/tokens.css` — 디자인 토큰(색·타이포·간격·radius). `html[data-theme="dark"]`
   오버라이드. 등락색: rise `#f04452` / fall `#3182f6` (한국식 빨강=상승).
 - `src/app/globals.css` — `.numeric` (`tabular-nums`) 등 전역. 숫자 UI는 항상 `.numeric` 병기.
-- `next.config.ts` — `staticPageGenerationTimeout: 300`만.
+- `next.config.ts` — `staticPageGenerationTimeout: 300` + `/sw.js` no-cache 헤더(Phase 10).
 
 ---
 
@@ -219,7 +234,8 @@ QStash 스케줄 4개 (평일 09:00~15:30 10분 간격 / 15:40 / 18:15 KST)
       7. refreshPortfolios: 이메일별 평가 → holdings:{email}:history 오늘 upsert
          (스냅샷 하나라도 없으면 과소 집계 방지 위해 그 사용자 skip)
       8. tradingDay 판정(KOSPI basDt == KST 오늘) → 알림 훅 evaluateAlertsHook
-         (Phase 10 예정, 현재 no-op. 휴장일 skip, 실패해도 200)
+         → evaluatePriceAlerts(lib/alerts/evaluate.ts): 조건 3종 판정→신고가
+         갱신→음소거·쿨다운 체크→발송→쿨다운 SET (휴장일 skip, 실패해도 200)
       9. 전부 성공 시 market:lastRefreshAt 기록
   → 응답: report (데이터 갱신 실패 시 500 → QStash 재시도)
 ```
@@ -343,9 +359,13 @@ QStash 스케줄 (월 1회, 매월 5일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 5 *
 | `market:disclosures:{code}` | `StoredDisclosures` (최근 90일 공시 최대 10건+fetchedAt) | ✕ | 피드 잡 | 홈 통합 피드(`homeFeed` MGET) |
 | `market:news:{code}` | `StoredNews` (최신 뉴스 최대 10건+fetchedAt) | ✕ | 피드 잡 | 홈 통합 피드(`homeFeed` MGET) |
 | `dart:corpCodeMap` | `StoredCorpCodeMap` (종목코드→DART 고유번호, 30일 주기) | ✕ | 피드 잡 | 피드 잡 |
+| `push:subs:{email}` | `StoredPushSubscription[]` (기기별 구독, Phase 10) | **○** | 구독 Server Action + 발송 경로(410/404 prune) | `/alerts` 화면·발송 유틸 |
+| `alerts:{email}:peaks` | `StockPeakMap` (종목별 신고가+갱신 시점 지수) | **○** | 시세 잡(알림 훅 — 보유종목만 유지) | 알림 훅 |
+| `alerts:{email}:muted` | `string[]` (알림 끈 종목코드) | **○** | `/alerts` 종목별 토글 Server Action | 알림 훅·`/alerts` 화면 |
+| `alerts:{email}:cooldown:{code}` | 발송 시각 ISO (EX 7200 — 2시간 재알림 금지) | ✕ | 알림 훅 | 알림 훅 |
 
 - 이메일 키는 항상 `normalizeEmail`(trim+lowercase) 후 사용.
-- 공용 시세는 비암호화(사용자 무관 공개 데이터), 개인 데이터 3키만 `enc:v1:` 암호화.
+- 공용 시세는 비암호화(사용자 무관 공개 데이터), 개인 데이터 6키(holdings·history·watchlist·push:subs·alerts peaks·muted)만 `enc:v1:` 암호화 — 쿨다운 키는 TTL 기반 평문.
 - `holdings:{email}`은 레거시 평문 배열·`avgPrice` 모델 읽기 하위호환이 있고, 다음
   저장 시 자연 마이그레이션된다. watchlist는 신규 키라 하위호환 없음.
 
@@ -577,8 +597,13 @@ QStash 스케줄 (월 1회, 매월 5일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 5 *
 - 포트폴리오 히스토리 upsert는 스냅샷이 하나라도 없으면 그 사용자 전체 skip (과소 집계 방지).
 - 홈 `getDashboardData`는 필수 4종(kospi·kosdaq·usdkrw·us10y) 없으면 throw, **oil만
   null 허용** (Phase 15 추가 키 — 새 지표 추가 시 같은 전략 참고).
-- 알림(Web Push)은 **Phase 10 미구현** — `evaluateAlertsHook`이 연결 지점(no-op).
-  `StoredStockSnapshot.changeRate`/`marketName`은 이 알림 조건용으로 미리 저장 중.
+- 알림(Web Push)은 **Phase 10 2단계(시세 알림)까지 구현** — PWA·구독 등록·발송
+  유틸(`lib/push/*`)·`/alerts` 화면(1단계) + 시세 알림 조건 3종·신고가 추적·2시간
+  쿨다운·종목별 on/off(2단계, `lib/alerts/*`)가 동작한다. `evaluateAlertsHook`은
+  `evaluatePriceAlerts` 실구현으로 연결됨(거래일 가드는 호출 측). 공시 알림
+  4유형(상장폐지·감사·관리종목·배당 — `reportNm` 키워드 매칭)은 `refreshFeeds` 훅으로
+  3단계 예정 (plan.md §10.6). 시세 알림은 보유종목 한정이며 `alerts:{email}:muted`
+  음소거 목록은 3단계 공시 알림도 공유할 예정.
 
 ### 9.6 프런트 규칙
 
