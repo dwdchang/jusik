@@ -72,10 +72,10 @@
 | `indices/trade/[yyyymm]/page.tsx` | 수출입 상세(Phase 17-5) — 월 합계 3지표 + 품목별(국가 무관, HS 4단위 상위 15+기타) + 국가별(상위 8+기타, 클릭 시 품목 팝업). `getTradeDetailView` 1회. `/feeds` 수출입 탭의 월 링크로 진입 |
 | `indices/kospi-volatility/page.tsx` | 변동성 상세 — 월별 평균 막대 차트 |
 | `holdings/page.tsx` | 보유종목 목록·요약·연초 이후 추이·종목 추가 폼(`<details>` 토글, 종목명 검색 `<StockSearchInput>`) |
-| `holdings/[symbolCode]/page.tsx` | 보유종목 상세 — 평가 요약·수정/삭제(`?edit=1`)·2년 추이·정보 블록 4종 |
+| `holdings/[symbolCode]/page.tsx` | 보유종목 상세 — 평가 요약·수정/삭제(`?edit=1`)·2년 추이·정보 블록 4종 + 인라인 알림 토글(`AlertToggleButton`) |
 | `holdings/actions.ts` | Server Actions: add/update/delete. **형식 검증만** 하고 KIS 호출 없음 (§6.4) |
 | `watchlist/page.tsx` | 관심종목 목록 — 등록 기준일 종가 대비 수익률, 기준일 변경/삭제. 추가 폼은 종목명 검색 `<StockSearchInput>` |
-| `watchlist/[symbolCode]/page.tsx` | 관심종목 상세 — 등록일 이후 추이·정보 블록 (보유종목 상세와 구조 동일) |
+| `watchlist/[symbolCode]/page.tsx` | 관심종목 상세 — 등록일 이후 추이·정보 블록 + 인라인 알림 토글 (보유종목 상세와 구조 동일) |
 | `watchlist/actions.ts` | Server Actions: add/update(기준일 변경 시 기준가 null 리셋)/delete |
 | `hot-stocks/page.tsx` | 핫종목 — 서버 모드 탭 `[당일 등락률(기본) \| 월간 핫종목]`(`?mode=monthly`으로 월간). 당일: `market:dailyFluctuation` 상위 30 테이블(종목코드는 종목명 뒤 인라인)+`resolveStaleness` 배지. 월간: 구간 수익률 TOP 100(`?period=1m\|3m\|6m\|12m`, 시장 위첨자 ᴷ/ᴰ). 두 뷰는 async 서버 서브컴포넌트(`DailyView`/`MonthlyView`) |
 | `feeds/page.tsx` | 뉴스·공시 상세 (Phase 17-2b) — `ensureAllowedSession` + `getDisclosureBoard`·`getNewsBoard`·`getTradeStatsView`(17-4) + `FeedTabsClient`(뉴스/공시/수출입 탭+게시판+아코디언). 홈 "뉴스·공시" 요약 카드에서 이동 |
@@ -140,7 +140,7 @@
 | `jobs/verifyJobRequest.ts` | 잡 공용 인증 — QStash 서명 → CRON_SECRET Bearer 폴백(timingSafeEqual) |
 | `qstash/dlq.ts` | QStash DLQ 읽기 전용 조회(Phase 18) — `QSTASH_TOKEN`(서버 전용)으로 `Client.dlq.listMessages` 호출, 화면용 뷰 모델(`DlqMessageView`) 매핑. `/dlq` 페이지 전용 |
 | `alerts/store.ts` | 알림 store (Phase 10 2·3단계) — 개인: `alerts:{email}:peaks`(신고가, 암호화)·`:muted`(음소거 종목, 암호화)·`:cooldown:{code}`(EX 7200 평문). 전역(공개 데이터 파생, 평문): `alerts:disclosure:last:{code}`(마지막 통지 접수번호)·`alerts:marketwarn:last:{code}`(시장경보 상태 6필드) |
-| `alerts/evaluate.ts` | 시세 알림 판정·발송 (Phase 10 2단계) — `evaluatePriceAlerts`: 지수 MGET→종목별 조건 3종(매입가 −10%/신고가 −10%/지수 −2%+종목 −12%) OR 판정→발송·쿨다운. 순수 판정부 `evaluateHolding`·시장 매핑 `marketIndexOf` 분리 |
+| `alerts/evaluate.ts` | 시세 알림 판정·발송 (Phase 10 2단계, 관심종목 확장) — `evaluatePriceAlerts`: 보유+관심종목 union(`collectAlertTargets` — 종목 단위 dedupe, 보유 우선·같은 종목 보유 내역 합산) 대상으로 지수 MGET→조건 3종(기준가 −10%(보유=매입가/관심=등록가, 미확정 skip)/신고가 −10%/지수 −2%+종목 −12%) OR 판정→발송·쿨다운. 순수 판정부 `evaluateTarget`·시장 매핑 `marketIndexOf` 분리 |
 | `alerts/feedAlerts.ts` | 공시·시장경보 알림 판정·발송 (Phase 10 3단계) — `evaluateFeedAlerts`(feeds 잡 훅 전용): 공시 8유형 키워드 분류기 `matchDisclosureCategories`(회사채는 "파생결합" 제외)·경보 상태 추출 `extractMarketWarnState`·diff `diffMarketWarnStates` 분리. 커서·상태는 발송 결과와 무관하게 전진(중복 방지 우선), 쿨다운 없음 |
 | `push/store.ts` | 웹 푸시 구독 store (Phase 10) — `push:subs:{email}` `secureJson` 암호화(endpoint가 곧 발송 권한), endpoint 기준 dedup 등록/해지/`prunePushSubscriptions`(발송 경로 전용) |
 | `push/send.ts` | 웹 푸시 발송 공용 유틸 (Phase 10) — `sendPushToEmail(email, payload)`: VAPID env 검증, 구독별 실패 격리, 410/404 자동 정리. 페이로드 계약 `{title, body, url?, tag?}`는 `public/sw.js`와 동기화 필수. 잡 훅(2·3단계)·테스트 발송 액션 공유 |
@@ -169,6 +169,7 @@
 | `nav/MenuSidebar` | Client | 햄버거 버튼 + 우측 슬라이드 사이드바(Phase 18) — 열림 상태·오버레이·ESC 닫기, 화면 모드(위)/알림 설정(Phase 10)·DLQ 확인 링크(중간)/로그아웃(아래) |
 | `alerts/PushSubscriptionManager` | Client | 이 기기의 푸시 구독 on/off + 테스트 발송 (Phase 10) — 지원 감지(iOS 미설치 시 홈 화면 추가 안내), `sw.js` 등록→`pushManager.subscribe`→Server Action 저장. VAPID 공개키는 prop으로 수신 |
 | `alerts/StockAlertToggles` | Client | 보유·관심종목별 알림 on/off (Phase 10 2·3단계) — 서버가 내려준 목록·초기 상태를 로컬 상태로 토글, `setStockAlertEnabledAction` 저장. 끄면 시세·공시·시장경보 알림 모두 음소거 |
+| `alerts/AlertToggleButton` | Client | 종목 상세 화면 인라인 알림 토글 — 단일 종목 on/off, `setStockAlertEnabledAction` 재사용. 보유·관심종목 상세의 "종목 정보" 섹션 헤더에 배치(기존 /alerts 링크 대체) |
 | `theme/ThemeToggle` | Client | `useSyncExternalStore`로 `data-theme` 구독·토글 (Phase 18부터 사이드바 안에 배치) |
 | `auth/SignOutButton` | Server | Server Action `signOut` 폼 — Phase 18에서 아이콘+텍스트 행 스타일(사이드바 하단용) |
 
@@ -235,8 +236,9 @@ QStash 스케줄 4개 (평일 09:00~15:30 10분 간격 / 15:40 / 18:15 KST)
       7. refreshPortfolios: 이메일별 평가 → holdings:{email}:history 오늘 upsert
          (스냅샷 하나라도 없으면 과소 집계 방지 위해 그 사용자 skip)
       8. tradingDay 판정(KOSPI basDt == KST 오늘) → 알림 훅 evaluateAlertsHook
-         → evaluatePriceAlerts(lib/alerts/evaluate.ts): 조건 3종 판정→신고가
-         갱신→음소거·쿨다운 체크→발송→쿨다운 SET (휴장일 skip, 실패해도 200)
+         → evaluatePriceAlerts(lib/alerts/evaluate.ts): 보유+관심종목 union
+         대상 조건 3종 판정→신고가 갱신→음소거·쿨다운 체크→발송→쿨다운 SET
+         (휴장일 skip, 실패해도 200)
       9. 전부 성공 시 market:lastRefreshAt 기록
   → 응답: report (데이터 갱신 실패 시 500 → QStash 재시도)
 ```
@@ -370,7 +372,7 @@ QStash 스케줄 (월 1회, 매월 5일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 5 *
 | `market:news:{code}` | `StoredNews` (최신 뉴스 최대 10건+fetchedAt) | ✕ | 피드 잡 | 홈 통합 피드(`homeFeed` MGET) |
 | `dart:corpCodeMap` | `StoredCorpCodeMap` (종목코드→DART 고유번호, 30일 주기) | ✕ | 피드 잡 | 피드 잡 |
 | `push:subs:{email}` | `StoredPushSubscription[]` (기기별 구독, Phase 10) | **○** | 구독 Server Action + 발송 경로(410/404 prune) | `/alerts` 화면·발송 유틸 |
-| `alerts:{email}:peaks` | `StockPeakMap` (종목별 신고가+갱신 시점 지수) | **○** | 시세 잡(알림 훅 — 보유종목만 유지) | 알림 훅 |
+| `alerts:{email}:peaks` | `StockPeakMap` (종목별 신고가+갱신 시점 지수) | **○** | 시세 잡(알림 훅 — 보유+관심종목만 유지) | 알림 훅 |
 | `alerts:{email}:muted` | `string[]` (알림 끈 종목코드) | **○** | `/alerts` 종목별 토글 Server Action | 알림 훅·`/alerts` 화면 |
 | `alerts:{email}:cooldown:{code}` | 발송 시각 ISO (EX 7200 — 2시간 재알림 금지) | ✕ | 시세 알림 훅 | 시세 알림 훅 |
 | `alerts:disclosure:last:{code}` | 마지막 통지 접수번호 (종목별 전역 커서, Phase 10 3단계) | ✕ | 피드 알림 훅 | 피드 알림 훅 |
@@ -613,8 +615,9 @@ QStash 스케줄 (월 1회, 매월 5일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 5 *
   유틸(`lib/push/*`)·`/alerts` 화면(1단계) + 시세 알림 조건 3종·신고가 추적·2시간
   쿨다운(2단계, `lib/alerts/evaluate.ts`) + 공시 8유형·KRX 시장경보(3단계,
   `lib/alerts/feedAlerts.ts` — `refreshFeeds` 훅, 종목별 전역 커서로 중복 차단,
-  첫 회차는 기준점만 저장하고 발송 안 함). 시세 알림은 보유종목 한정,
-  공시·시장경보 알림은 보유+관심종목 대상이며 `alerts:{email}:muted` 음소거
+  첫 회차는 기준점만 저장하고 발송 안 함). 시세·공시·시장경보 알림 모두
+  보유+관심종목 대상(시세 조건 1의 기준가만 보유=매입가/관심=등록가로 다름 —
+  등록가 미확정이면 그 조건만 skip)이며 `alerts:{email}:muted` 음소거
   목록(보유·관심 토글)을 셋이 공유한다. 시장경보는 KIS 추가 호출 없이
   `market:stock:{code}` raw의 경보 필드 6종 회차 간 비교로 감지.
 

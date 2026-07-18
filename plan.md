@@ -1697,7 +1697,13 @@ interface StockPeak {
 - `KisStockPriceOutput`에 경보 필드 6종 명시 추가(기존 인덱스 시그니처로 저장은 이미 되고 있었음).
 - 검증: lint·tsc·build PASS. 판정 로직 esbuild 번들 실측 31 시나리오 전부 PASS(8유형 매칭·유무상증자 부분매칭·파생결합 제외·무관 공시 미매칭·결측 정규화·경보 지정/격상/해제·코드형 관리종목·복수 변화). 실발송은 배포 후 feeds 잡 회차에서 확인.
 
-**남은 작업:** iOS 실기기 수신 확인, 배포 후 거래일 잡 회차에서 시세 알림 실발송·feeds 잡 회차에서 공시 알림 기준점 저장(baselined) 확인.
+**시세 알림 관심종목 확장 + 인라인 토글 (2026-07-18):**
+- 시세 알림 대상을 보유종목 한정 → **보유+관심종목 union**으로 확장 — 공시·시장경보(3단계)와 대상 일치. `lib/alerts/evaluate.ts`의 `evaluateHolding`을 `evaluateTarget`으로 일반화하고 `collectAlertTargets` 신설: 사용자별 보유·관심을 종목 단위로 dedupe(같은 종목 보유 내역 여러 건은 totalCost·quantity 합산, 보유·관심 중복은 보유 우선 — 매입가 기준 유지).
+- 조건 1(−10% 손실)의 기준가만 다름: 보유 = 매입가(totalCost 모델, 문구 "매입가 대비"), 관심 전용 = **등록 기준가 `priceAtRegistration`**(화면의 "등록 기준 수익률"과 동일 기준, 문구 "등록가 대비"). 등록가 미확정(null)이면 조건 1만 skip — 조건 2(신고가)·3(지수 동반 급락)은 기준가 무관이라 그대로 적용. 신고가 맵(`alerts:{email}:peaks`)도 보유+관심 union 기준으로 유지(관심 해제 시 자연 정리). 푸시 링크: 보유 `/holdings`(기존 유지) / 관심 전용 `/watchlist`. 스냅샷은 이미 보유+관심 union으로 수집되므로(§15.3) **KIS 추가 호출 0**. `refreshMarketData.ts` `evaluateAlertsHook`에 `watchlistsByEmail` 전달.
+- 인라인 알림 토글 — 보유·관심종목 상세의 "알림 설정" 링크(/alerts 이동)를 그 자리 토글로 교체: `components/alerts/AlertToggleButton.tsx`(Client, 단일 종목 on/off) 신설, 기존 `setStockAlertEnabledAction` 재사용(보유∪관심 소유 검증 기존 그대로). 서버 컴포넌트가 `getMutedSymbols`로 초기 상태 전달. watchlist 상세의 미사용 `.alertsLink` 스타일 제거.
+- 검증: lint·tsc·build PASS.
+
+**남은 작업:** iOS 실기기 수신 확인, 배포 후 거래일 잡 회차에서 시세 알림 실발송(관심종목 포함)·feeds 잡 회차에서 공시 알림 기준점 저장(baselined) 확인.
 
 ---
 
