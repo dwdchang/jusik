@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { AlertToggleButton } from "@/components/alerts/AlertToggleButton";
 import { HoldingsChartClient } from "@/components/holdings/HoldingsChartClient";
 import type { HoldingsChartPoint } from "@/components/holdings/HoldingsChart";
 import { NavIconLink } from "@/components/nav/NavIconLink";
 import { StockInfoBlocks } from "@/components/stocks/StockInfoBlocks";
+import { getMutedSymbols } from "@/lib/alerts/store";
 import { ensureAllowedSession } from "@/lib/auth/ensureAllowedSession";
 import { formatChangeRate } from "@/lib/format/change";
 import { formatKstDateTime } from "@/lib/format/datetime";
@@ -58,7 +60,7 @@ export default async function WatchItemDetailPage({
   // 등록 직후엔 종목명이 비어 있음 — 다음 갱신 회차에 잡이 채운다 (§11.10-A4)
   const name = item.name || symbolCode;
 
-  const [info, history] = await Promise.all([
+  const [info, history, muted] = await Promise.all([
     getStockInfo(symbolCode),
     getStockHistory(symbolCode).catch((err): StockDailyPrice[] => {
       console.error(
@@ -67,6 +69,7 @@ export default async function WatchItemDetailPage({
       );
       return [];
     }),
+    getMutedSymbols(email),
   ]);
 
   const returnRate = computeWatchReturnRate(info.currentPrice, item);
@@ -180,7 +183,13 @@ export default async function WatchItemDetailPage({
         </section>
 
         <section className={styles.section} aria-label="종목 정보">
-          <h2 className={styles.sectionTitle}>종목 정보</h2>
+          <div className={styles.sectionHead}>
+            <h2 className={styles.sectionTitle}>종목 정보</h2>
+            <AlertToggleButton
+              symbolCode={symbolCode}
+              initialEnabled={!muted.includes(symbolCode)}
+            />
+          </div>
           <StockInfoBlocks info={info} />
         </section>
 

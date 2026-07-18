@@ -1,0 +1,42 @@
+.wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+}
+
+.buttonOn,
+.buttonOff {
+  flex-shrink: 0;
+  padding: 6px var(--space-12);
+  border-radius: var(--radius-md);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.buttonOn {
+  border: none;
+  background-color: var(--color-primary);
+  color: #ffffff;
+}
+
+.buttonOn:active {
+  background-color: var(--color-primary-pressed);
+}
+
+.buttonOff {
+  border: 1px solid var(--color-border);
+  background-color: var(--color-bg);
+  color: var(--color-text-secondary);
+}
+
+.buttonOn:disabled,
+.buttonOff:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.error {
+  font-size: var(--text-caption);
+  color: var(--color-critical);
+}

@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { AlertToggleButton } from "@/components/alerts/AlertToggleButton";
 import { HoldingsChartClient } from "@/components/holdings/HoldingsChartClient";
 import type { HoldingsChartPoint } from "@/components/holdings/HoldingsChart";
 import { NavIconLink } from "@/components/nav/NavIconLink";
 import { StockInfoBlocks } from "@/components/stocks/StockInfoBlocks";
+import { getMutedSymbols } from "@/lib/alerts/store";
 import { ensureAllowedSession } from "@/lib/auth/ensureAllowedSession";
 import { formatChangeRate } from "@/lib/format/change";
 import { formatKstDateTime } from "@/lib/format/datetime";
@@ -74,12 +76,13 @@ export default async function HoldingDetailPage({
   const totalQuantity = holdings.reduce((sum, h) => sum + h.quantity, 0);
   const totalCost = holdings.reduce((sum, h) => sum + h.totalCost, 0);
 
-  const [info, history] = await Promise.all([
+  const [info, history, muted] = await Promise.all([
     getStockInfo(symbolCode),
     getStockHistory(symbolCode).catch((err): StockDailyPrice[] => {
       console.error(`[HoldingDetailPage] history read failed (${symbolCode}):`, err);
       return [];
     }),
+    getMutedSymbols(email),
   ]);
 
   const currentValue =
@@ -280,7 +283,13 @@ export default async function HoldingDetailPage({
         </section>
 
         <section className={styles.section} aria-label="종목 정보">
-          <h2 className={styles.sectionTitle}>종목 정보</h2>
+          <div className={styles.sectionHead}>
+            <h2 className={styles.sectionTitle}>종목 정보</h2>
+            <AlertToggleButton
+              symbolCode={symbolCode}
+              initialEnabled={!muted.includes(symbolCode)}
+            />
+          </div>
           <StockInfoBlocks info={info} />
         </section>
 

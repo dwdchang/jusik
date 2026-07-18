@@ -100,6 +100,18 @@
   margin-bottom: var(--space-16);
 }
 
+.sectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+  margin-bottom: var(--space-8);
+}
+
+.sectionHead .sectionTitle {
+  margin-bottom: 0;
+}
+
 .sectionTitle {
   font-size: var(--text-caption);
   font-weight: var(--weight-semibold);
