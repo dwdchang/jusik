@@ -2504,6 +2504,13 @@ interface WatchItem {
 - **구현**: ① `client.ts` `fetchKisFluctuationRanking(sort, compareDays)` — `fid_input_cnt_1`만 파라미터화("0" 당일 / "5" 주간), 신규 함수 없음 ② `types.ts` `dsgt_date_clpr_vrss_prpr_rate` 필드 추가 ③ `market/store.ts` `market:weeklyFluctuation` 키 + `StoredWeeklyFluctuation`/`WeeklyFluctuationItem`(당일 타입 alias — 구조 동일, changeRate 의미만 5거래일 대비) + get/set ④ `refreshMarketData` 잡 1b' 스텝 `refreshWeeklyFluctuation` — 회차당 1콜, `parseNum`만 적용(부호 내장이라 `applyKisSign` 불필요), changeRate 내림차순 재정렬·재순위, 실패 격리·보고서 `weeklyFluctuation` 필드 ⑤ `/hot-stocks` 탭 `[당일 등락률 | 주간 등락률 | 월간 핫종목]`(`?mode=weekly`) — 기존 `DailyView`를 공용 `FluctuationView`(variant="daily"|"weekly", 데이터 소스·문구만 교체)로 일반화, 신규 테이블 없음. **주간 탭 라벨 아래 보조 설명 "최근 5거래일 대비"**(`tabSub`, `--text-micro`) + 푸터에 달력 주 아님·공휴일 영향·원주가 기준 왜곡 가능성 명시. 홈 카드·월간 뷰 무변경.
 - **검증**: tsc·lint·build(20/20 라우트) PASS. 라이브 프로브 3회(상승률순 cnt=0/cnt=5 비교, 전 행 정렬 필드 확인, 일봉 교차 검증)로 API 동작 확정. 화면 데이터는 다음 시세 잡 회차가 `market:weeklyFluctuation`을 채운 뒤 확인 가능.
 
+### Phase 20 — 핫종목 등락률 뷰 월간 폼 통일 + 월간 구간 링크 회귀 수정 (2026-07-18)
+
+- **요청 근거**: 사용자 지시 3건 — ① 주간 탭의 보조 문구 "최근 5거래일 대비" 제거 ② 당일/주간 순위 표를 월간 뷰와 동일한 폼으로(A안 — 코드 별도 열 + ᴷ/ᴰ 위첨자 + 기준가 열까지 전체 통일, 사용자 확정) ③ 월간의 기준 문구("최근 1개월 (…) · 기준: … · 대상 …종목")를 모든 탭에 표시하고 구간 서브탭 전환 시에도 유지. 당일/주간의 "대상"은 종목 수 미제공(KIS 순위 API에 universe count 없음)이라 **"대상 전체시장"** 텍스트로 확정.
+- **회귀 발견·수정**: 월간 구간 서브탭 링크가 `/hot-stocks?period=…`로 `mode=monthly` 누락 — §17.12에서 기본 모드가 월간→당일로 바뀔 때 갱신 안 된 회귀로, 구간 탭 클릭 시 당일 뷰로 떨어지며 기준 문구·월간 표가 통째로 사라졌다. `?mode=monthly&period=…`로 수정(③의 "문구가 사라진다" 원인).
+- **구현**: ① `MODES`에서 weekly `sub` 제거 + `tabSub` 렌더·CSS 삭제(5거래일 롤링 설명은 기준 문구·푸터 안내로 유지) ② `DailyFluctuationItem.basePrice?: number` 추가(optional — 이전 스냅샷 호환, 없으면 "—" 표시) — 시세 잡에서 당일은 `현재가 − applyKisSign(prdy_vrss)`로 정확 산출, 주간은 응답에 기준가 금액이 없어 `price / (1 + rate/100)` 역산(1원 단위 오차 가능, −100% 분모 방어) ③ `FluctuationView` 표를 월간과 동일 6열(순위/종목명+ᴷ·ᴰ/코드 별도 열/등락률/기준 종가/현재가)로 — §17.12-4의 인라인 코드 결정은 5열 여백 문제가 이유였으므로 6열 복귀로 해소, `codeInline` CSS 삭제. 시장 위첨자는 `market:stockMaster` 스냅샷을 화면에서 읽어 코드→시장 매핑(`loadMarketByCode`, 마스터 조회 실패·미등재 종목은 위첨자 생략 폴백 — 화면은 Redis만 읽는 원칙 유지) ④ 기준 문구를 월간 형식으로 통일: "{당일|주간} 등락률 상위 30종목 · 기준: {전일|5거래일 전} 종가 · 대상 전체시장 · 갱신: …".
+- **검증**: tsc·lint PASS. `basePrice`·위첨자는 다음 시세 잡 회차부터 채워짐(그 전 스냅샷은 기준 종가 "—").
+
 ---
 
 ## 7. PR 분리 권장 (선택)
