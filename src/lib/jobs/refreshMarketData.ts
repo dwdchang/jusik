@@ -118,6 +118,7 @@ export interface RefreshMarketDataReport {
 async function evaluateAlertsHook(context: {
   snapshots: Map<string, StoredStockSnapshot>;
   holdingsByEmail: Map<string, Holding[]>;
+  watchlistsByEmail: Map<string, WatchItem[]>;
 }): Promise<PriceAlertsReport> {
   return evaluatePriceAlerts(context);
 }
@@ -627,7 +628,11 @@ export async function refreshMarketData(
     alerts = { evaluated: false, reason: "not a trading day (basDt mismatch)" };
   } else {
     try {
-      const summary = await evaluateAlertsHook({ snapshots, holdingsByEmail });
+      const summary = await evaluateAlertsHook({
+        snapshots,
+        holdingsByEmail,
+        watchlistsByEmail,
+      });
       alerts = { evaluated: true, summary };
     } catch (error) {
       console.error("[job] alert evaluation failed:", error);
