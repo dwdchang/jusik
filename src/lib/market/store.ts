@@ -86,6 +86,18 @@ export interface StoredDailyFluctuation {
   fetchedAt: string;
 }
 
+/**
+ * market:weeklyFluctuation 항목 — 주간 등락률 순위 1행.
+ * 구조는 당일과 동일하되 changeRate가 5거래일 전 종가 대비율(%)이다 (달력 주 아님).
+ */
+export type WeeklyFluctuationItem = DailyFluctuationItem;
+
+/**
+ * market:weeklyFluctuation — 주간(5거래일 전 대비) 등락률 순위 상위 30 스냅샷.
+ * market:dailyFluctuation과 같은 패턴 — 전체시장 상승률순, 잡이 회차당 1회 덮어쓴다.
+ */
+export type StoredWeeklyFluctuation = StoredDailyFluctuation;
+
 /** market:stockMaster 항목 — 종목 검색용 코드↔종목명 (KIS 종목 마스터 1행) */
 export interface StockMasterItem {
   /** 단축코드 — KOSDAQ 신형은 영숫자 6자리일 수 있다 */
@@ -127,6 +139,7 @@ function stockInfoKey(symbolCode: string): string {
 
 const LAST_REFRESH_KEY = "market:lastRefreshAt";
 const DAILY_FLUCTUATION_KEY = "market:dailyFluctuation";
+const WEEKLY_FLUCTUATION_KEY = "market:weeklyFluctuation";
 const STOCK_MASTER_KEY = "market:stockMaster";
 
 export async function getMarketDetail(
@@ -217,6 +230,16 @@ export async function setDailyFluctuation(
   value: StoredDailyFluctuation
 ): Promise<void> {
   await getRedis().set(DAILY_FLUCTUATION_KEY, value);
+}
+
+export async function getWeeklyFluctuation(): Promise<StoredWeeklyFluctuation | null> {
+  return getRedis().get<StoredWeeklyFluctuation>(WEEKLY_FLUCTUATION_KEY);
+}
+
+export async function setWeeklyFluctuation(
+  value: StoredWeeklyFluctuation
+): Promise<void> {
+  await getRedis().set(WEEKLY_FLUCTUATION_KEY, value);
 }
 
 export async function getStockMaster(): Promise<StoredStockMaster | null> {

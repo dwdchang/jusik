@@ -166,6 +166,12 @@ export interface KisFluctuationRankingRow {
   prdy_ctrt?: string;
   /** 누적 거래량 */
   acml_vol?: string;
+  /**
+   * 지정일 종가 대비 현재가 비율(%) — fid_input_cnt_1=N일 때 N거래일 전 종가 대비
+   * 등락률이며 정렬 기준(2026-07-18 실측). 부호가 직접 포함돼 sign 필드 불필요.
+   * 지정일 종가는 원주가(수정주가 미반영)라 감자·액면병합 종목은 왜곡될 수 있다.
+   */
+  dsgt_date_clpr_vrss_prpr_rate?: string;
   [key: string]: unknown;
 }
 

@@ -47,7 +47,9 @@ import {
   setStockInfoBlocks,
   setStockMaster,
   setStockSnapshot,
+  setWeeklyFluctuation,
   type DailyFluctuationItem,
+  type WeeklyFluctuationItem,
   type MarketDetailKey,
   type StockMasterItem,
   type StoredStockSnapshot,
@@ -86,6 +88,8 @@ export interface RefreshMarketDataReport {
   volatility: { ok: boolean; upserted?: number; error?: string };
   /** 당일 등락률 순위 저장 결과 — 부수 데이터라 실패해도 잡 전체 ok에 영향 없음 */
   dailyFluctuation: { ok: boolean; count?: number; error?: string };
+  /** 주간(5거래일 전 대비) 등락률 순위 저장 결과 — 당일과 동일하게 실패 격리 */
+  weeklyFluctuation: { ok: boolean; count?: number; error?: string };
   /** 종목 마스터 저장 결과 — 1일 1회, 부수 데이터라 잡 전체 ok에 영향 없음 */
   stockMaster: { ok: boolean; count?: number; skipped?: true; error?: string };
   stocks: Array<{ symbolCode: string; ok: boolean; error?: string }>;
@@ -236,6 +240,38 @@ async function refreshDailyFluctuation(
     return { ok: true, count: items.length };
   } catch (error) {
     console.error("[job] daily fluctuation refresh failed:", error);
+    return { ok: false, error: errorMessage(error) };
+  }
+}
+
+/**
+ * 주간(5거래일 전 대비) 등락률 순위 상위 30 → market:weeklyFluctuation 저장 (§19).
+ * 당일과 동일 API(FHPST01700000)에 fid_input_cnt_1="5"만 바꾼 1콜 — 등락률은
+ * prdy_ctrt(당일)가 아니라 dsgt_date_clpr_vrss_prpr_rate(지정일 종가 대비, 부호 포함
+ * 직접 제공)를 읽는다 (2026-07-18 실측). 당일과 마찬가지로 실패 격리·재정렬 저장.
+ */
+async function refreshWeeklyFluctuation(
+  fetchedAt: string
+): Promise<RefreshMarketDataReport["weeklyFluctuation"]> {
+  try {
+    const rows = await fetchKisFluctuationRanking("0", "5");
+
+    const items: WeeklyFluctuationItem[] = rows
+      .filter((row) => row.stck_shrn_iscd && row.hts_kor_isnm)
+      .map((row) => ({
+        rank: 0,
+        code: row.stck_shrn_iscd as string,
+        name: row.hts_kor_isnm as string,
+        price: parseNum(row.stck_prpr),
+        changeRate: parseNum(row.dsgt_date_clpr_vrss_prpr_rate),
+      }))
+      .sort((a, b) => b.changeRate - a.changeRate)
+      .map((item, i) => ({ ...item, rank: i + 1 }));
+
+    await setWeeklyFluctuation({ items, fetchedAt });
+    return { ok: true, count: items.length };
+  } catch (error) {
+    console.error("[job] weekly fluctuation refresh failed:", error);
     return { ok: false, error: errorMessage(error) };
   }
 }
@@ -571,6 +607,9 @@ export async function refreshMarketData(
   // 1b. 당일 등락률 순위 상위 30 → market:dailyFluctuation (부수 데이터, 실패 격리)
   const dailyFluctuation = await refreshDailyFluctuation(startedAt);
 
+  // 1b'. 주간(5거래일 전 대비) 등락률 순위 상위 30 → market:weeklyFluctuation (§19)
+  const weeklyFluctuation = await refreshWeeklyFluctuation(startedAt);
+
   // 1c. 종목 마스터 → market:stockMaster (종목명 검색용, 1일 1회, 실패 격리)
   const stockMaster = await refreshStockMaster(startedAt);
 
@@ -665,6 +704,7 @@ export async function refreshMarketData(
     indices,
     volatility,
     dailyFluctuation,
+    weeklyFluctuation,
     stockMaster,
     stocks,
     nameFills,
