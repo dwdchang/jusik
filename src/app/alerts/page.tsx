@@ -9,6 +9,7 @@ import { getMutedSymbols } from "@/lib/alerts/store";
 import { ensureAllowedSession } from "@/lib/auth/ensureAllowedSession";
 import { getHoldings } from "@/lib/holdings/store";
 import { getPushSubscriptions } from "@/lib/push/store";
+import { getWatchlist } from "@/lib/watchlist/store";
 import styles from "./page.module.css";
 
 export const metadata: Metadata = {
@@ -39,15 +40,26 @@ export default async function AlertsPage() {
   let stockItems: StockAlertItem[] = [];
   let stockError = false;
   try {
-    const [holdings, muted] = await Promise.all([
+    // 공시·시장경보 알림(3단계)은 관심종목도 대상이라 토글도 보유+관심 union으로 나열
+    const [holdings, watchlist, muted] = await Promise.all([
       getHoldings(email),
+      getWatchlist(email),
       getMutedSymbols(email),
     ]);
     const mutedSet = new Set(muted);
-    stockItems = holdings.map((holding) => ({
-      symbolCode: holding.symbolCode,
-      name: holding.name,
-      enabled: !mutedSet.has(holding.symbolCode),
+    const byCode = new Map<string, string>();
+    for (const holding of holdings) {
+      byCode.set(holding.symbolCode, holding.name);
+    }
+    for (const item of watchlist) {
+      if (!byCode.has(item.symbolCode)) {
+        byCode.set(item.symbolCode, item.name);
+      }
+    }
+    stockItems = [...byCode].map(([symbolCode, name]) => ({
+      symbolCode,
+      name,
+      enabled: !mutedSet.has(symbolCode),
     }));
   } catch (error) {
     console.error("[AlertsPage] stock alert prefs load failed:", error);
@@ -85,8 +97,8 @@ export default async function AlertsPage() {
             </p>
           ) : stockItems.length === 0 ? (
             <p className={styles.cardBody}>
-              보유종목이 없습니다. 보유종목을 등록하면 종목별로 알림을 켜고 끌
-              수 있습니다.
+              보유·관심종목이 없습니다. 종목을 등록하면 종목별로 알림을 켜고
+              끌 수 있습니다.
             </p>
           ) : (
             <StockAlertToggles items={stockItems} />

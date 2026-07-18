@@ -5,7 +5,7 @@ import { setStockAlertEnabledAction } from "@/app/alerts/actions";
 import styles from "./StockAlertToggles.module.css";
 
 /**
- * 보유종목별 알림 on/off — 끄면 시세·공시 알림 모두 음소거된다.
+ * 보유·관심종목별 알림 on/off — 끄면 시세·공시·시장경보 알림 모두 음소거된다.
  * 목록·초기 상태는 서버 컴포넌트(alerts/page.tsx)가 내려주고,
  * 토글은 서버 액션으로 저장한 뒤 로컬 상태를 맞춘다.
  */

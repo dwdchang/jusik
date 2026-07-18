@@ -10,6 +10,7 @@ import {
 import { isEmailAllowed } from "@/lib/auth/allowedEmails";
 import { getHoldings } from "@/lib/holdings/store";
 import { sendPushToEmail } from "@/lib/push/send";
+import { getWatchlist } from "@/lib/watchlist/store";
 import {
   addPushSubscription,
   removePushSubscription,
@@ -95,10 +96,16 @@ export async function setStockAlertEnabledAction(
     return { ok: false, message: "종목코드 형식이 올바르지 않습니다." };
   }
 
-  // 내 보유종목만 토글 허용 — 임의 코드로 목록이 오염되는 것을 방지
-  const holdings = await getHoldings(email);
-  if (!holdings.some((holding) => holding.symbolCode === symbolCode)) {
-    return { ok: false, message: "보유종목이 아닙니다." };
+  // 내 보유·관심종목만 토글 허용 — 임의 코드로 목록이 오염되는 것을 방지
+  const [holdings, watchlist] = await Promise.all([
+    getHoldings(email),
+    getWatchlist(email),
+  ]);
+  if (
+    !holdings.some((holding) => holding.symbolCode === symbolCode) &&
+    !watchlist.some((item) => item.symbolCode === symbolCode)
+  ) {
+    return { ok: false, message: "보유·관심종목이 아닙니다." };
   }
 
   const muted = await getMutedSymbols(email);
