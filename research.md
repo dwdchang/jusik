@@ -77,7 +77,7 @@
 | `watchlist/page.tsx` | 관심종목 목록 — 등록 기준일 종가 대비 수익률, 기준일 변경/삭제. 추가 폼은 종목명 검색 `<StockSearchInput>` |
 | `watchlist/[symbolCode]/page.tsx` | 관심종목 상세 — 등록일 이후 추이·정보 블록 + 인라인 알림 토글 (보유종목 상세와 구조 동일) |
 | `watchlist/actions.ts` | Server Actions: add/update(기준일 변경 시 기준가 null 리셋)/delete |
-| `hot-stocks/page.tsx` | 핫종목 — 서버 모드 탭 `[당일 등락률(기본) \| 월간 핫종목]`(`?mode=monthly`으로 월간). 당일: `market:dailyFluctuation` 상위 30 테이블(종목코드는 종목명 뒤 인라인)+`resolveStaleness` 배지. 월간: 구간 수익률 TOP 100(`?period=1m\|3m\|6m\|12m`, 시장 위첨자 ᴷ/ᴰ). 두 뷰는 async 서버 서브컴포넌트(`DailyView`/`MonthlyView`) |
+| `hot-stocks/page.tsx` | 핫종목 — 서버 모드 탭 `[당일 등락률(기본) \| 주간 등락률 \| 월간 핫종목]`(`?mode=weekly\|monthly`). 당일/주간: `market:dailyFluctuation`/`market:weeklyFluctuation` 상위 30 테이블(종목코드는 종목명 뒤 인라인)+`resolveStaleness` 배지 — 공용 `FluctuationView`(variant별 데이터 소스·문구만 교체). 주간 탭에는 보조 설명 "최근 5거래일 대비"(`tabSub`) — 달력 주 아님을 명시. 월간: 구간 수익률 TOP 100(`?period=1m\|3m\|6m\|12m`, 시장 위첨자 ᴷ/ᴰ). 뷰는 async 서버 서브컴포넌트(`FluctuationView`/`MonthlyView`) |
 | `feeds/page.tsx` | 뉴스·공시 상세 (Phase 17-2b) — `ensureAllowedSession` + `getDisclosureBoard`·`getNewsBoard`·`getTradeStatsView`(17-4) + `FeedTabsClient`(뉴스/공시/수출입 탭+게시판+아코디언). 홈 "뉴스·공시" 요약 카드에서 이동 |
 | `dlq/page.tsx` | QStash DLQ 읽기 전용 목록 (Phase 18) — `ensureAllowedSession` + `listDlqMessages(cursor)` 직접 호출(Redis 아닌 QStash API — §4.3 예외), `?cursor=` 페이지네이션. 햄버거 사이드바 "DLQ 확인"에서 진입, 재발송·삭제 없음 |
 | `alerts/page.tsx` | 알림 설정 (Phase 10) — `ensureAllowedSession` + `VAPID_PUBLIC_KEY`를 `PushSubscriptionManager`에 prop 전달 + 보유·관심종목별 알림 on/off(`StockAlertToggles`, 3단계에서 관심종목까지 확장) + 등록 기기 수 표시. 햄버거 사이드바 "알림 설정"에서 진입 |
@@ -120,7 +120,7 @@
 | `indices/getIndexDetail.ts` / `getOverseasDetail.ts` | 상세 리더 — `market:detail:{key}` 1건. **두 파일 내용이 사실상 동일** (§8) |
 | `indices/volatility.ts` | 변동성 기록 store+계산+카드 요약 (한 파일에 쓰기·읽기 혼재) |
 | `indices/dates.ts` | `getLast7BusinessDates` — **현재 미사용 (레거시)** (§9.2) |
-| `market/store.ts` | 공용 시세 Redis 스토어 — `market:detail:*`, `market:stock:*`, `market:stockInfo:*`, `market:lastRefreshAt`, `market:dailyFluctuation`, `market:stockMaster` (§5) |
+| `market/store.ts` | 공용 시세 Redis 스토어 — `market:detail:*`, `market:stock:*`, `market:stockInfo:*`, `market:lastRefreshAt`, `market:dailyFluctuation`, `market:weeklyFluctuation`, `market:stockMaster` (§5) |
 | `stocks/search.ts` | `"use server"` — `searchStocks(query)` 종목명 검색 액션. `auth`+`isEmailAllowed` 가드 후 `market:stockMaster` 부분일치 필터, 접두 우선·가나다 정렬 상위 20. 등록 폼 전용, KIS 직접 호출 없음 |
 | `market/staleness.ts` | KST 시간창 가드(`isWithinKisCallWindow` 09:00~18:40) + **스케줄 인지형 배지 판정** `resolveStaleness` — 시세 잡 스케줄 상수(`SCHEDULE_MINUTES`: 09:00~15:30 10분 + 15:40 + 18:15)로 "이미 완료됐어야 할 최근 슬롯(`lastDueRefreshMs`, 유예 20분)"을 구해, fetchedAt이 그보다 오래됐을 때만 배지(정상 휴지 구간엔 안 뜸). 지연 경과로 warn/critical. `SCHEDULE_MINUTES`는 외부 QStash 등록과 동기화 필수 |
 | `holdings/store.ts` | 보유종목·포트폴리오 히스토리 store — 암호화, 레거시 평문/`avgPrice` 읽기 하위호환 |
@@ -133,7 +133,7 @@
 | `hotstocks/universe.ts` | KIS 종목 마스터 zip 다운로드·EUC-KR 고정폭 파싱 — ST(주권)만, 스팩 제외, 코드 오름차순. 핫종목 잡 + 종목명 검색(`market:stockMaster`) 공용 |
 | `hotstocks/summary.ts` | 월간 랭킹 갱신 지연 판정 `isHotStocksStale` (핫종목 페이지 월간 뷰용) |
 | `hotstocks/dailyCard.ts` | 홈 핫종목 카드 요약 `getDailyHotCardSummary` — `market:dailyFluctuation` 당일 등락률 상위 3 |
-| `jobs/refreshMarketData.ts` | **시세 갱신 잡 파이프라인 본체** (§4.1) — 지수·종목·포트폴리오 갱신에 더해 당일 등락률 상위 30(`refreshDailyFluctuation`)·종목 마스터(`refreshStockMaster`, 1일 1회) 저장. 둘 다 부수·실패 격리 |
+| `jobs/refreshMarketData.ts` | **시세 갱신 잡 파이프라인 본체** (§4.1) — 지수·종목·포트폴리오 갱신에 더해 당일·주간 등락률 상위 30(`refreshDailyFluctuation`/`refreshWeeklyFluctuation`, 회차당 각 1콜)·종목 마스터(`refreshStockMaster`, 1일 1회) 저장. 셋 다 부수·실패 격리 |
 | `jobs/refreshHotStocks.ts` | **핫종목 갱신 잡 파이프라인 본체** (§4.2) |
 | `jobs/refreshFeeds.ts` | **피드(공시·뉴스·수출입) 갱신 잡 파이프라인 본체** (§4.5) — corpCode 매핑→종목별 공시(DART)+뉴스(네이버, 종목명 키워드) 조회·저장. 소스·종목별 실패 격리. + `refreshTradeStats`(17-4) — 종목 무관 월 1회성(스냅샷 최신월<직전 완결월일 때만), 12개월 한도 때문에 2회 호출(최근 12개월+전년동월)→13개월 연속 저장. 잡 `ok` 게이팅 제외(다음 회차 가드가 재시도) |
 | `jobs/collectTargets.ts` | 잡 공용 수집 대상 조회 — `collectHoldings`/`collectWatchlists`/`unionSymbolCodes`/`errorMessage` (시세·피드 잡 공유, Phase 17-1에서 refreshMarketData 로컬 함수를 추출) |
@@ -222,6 +222,9 @@ QStash 스케줄 4개 (평일 09:00~15:30 10분 간격 / 15:40 / 18:15 KST)
   → refreshMarketData(trigger)  [lib/jobs/refreshMarketData.ts]
       1. refreshIndices: KIS 5종 병렬(allSettled) → market:detail:{kospi|kosdaq|usdkrw|us10y|oil}
          (snapshot + history 7일 + dailyRows, 매퍼: kisMapper / kisOverseasMapper)
+      1b. refreshDailyFluctuation: 등락률 순위(FHPST01700000) 1콜 → market:dailyFluctuation
+      1b'. refreshWeeklyFluctuation: 동일 API fid_input_cnt_1="5" 1콜 →
+           market:weeklyFluctuation (5거래일 전 종가 대비, dsgt_date_clpr_vrss_prpr_rate)
       2. KOSPI 원본 응답 재사용 → computeVolatilityRecords → kospiVolatility:history upsert
       3. 전체 허용 이메일의 holdings + watchlist 조회 → 종목코드 union·중복 제거
       4. refreshStocks: 종목별 순차(유량 제한) —
@@ -363,6 +366,7 @@ QStash 스케줄 (월 1회, 매월 5일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 5 *
 | `market:hotStocks` | `StoredHotStocks` (구간 4종 TOP 100) | ✕ | 핫종목 잡 | 핫종목 페이지 월간 뷰 |
 | `market:hotStocks:progress` | `HotStocksProgress` (커서) | ✕ | 핫종목 잡 (완료 시 삭제) | 핫종목 잡 |
 | `market:dailyFluctuation` | `StoredDailyFluctuation` (당일 등락률 상위 30+fetchedAt) | ✕ | 시세 잡 | 핫종목 페이지(기본 탭)·홈 핫종목 카드 |
+| `market:weeklyFluctuation` | `StoredWeeklyFluctuation` (주간=5거래일 전 대비 등락률 상위 30+fetchedAt) | ✕ | 시세 잡 | 핫종목 페이지 주간 탭 |
 | `market:stockMaster` | `StoredStockMaster` (코드↔종목명 ~2,650+fetchedAt) | ✕ | 시세 잡 (1일 1회) | 종목명 검색 `searchStocks` |
 | `holdings:{email}` | `Holding[]` | **○** | Server Action + 잡(종목명 채움) | 보유종목 화면·잡 |
 | `holdings:{email}:history` | `PortfolioDailyRecord[]` | **○** | 시세 잡 | 보유종목 화면 |
@@ -577,6 +581,14 @@ QStash 스케줄 (월 1회, 매월 5일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 5 *
   수익률 순위, `prdy_ctrt` 정렬과 불일치), "1"=종가대비(전일 종가 대비 등락률순)
   (2026-07-17 실측). 당일 등락률 순위는 반드시 "1"을 사용하고, 갱신 잡은 방어적으로
   `changeRate` 내림차순 재정렬·재순위 후 저장한다.
+- **등락률 순위의 `fid_input_cnt_1`은 비교 시점(N거래일 전) 선택** — "5"면 정확히
+  5거래일 전 종가 대비 현재가 등락률순이 온다(2026-07-18 일봉 교차 검증 실측). 이때
+  N일 등락률은 `prdy_ctrt`(여전히 당일 등락률)가 아니라
+  **`dsgt_date_clpr_vrss_prpr_rate`**(지정일 종가 대비 현재가 비율, 부호 직접 포함 —
+  `applyKisSign` 불필요, `parseNum`만)가 담고, 30행 전부 이 값 내림차순으로 정렬돼
+  온다. 단 지정일 종가가 **원주가(수정주가 미반영)**라 감자·액면병합이 구간에 낀
+  종목은 왜곡된 값으로 상위에 나타날 수 있다(실측: 인산가 +687.5% vs 수정주가 기준
+  실제 −21.3%). KIS HTS 순위와 동일한 원천 특성이라 보정 없이 UI 각주로만 안내한다.
 - KIS 문자열 숫자·부호 코드는 반드시 `parseNum`+`applyKisSign` 경유.
 
 ### 9.4 시간·스케줄 규칙

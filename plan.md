@@ -2494,6 +2494,18 @@ interface WatchItem {
 
 ---
 
+### Phase 19 — 핫종목 "주간 등락률" 탭 (2026-07-18)
+
+- **요청 근거**: 사용자 지시 — 지난 조사(§16.1 대안 1은 달력 고정 구간 기준으로 ❌였음)와 달리 **N거래일 전 대비 롤링·상위 30위**로 채택 확정(보류했던 "주간 100위"의 축소 진행 — memory `pending-decisions` 갱신 대상). 탭 순서 일별 → 주간 → 월별, 신규 API·배치 없이 기존 등락률 순위 API(FHPST01700000) 재사용 + 기존 10분 시세 잡에 회차당 1콜 증분.
+- **구현 전 라이브 프로브 (2026-07-18, 토큰 캐시 훼손 없는 읽기 프로브 — §17.10과 동일 절차)**:
+  - `fid_input_cnt_1="5"`는 **정확히 5거래일 전 종가 대비 현재가 등락률순**을 반환 — 정상 종목 2개(씨피시스템·에넥스)의 일봉과 교차 검증, 역산 지정일 종가가 5거래일 전 종가와 원 단위 일치.
+  - 5거래일 등락률은 `prdy_ctrt`(여전히 **당일** 등락률)가 아니라 **`dsgt_date_clpr_vrss_prpr_rate`**(지정일 종가 대비 현재가 비율, 부호 직접 포함)에 담기며, 30행 전부 이 값 내림차순 정렬 실측. 당일 30위와 겹침 11/30 — 파라미터 실제 반영 확인.
+  - **주의(블로커 아님)**: 지정일 종가가 **원주가(수정주가 미반영)**라 감자·액면병합이 구간에 낀 종목은 왜곡 상위 가능(실측: 인산가 dsgt +687.5% vs 수정주가 기준 실제 −21.3%, 한탑 +549.7% vs 실제 +30.0%). KIS HTS 순위와 동일한 원천 특성이라 보정 없이 진행하고 UI 각주로 안내.
+- **구현**: ① `client.ts` `fetchKisFluctuationRanking(sort, compareDays)` — `fid_input_cnt_1`만 파라미터화("0" 당일 / "5" 주간), 신규 함수 없음 ② `types.ts` `dsgt_date_clpr_vrss_prpr_rate` 필드 추가 ③ `market/store.ts` `market:weeklyFluctuation` 키 + `StoredWeeklyFluctuation`/`WeeklyFluctuationItem`(당일 타입 alias — 구조 동일, changeRate 의미만 5거래일 대비) + get/set ④ `refreshMarketData` 잡 1b' 스텝 `refreshWeeklyFluctuation` — 회차당 1콜, `parseNum`만 적용(부호 내장이라 `applyKisSign` 불필요), changeRate 내림차순 재정렬·재순위, 실패 격리·보고서 `weeklyFluctuation` 필드 ⑤ `/hot-stocks` 탭 `[당일 등락률 | 주간 등락률 | 월간 핫종목]`(`?mode=weekly`) — 기존 `DailyView`를 공용 `FluctuationView`(variant="daily"|"weekly", 데이터 소스·문구만 교체)로 일반화, 신규 테이블 없음. **주간 탭 라벨 아래 보조 설명 "최근 5거래일 대비"**(`tabSub`, `--text-micro`) + 푸터에 달력 주 아님·공휴일 영향·원주가 기준 왜곡 가능성 명시. 홈 카드·월간 뷰 무변경.
+- **검증**: tsc·lint·build(20/20 라우트) PASS. 라이브 프로브 3회(상승률순 cnt=0/cnt=5 비교, 전 행 정렬 필드 확인, 일봉 교차 검증)로 API 동작 확정. 화면 데이터는 다음 시세 잡 회차가 `market:weeklyFluctuation`을 채운 뒤 확인 가능.
+
+---
+
 ## 7. PR 분리 권장 (선택)
 
 | PR | Phase | 리뷰 포인트 |
