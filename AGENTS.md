@@ -29,15 +29,18 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 - 구현 전 `research.md` + `plan.md` 필독 · 승인된 Phase만 진행 · 파일 단위로 작성·검토
 - plan.md — Phase 단위 작업 이력. research.md — 현재 코드 구조 스냅샷(§1~10, 시간 무관, 항상 최신 유지).
+- 구현 완료(코드·문서 수정 후 lint·typecheck 통과) 시마다 `pending-commits.md`(git 미추적 로컬 대기 목록)의 "대기 중" 섹션에 항목을 등록한다 — 양식·완료 처리 규칙은 그 파일 머리말을 따른다
 
 ## 5. Push 전 검증 워크플로우
 
 "push해줘" 요청을 받으면 항상 아래 순서로 진행한다:
 
-1. lint·typecheck 통과 확인
-2. 커밋될 변경사항에 API 키, 토큰, 비밀번호 등 민감정보가 포함되어 있는지 확인 (`git diff --staged` 검토)
-3. `npm audit` 실행 — high 이상 심각도의 알려진 취약점이 있으면 사용자에게 알리고 진행 여부 확인
-4. 문제없으면 의미 단위로 커밋 메시지를 나누어 커밋 후 push
+1. `pending-commits.md`의 "대기 중" 목록을 확인해 커밋 대상을 파악
+2. lint·typecheck 통과 확인
+3. 커밋될 변경사항에 API 키, 토큰, 비밀번호 등 민감정보가 포함되어 있는지 확인 (`git diff --staged` 검토)
+4. `npm audit` 실행 — high 이상 심각도의 알려진 취약점이 있으면 사용자에게 알리고 진행 여부 확인
+5. 문제없으면 의미 단위로 커밋 메시지를 나누어 커밋 후 push
+6. push 완료 후 처리한 대기 항목을 한 줄로 요약해 커밋 해시와 함께 `pending-commits.md`의 "완료" 섹션으로 이동
 
 ## 6. 보안 코드 리뷰 (요청 시 수행)
 
