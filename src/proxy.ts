@@ -21,9 +21,13 @@ export default auth((req) => {
  * (`verifyJobRequest` — 미인증이면 401) 세션 리다이렉트 대상에서 제외한다.
  * 라우트를 하나씩 열거하면 새 잡을 추가할 때 빠뜨려 307 → /login으로 새는데,
  * 실제로 그래서 `api/jobs` 접두사로 묶었다 (§17.15).
+ *
+ * PWA 자산(sw.js·manifest·아이콘)도 제외한다 — 브라우저가 매니페스트를
+ * credentials 없이 가져오고, 서비스 워커 등록 fetch가 /login 307을 받으면
+ * 설치·푸시 구독이 깨진다 (Phase 10).
  */
 export const config = {
   matcher: [
-    "/((?!api/auth|api/jobs/|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api/auth|api/jobs/|_next/static|_next/image|favicon.ico|sw.js|manifest.webmanifest|icons/|apple-icon.png).*)",
   ],
 };
