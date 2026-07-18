@@ -20,7 +20,9 @@ import { isHotStocksStale } from "@/lib/hotstocks/summary";
 import { resolveDirection } from "@/lib/indices/kisMapper";
 import {
   getDailyFluctuation,
+  getStockMaster,
   getWeeklyFluctuation,
+  type StockMasterItem,
   type StoredDailyFluctuation,
 } from "@/lib/market/store";
 import { resolveStaleness } from "@/lib/market/staleness";
@@ -35,21 +37,11 @@ export const metadata: Metadata = {
 /** 보기 모드 — 당일/주간 등락률 순위 · 월간 구간 수익률 */
 type Mode = "daily" | "weekly" | "monthly";
 
-// 순서: 일별 → 주간 → 월별 (§17.12·§19). 주간은 달력 주가 아니라
-// 5거래일 전 대비 롤링이라 탭에 보조 설명(sub)을 붙여 오해를 막는다.
-const MODES: ReadonlyArray<{
-  key: Mode;
-  label: string;
-  sub?: string;
-  href: string;
-}> = [
+// 순서: 일별 → 주간 → 월별 (§17.12·§19). 주간이 달력 주가 아니라 5거래일
+// 롤링이라는 설명은 기준 문구·푸터 안내로 제공한다 (§20 — 탭 보조 설명 제거).
+const MODES: ReadonlyArray<{ key: Mode; label: string; href: string }> = [
   { key: "daily", label: "당일 등락률", href: "/hot-stocks" },
-  {
-    key: "weekly",
-    label: "주간 등락률",
-    sub: "최근 5거래일 대비",
-    href: "/hot-stocks?mode=weekly",
-  },
+  { key: "weekly", label: "주간 등락률", href: "/hot-stocks?mode=weekly" },
   { key: "monthly", label: "월간 핫종목", href: "/hot-stocks?mode=monthly" },
 ];
 
@@ -98,9 +90,6 @@ export default async function HotStocksPage({
               aria-current={m.key === activeMode ? "page" : undefined}
             >
               {m.label}
-              {m.sub !== undefined ? (
-                <span className={styles.tabSub}>{m.sub}</span>
-              ) : null}
             </Link>
           ))}
         </nav>
@@ -120,7 +109,7 @@ const FLUCTUATION_VIEWS = {
   daily: {
     load: getDailyFluctuation,
     label: "당일 등락률",
-    rangeInfo: "전체시장 상승률 상위",
+    baseLabel: "전일 종가",
     notice:
       "당일 등락률은 전일 종가 대비 현재가의 등락률(장중 실시간)이며, 전체시장 " +
       "상승률 상위 30종목입니다. 시세 갱신 회차(평일 09:00~15:30 KST 10분 간격, " +
@@ -130,7 +119,7 @@ const FLUCTUATION_VIEWS = {
   weekly: {
     load: getWeeklyFluctuation,
     label: "주간 등락률",
-    rangeInfo: "전체시장 최근 5거래일 상승률 상위",
+    baseLabel: "5거래일 전 종가",
     notice:
       "주간 등락률은 5거래일 전 종가 대비 현재가의 등락률(장중 실시간)입니다 — " +
       "달력 기준 1주일이 아니라 거래일 기준 롤링이라, 공휴일이 낀 주에는 달력상 " +
@@ -142,7 +131,31 @@ const FLUCTUATION_VIEWS = {
   },
 } as const;
 
-/** 당일/주간 등락률 상위 30 — 시세 갱신 잡이 저장한 스냅샷을 그대로 읽는다 (§17.10·§19). */
+/**
+ * 종목코드 → 시장 매핑 — 시장 위첨자 ᴷ/ᴰ 표기용 (§20).
+ * `market:stockMaster` 스냅샷(§17.11)을 읽어 만든다. 부수 표기라 마스터 조회
+ * 실패는 뷰 오류로 올리지 않고 빈 매핑(위첨자 생략)으로 폴백한다.
+ */
+async function loadMarketByCode(): Promise<
+  Map<string, StockMasterItem["market"]>
+> {
+  try {
+    const master = await getStockMaster();
+    return new Map(
+      (master?.items ?? []).map((item) => [item.code, item.market])
+    );
+  } catch (error) {
+    console.error("[HotStocksPage] stock master load failed:", error);
+    return new Map();
+  }
+}
+
+/**
+ * 당일/주간 등락률 상위 30 — 시세 갱신 잡이 저장한 스냅샷을 그대로 읽는다
+ * (§17.10·§19). 표는 월간 뷰와 동일한 6열 폼(코드 별도 열·ᴷ/ᴰ 위첨자·기준
+ * 종가 열)으로 통일 (§20). 기준 종가(basePrice)는 §20 이전 스냅샷에는 없어
+ * "—"로 표시될 수 있다(다음 갱신 회차부터 채워짐).
+ */
 async function FluctuationView({ variant }: { variant: "daily" | "weekly" }) {
   const view = FLUCTUATION_VIEWS[variant];
   let stored: StoredDailyFluctuation | null;
@@ -167,12 +180,14 @@ async function FluctuationView({ variant }: { variant: "daily" | "weekly" }) {
     );
   }
 
+  const marketByCode = await loadMarketByCode();
   const stale = resolveStaleness(stored.fetchedAt);
 
   return (
     <>
       <p className={styles.rangeInfo}>
-        {view.rangeInfo} <span className="numeric">30</span>종목 · 갱신:{" "}
+        {view.label} 상위 <span className="numeric">30</span>종목 · 기준:{" "}
+        {view.baseLabel} · 대상 전체시장 · 갱신:{" "}
         {formatKstDateTime(stored.fetchedAt)}
       </p>
 
@@ -189,35 +204,56 @@ async function FluctuationView({ variant }: { variant: "daily" | "weekly" }) {
             <tr>
               <th>순위</th>
               <th>종목명</th>
+              <th>
+                <span className={styles.srOnly}>종목코드</span>
+              </th>
               <th>등락률</th>
+              <th>기준 종가</th>
               <th>현재가</th>
             </tr>
           </thead>
           <tbody>
-            {stored.items.map((item) => (
-              <tr key={item.code}>
-                <td className={`${styles.rankCell} numeric`}>{item.rank}</td>
-                <td
-                  className={styles.nameCell}
-                  title={`${item.name} ${item.code}`}
-                >
-                  <span className={styles.nameText}>{item.name}</span>
-                  <span className={`${styles.codeInline} numeric`}>
-                    {item.code}
-                  </span>
-                </td>
-                <td
-                  className={`${styles.numCell} numeric ${
-                    styles[resolveDirection(item.changeRate)]
-                  }`}
-                >
-                  {formatChangeRate(item.changeRate)}
-                </td>
-                <td className={`${styles.numCell} numeric`}>
-                  {formatKrw(item.price)}
-                </td>
-              </tr>
-            ))}
+            {stored.items.map((item) => {
+              const market = marketByCode.get(item.code);
+              return (
+                <tr key={item.code}>
+                  <td className={`${styles.rankCell} numeric`}>{item.rank}</td>
+                  <td className={styles.nameCell} title={item.name}>
+                    <span className={styles.nameText}>{item.name}</span>
+                    {market !== undefined ? (
+                      <>
+                        <span
+                          className={styles.marketSup}
+                          title={MARKET_SUP[market].title}
+                          aria-hidden="true"
+                        >
+                          {MARKET_SUP[market].mark}
+                        </span>
+                        <span className={styles.srOnly}>
+                          {MARKET_SUP[market].srText}
+                        </span>
+                      </>
+                    ) : null}
+                  </td>
+                  <td className={`${styles.codeCell} numeric`}>{item.code}</td>
+                  <td
+                    className={`${styles.numCell} numeric ${
+                      styles[resolveDirection(item.changeRate)]
+                    }`}
+                  >
+                    {formatChangeRate(item.changeRate)}
+                  </td>
+                  <td className={`${styles.numCell} numeric`}>
+                    {item.basePrice !== undefined
+                      ? formatKrw(item.basePrice)
+                      : "—"}
+                  </td>
+                  <td className={`${styles.numCell} numeric`}>
+                    {formatKrw(item.price)}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -258,7 +294,7 @@ async function MonthlyView({ activeKey }: { activeKey: HotStockWindowKey }) {
         {HOT_STOCK_WINDOW_KEYS.map((key) => (
           <Link
             key={key}
-            href={`/hot-stocks?period=${key}`}
+            href={`/hot-stocks?mode=monthly&period=${key}`}
             className={
               key === activeKey ? `${styles.tab} ${styles.tabActive}` : styles.tab
             }

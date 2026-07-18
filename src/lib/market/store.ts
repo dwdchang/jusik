@@ -74,6 +74,12 @@ export interface DailyFluctuationItem {
   price: number;
   /** 전일 대비율(%) — 부호 적용 */
   changeRate: number;
+  /**
+   * 기준 종가(원) — 당일은 전일 종가(전일 대비 금액으로 정확 산출), 주간은
+   * 5거래일 전 종가(등락률 역산이라 1원 단위 오차 가능). 필드 추가(§20) 이전에
+   * 저장된 스냅샷에는 없으므로 optional.
+   */
+  basePrice?: number;
 }
 
 /**

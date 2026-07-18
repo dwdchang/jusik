@@ -226,13 +226,19 @@ async function refreshDailyFluctuation(
 
     const items: DailyFluctuationItem[] = rows
       .filter((row) => row.stck_shrn_iscd && row.hts_kor_isnm)
-      .map((row) => ({
-        rank: 0,
-        code: row.stck_shrn_iscd as string,
-        name: row.hts_kor_isnm as string,
-        price: parseNum(row.stck_prpr),
-        changeRate: applyKisSign(parseNum(row.prdy_ctrt), row.prdy_vrss_sign),
-      }))
+      .map((row) => {
+        const price = parseNum(row.stck_prpr);
+        return {
+          rank: 0,
+          code: row.stck_shrn_iscd as string,
+          name: row.hts_kor_isnm as string,
+          price,
+          changeRate: applyKisSign(parseNum(row.prdy_ctrt), row.prdy_vrss_sign),
+          // 전일 종가 = 현재가 − 전일 대비 금액(부호 적용) — 역산 아님, 원 단위 정확 (§20)
+          basePrice:
+            price - applyKisSign(parseNum(row.prdy_vrss), row.prdy_vrss_sign),
+        };
+      })
       .sort((a, b) => b.changeRate - a.changeRate)
       .map((item, i) => ({ ...item, rank: i + 1 }));
 
@@ -258,13 +264,23 @@ async function refreshWeeklyFluctuation(
 
     const items: WeeklyFluctuationItem[] = rows
       .filter((row) => row.stck_shrn_iscd && row.hts_kor_isnm)
-      .map((row) => ({
-        rank: 0,
-        code: row.stck_shrn_iscd as string,
-        name: row.hts_kor_isnm as string,
-        price: parseNum(row.stck_prpr),
-        changeRate: parseNum(row.dsgt_date_clpr_vrss_prpr_rate),
-      }))
+      .map((row) => {
+        const price = parseNum(row.stck_prpr);
+        const changeRate = parseNum(row.dsgt_date_clpr_vrss_prpr_rate);
+        // 5거래일 전 종가는 응답에 금액이 없어 등락률로 역산 — 1원 단위 오차 가능.
+        // −100%(기준가 0 분모)는 상장 종목에서 나올 수 없지만 방어적으로 제외 (§20)
+        const divisor = 1 + changeRate / 100;
+        return {
+          rank: 0,
+          code: row.stck_shrn_iscd as string,
+          name: row.hts_kor_isnm as string,
+          price,
+          changeRate,
+          ...(divisor > 0
+            ? { basePrice: Math.round(price / divisor) }
+            : {}),
+        };
+      })
       .sort((a, b) => b.changeRate - a.changeRate)
       .map((item, i) => ({ ...item, rank: i + 1 }));
 
