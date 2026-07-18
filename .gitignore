@@ -43,4 +43,5 @@ next-env.d.ts
 # local-only notes
 email.md
 summary.md
+pending-commits.md
 .env*.local
