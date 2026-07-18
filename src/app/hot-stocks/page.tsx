@@ -185,10 +185,13 @@ async function FluctuationView({ variant }: { variant: "daily" | "weekly" }) {
 
   return (
     <>
+      <p className={styles.lastRefresh}>
+        갱신: {formatKstDateTime(stored.fetchedAt)}
+      </p>
+
       <p className={styles.rangeInfo}>
         {view.label} 상위 <span className="numeric">30</span>종목 · 기준:{" "}
-        {view.baseLabel} · 대상 전체시장 · 갱신:{" "}
-        {formatKstDateTime(stored.fetchedAt)}
+        {view.baseLabel} · 대상 전체시장
       </p>
 
       {stale !== null ? (

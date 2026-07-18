@@ -32,6 +32,12 @@
   color: var(--color-text-tertiary);
 }
 
+/* 당일/주간 뷰는 갱신 줄 바로 아래 기준 문구가 오므로 줄 간격 부여 —
+   월간 뷰(갱신 줄 다음이 구간 탭)에는 영향 없음 (§22) */
+.lastRefresh + .rangeInfo {
+  margin-top: var(--space-8);
+}
+
 .errorBanner {
   margin-bottom: var(--space-16);
   padding: var(--space-12) var(--space-16);
