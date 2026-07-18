@@ -109,8 +109,11 @@
 
 /* 컨테이너 내부 가용 폭은 --layout-max-width 480px − 좌우 padding 32px − 보더 2px ≈ 446px.
    min-width가 이보다 크면 데스크톱에서도 스크롤이 강제되므로 그 아래(440px)로 유지 (§16 4차).
-   500px… 이하 모바일 스크롤 정책(§14.5)은 그대로 — 440px 미만 화면에서만 스크롤 */
+   500px… 이하 모바일 스크롤 정책(§14.5)은 그대로 — 440px 미만 화면에서만 스크롤.
+   table-layout: fixed — auto는 열 폭이 탭별 행 내용(가격 자릿수 등)에 따라 배분돼
+   당일/주간/월간 간 열 경계가 미세하게 어긋났음. 아래 th 고정 폭으로 3개 탭 폼 통일 (§21) */
 .table {
+  table-layout: fixed;
   width: 100%;
   min-width: 440px;
   border-collapse: collapse;
@@ -127,6 +130,31 @@
   color: var(--color-text-tertiary);
   text-align: center;
   white-space: nowrap;
+}
+
+/* 열 고정 폭 — fixed layout은 첫 행(th) 폭을 열 폭으로 쓴다. box-sizing: border-box라
+   좌우 padding 10px 포함. 합계 432px ≤ min-width 440px, 잔여 폭은 비례 배분되므로
+   탭·데이터와 무관하게 폼이 동일하다. 순위 3자리·코드 6자리(10px)·등락률 "+687.50%"
+   (주간 원주가 왜곡 사례)·종가 "1,234,000원"(7자리)까지 넘침 없이 수용 (§21) */
+.table th:nth-child(1) {
+  width: 34px;
+}
+
+.table th:nth-child(2) {
+  width: 108px;
+}
+
+.table th:nth-child(3) {
+  width: 48px;
+}
+
+.table th:nth-child(4) {
+  width: 74px;
+}
+
+.table th:nth-child(5),
+.table th:nth-child(6) {
+  width: 84px;
 }
 
 /* 값은 12px로 축소(캡션 13px과 마이크로 11px 사이) — 열 전체가 446px 안에 들어가게 (§16 4차) */
@@ -155,10 +183,11 @@
 
 /* 종목명 고정 최대 폭 — 초과분은 ellipsis. 위첨자 ᴷ/ᴰ가 함께 잘리지 않도록
    셀이 아닌 이름 텍스트에만 적용, 전체 이름은 셀 title로 제공 (§16 3차).
-   120→96px — 폰트 12px 기준 한글 8자, 끝종가 노출 폭 확보(가용 446px 내 수렴) (§16 4차) */
+   120→96px (§16 4차) → 88px — 폰트 12px 기준 한글 약 7자, 열 폭 108px(위첨자
+   ~9px+padding 10px 포함) 안에 넘침 없이 수렴 (§21) */
 .nameText {
   display: inline-block;
-  max-width: 96px;
+  max-width: 88px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -189,9 +218,10 @@
   text-align: right;
 }
 
-/* 종목코드 값 — 작은 폰트·옅은 색으로 종목명과 구분, 정렬은 .table td 기본(가운데) (§16 추가 조정) */
+/* 종목코드 값 — 작은 폰트·옅은 색으로 종목명과 구분, 정렬은 .table td 기본(가운데)
+   (§16 추가 조정). 11→10px 축소 — 10px 토큰이 없어 td 12px처럼 직접 지정 (§21) */
 .table .codeCell {
-  font-size: var(--text-micro);
+  font-size: 10px;
   font-weight: 400;
   color: var(--color-text-tertiary);
 }
