@@ -1,4 +1,8 @@
 import {
+  evaluatePriceAlerts,
+  type PriceAlertsReport,
+} from "@/lib/alerts/evaluate";
+import {
   fetchKisFluctuationRanking,
   fetchKisIndexDaily,
   fetchKisMarketCapRanking,
@@ -101,21 +105,21 @@ export interface RefreshMarketDataReport {
     ok: boolean;
     error?: string;
   }>;
-  alerts: { evaluated: boolean; reason?: string };
+  alerts: { evaluated: boolean; reason?: string; summary?: PriceAlertsReport };
   /** 데이터 갱신 성공 여부 — false면 잡 엔드포인트가 500을 반환(QStash 재시도, §11.10-A6) */
   ok: boolean;
 }
 
 /**
- * Phase 10 알림 판정·발송 연결 지점 (§11.11 그룹 8 — 빈 훅).
+ * Phase 10 알림 판정·발송 연결 지점 (§11.11 그룹 8).
  * 갱신 잡이 방금 저장한 스냅샷으로 조건 3종을 판정해 Web Push를 발송한다.
- * 실제 구현은 Phase 10 승인 후 — 실패해도 로그만 남기고 응답은 200 (§11.10-A6).
+ * 실패해도 로그만 남기고 응답은 200 (§11.10-A6).
  */
 async function evaluateAlertsHook(context: {
   snapshots: Map<string, StoredStockSnapshot>;
   holdingsByEmail: Map<string, Holding[]>;
-}): Promise<void> {
-  void context; // no-op — Phase 10에서 구현
+}): Promise<PriceAlertsReport> {
+  return evaluatePriceAlerts(context);
 }
 
 /** 지수·환율·금리·유가 5종 조회 → market:detail:* 저장 (지표별 실패 격리) */
@@ -623,8 +627,8 @@ export async function refreshMarketData(
     alerts = { evaluated: false, reason: "not a trading day (basDt mismatch)" };
   } else {
     try {
-      await evaluateAlertsHook({ snapshots, holdingsByEmail });
-      alerts = { evaluated: true };
+      const summary = await evaluateAlertsHook({ snapshots, holdingsByEmail });
+      alerts = { evaluated: true, summary };
     } catch (error) {
       console.error("[job] alert evaluation failed:", error);
       alerts = { evaluated: false, reason: errorMessage(error) };

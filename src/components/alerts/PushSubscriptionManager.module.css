@@ -1,0 +1,89 @@
+.manager {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
+}
+
+.rowTitle {
+  font-size: 14px;
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.rowStatus {
+  margin-top: 2px;
+  font-size: var(--text-caption);
+  color: var(--color-text-secondary);
+}
+
+.buttonPrimary,
+.buttonSecondary {
+  flex-shrink: 0;
+  padding: 10px var(--space-16);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.buttonPrimary {
+  background-color: var(--color-primary);
+  color: #ffffff;
+}
+
+.buttonPrimary:active {
+  background-color: var(--color-primary-pressed);
+}
+
+.buttonSecondary {
+  background-color: var(--color-bg);
+  color: var(--color-text-primary);
+  border: 1px solid var(--color-border);
+}
+
+.buttonPrimary:disabled,
+.buttonSecondary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.hint {
+  font-size: var(--text-caption);
+  color: var(--color-text-secondary);
+}
+
+.guide {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.guideTitle {
+  font-size: 14px;
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.guideBody {
+  font-size: var(--text-caption);
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+}
+
+.messageOk {
+  font-size: var(--text-caption);
+  color: var(--color-primary);
+}
+
+.messageError {
+  font-size: var(--text-caption);
+  color: var(--color-critical);
+}

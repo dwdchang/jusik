@@ -1,6 +1,6 @@
 "use client";
 
-import { Inbox, Menu, X } from "lucide-react";
+import { Bell, Inbox, Menu, X } from "lucide-react";
 import Link from "next/link";
 import { type ReactNode, useEffect, useId, useState } from "react";
 import styles from "./MenuSidebar.module.css";
@@ -78,6 +78,15 @@ export function MenuSidebar({
           <span className={styles.themeLabel}>화면 모드</span>
           {themeSlot}
         </div>
+
+        <Link
+          href="/alerts"
+          className={styles.menuLink}
+          onClick={() => setOpen(false)}
+        >
+          <Bell aria-hidden="true" />
+          알림 설정
+        </Link>
 
         {showDlqLink && (
           <Link
