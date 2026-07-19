@@ -2694,6 +2694,20 @@ interface WatchItem {
   1. `components/indices/MarketCard.tsx` — 라벨 4종 축약(`미국 10년물 금리`→`美 금리`, `국제유가 WTI`→`WTI`, `금 현물`→`GOLD`, `비트코인`→`BTC($)`), BTC 값에서 `" USD"` 접미사 제거, 각주를 `기준일 …` 한 줄로 축소, 헤더 주석에 §34 근거 추가.
 - **상태**: 구현 완료(2026-07-19) — lint·tsc 통과. research.md §4 갱신. 실제 화면 확인은 사용자 확인 대기.
 
+### Phase 35 — 홈 카드 각주 전면 제거 + 여백·등락률 축소 (2026-07-19)
+
+- **요청 근거**: 사용자 지시 3건 — ① 기준일 문구를 포함한 홈 카드 하단 각주 8개를 전부 제거 ② §34 축약 후에도 시장 카드 등락률이 가려져 등락률만 1pt 축소 ③ 관심종목 전일 대비 등락률의 괄호 제거. 추가로 카드 안쪽·바깥쪽 여백을 1mm(≈4px)씩 축소.
+- **조사 결과 (2026-07-19)**: 각주 8개의 출처는 `IndexDashboard.tsx`(지수 3종 `기준일 …` + 보유종목·변동성 2건) · `MarketCard`/`WatchlistCard`/`HotStocksCard`/`FeedSummaryCard`/`DividendCard` 각 1건. `footnote`는 `SummaryCard`의 optional prop이고 전용 카드 5종은 `.footnote`를 composes만 하고 있어, 전 카드에서 빠지면 prop·CSS 모두 사용처가 사라진다(`grep` 결과 `components/indices/` 밖 사용 없음). 카드 골격은 5종이 `SummaryCard.module.css`의 `.card`를 composes 하므로 패딩은 한 곳 수정으로 전 카드 반영. CSS `mm`는 `1mm = 3.78px`라 실질 4px이며, spacing 토큰이 4px 계단(8·12·16·20·24)이라 각각 한 칸씩 내리면 정확히 맞는다.
+- **구현 계획 (파일 단위)**:
+  1. `components/indices/IndexDashboard.tsx` — `indexSummaryProps`의 `footnote`(기준일) 제거 + `formatBasDtDisplay` import 삭제, 보유종목·변동성 `footnote` prop 제거.
+  2. `components/indices/SummaryCard.tsx`(+module.css) — `footnote` prop·렌더 블록·`.footnote` 스타일 제거(프리미티브에서 완전 삭제). `.change:last-child { margin-bottom: 0 }` 추가 — 각주가 빠져 등락률이 마지막이 되면 12px가 헛돌기 때문.
+  3. `MarketCard`/`WatchlistCard`/`HotStocksCard`/`FeedSummaryCard`/`DividendCard` `.tsx` — 각주 `<p>` 제거(+`MarketCard`의 `formatBasDtDisplay` import 삭제). 각 `.module.css` — 죽은 `.footnote` composes 블록 제거 + `.list:last-child { margin-bottom: 0 }` 추가(HotStocks는 `staleNotice`가 있을 때만 리스트 아래 여백 유지).
+  4. `components/indices/WatchlistCard.tsx` — 전일 대비 등락률의 괄호 제거(`({rate})`→`{rate}`), 헤더·CSS 주석 갱신. `.daily`가 이미 `--text-micro`(11px)라 괄호 없이도 메인 수익률과 구분된다.
+  5. `styles/tokens.css` — `--text-caption-sm: 12px` 신설(caption 13px보다 1pt 작은 보조 수치용). `MarketCard.module.css` `.rate`에 적용 — 지표명·값은 13px 유지.
+  6. `components/indices/SummaryCard.module.css` `.card` 패딩 `--space-20`→`--space-16`, `IndexDashboard.module.css` `.dashboard` 패딩 `--space-16`→`--space-12` · `.cards` gap `--space-12`→`--space-8`.
+- **부수 효과 (사용자 고지)**: 각주 한 줄(≈15px) + 상하 패딩 8px로 카드당 높이가 20px 남짓 줄어, 4행 리스트 카드와 값 한 줄 카드 간 행별 높이 편차가 지금보다 도드라질 수 있다. 우선 적용 후 실제 화면을 보고 조정하기로 함.
+- **상태**: 구현 완료(2026-07-19) — 계획 1~6번 그대로 구현. lint·tsc 통과. research.md §4 갱신. 실제 화면 확인은 사용자 확인 대기.
+
 ---
 
 ## 7. PR 분리 권장 (선택)
