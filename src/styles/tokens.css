@@ -31,11 +31,14 @@
   --font-sans: var(--font-geist-sans), -apple-system, BlinkMacSystemFont,
     "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
   --text-title: 22px;
+  /* 페이지 제목(h1) 전용 — title보다 2pt 작고 굵기는 regular (§36) */
+  --text-page-title: 20px;
   --text-price: 28px;
   --text-caption: 13px;
   /* caption보다 1pt 작은 보조 수치용 (§35 시장 카드 등락률) */
   --text-caption-sm: 12px;
   --text-micro: 11px;
+  --weight-regular: 400;
   --weight-medium: 500;
   --weight-semibold: 600;
   --weight-bold: 700;

@@ -56,6 +56,7 @@ export async function IndexDetailScreen({
       <div className={styles.container}>
         <header className={styles.header}>
           <NavIconLink href="/" label="홈으로" icon="home" />
+          <h1 className={styles.title}>{data.snapshot.name}</h1>
           <span className={styles.lastRefresh}>
             마지막 갱신: {formatKstDateTime(data.asOf)}
           </span>

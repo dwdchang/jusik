@@ -82,6 +82,7 @@ export function IndexDashboard({
     <div className={styles.dashboard}>
       <header className={styles.header}>
         <NavIconLink href="/" label="홈" icon="home" />
+        <h1 className={styles.title}>Dashboard</h1>
         <div className={styles.headerActions}>
           <HeaderMenu />
         </div>

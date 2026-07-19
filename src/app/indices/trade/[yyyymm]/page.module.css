@@ -24,8 +24,8 @@
 .title {
   /* 좁은 화면에서 "2026.06 수출/입"으로 쪼개지지 않게 — 줄바꿈은 갱신 시각이 감당한다 */
   white-space: nowrap;
-  font-size: var(--text-title);
-  font-weight: var(--weight-bold);
+  font-size: var(--text-page-title);
+  font-weight: var(--weight-regular);
   color: var(--color-text-primary);
   letter-spacing: var(--tracking-tight);
 }

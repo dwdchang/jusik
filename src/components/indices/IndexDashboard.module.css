@@ -8,12 +8,20 @@
 .header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--space-12);
   margin-bottom: var(--space-24);
 }
 
+/* 홈 페이지 제목 (§36) — 상세 화면과 동일한 홈 아이콘 + h1 배치 */
+.title {
+  font-size: var(--text-page-title);
+  font-weight: var(--weight-regular);
+  color: var(--color-text-primary);
+  letter-spacing: var(--tracking-tight);
+}
+
 .headerActions {
+  margin-left: auto;
   display: flex;
   align-items: center;
   gap: var(--space-8);
