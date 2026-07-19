@@ -2566,6 +2566,16 @@ interface WatchItem {
   6. **신규** `lib/alerts/dividendAlerts.ts` `evaluateDividendAlerts` + `refreshFeeds` 스텝 6 훅 + `alerts/store.ts` 마커 3함수(`alerts:dividend:sent:{code}:{payDate}` EX 2일). 같은 지급일 여러 회차는 주당배당금 합산 1건 발송. 훅 실패는 로그만 — 잡 `ok` 게이팅 제외.
 - **상태**: 구현 완료(2026-07-19) — lint·tsc·프로덕션 빌드 통과, research.md §2·§4·§5·§9.5 갱신. `rounds` 데이터는 다음 확정 회차(15:40/18:15) 시세 잡부터 채워지므로 그 전까지 카드·상세는 빈 상태(placeholder)가 정상. 실제 화면·알림 확인은 사용자 확인 대기.
 
+### Phase 26 — 홈 헤더 정리: 제목·설명 제거 확정 + 좌측 홈 아이콘 + 햄버거 우측 고정 (2026-07-19, 구현 완료)
+
+- **요청 근거**: 사용자 지시 — 사용자가 `IndexDashboard.tsx`의 홈 상단 제목("시장 지표")·설명 문구 블록을 직접 주석 처리했더니 우측에 있던 햄버거 메뉴가 좌측으로 이동함. 햄버거 메뉴는 우측에 고정하고, 좌측에는 (원래 없던) 홈 버튼 아이콘을 신설. 주석 처리된 제목·설명 블록은 구현 시 **삭제 확정**(사용자 승인 완료).
+- **원인**: `IndexDashboard.module.css`의 `.header`가 `display: flex; justify-content: space-between`인데, 제목 `<div>`가 주석 처리되면서 자식이 `.headerActions` 하나만 남아 flex 시작 위치(좌측)로 붙음. 자식 2개가 복원되면 `space-between`이 좌/우 배치를 자연 복원한다.
+- **구현 계획 (파일 단위)**:
+  1. `src/components/indices/IndexDashboard.tsx` — 주석 처리된 제목·설명 `<div>` 블록을 삭제하고, 그 자리에 기존 공용 컴포넌트 `NavIconLink`(`components/nav/NavIconLink.tsx` — House 아이콘·36px, 상세 페이지 헤더에서 이미 사용 중)를 `icon="home"` `href="/"` `label="홈"`으로 배치. 우측 `.headerActions`(HeaderMenu)는 무변경 — 좌측 홈 아이콘 + 우측 햄버거의 2자식 구조로 `space-between` 배치 복원. 신규 컴포넌트·CSS 없음.
+  2. `src/components/indices/IndexDashboard.module.css` — 제목 블록 삭제로 미사용이 되는 `.title`·`.subtitle` 셀렉터 제거. `.header`의 `align-items: flex-start`는 양쪽 모두 36px 아이콘 버튼이 되므로 `center`로 조정(높이 정렬 자연화).
+- **비고(a11y)**: 제목 삭제로 홈 화면에서 `<h1>`이 사라짐 — 문서 제목(`layout.tsx` metadata "투자의 공간")은 유지되므로 수용. 필요해지면 시각적으로 숨긴 h1을 추후 별도 논의.
+- **상태**: 구현 완료(2026-07-19) — 계획 1·2번 그대로 구현(주석 블록 삭제 + `NavIconLink` home 배치, `.title`·`.subtitle` 제거 + `.header` `align-items: center`). lint·tsc 통과, research.md §2.3 갱신. 같은 커밋 흐름에 사용자 직접 수정분(문서 제목 "투자의 공간", `KIS_DATA_NOTICE` 문구 축약) 포함.
+
 ---
 
 ## 7. PR 분리 권장 (선택)

@@ -155,7 +155,7 @@
 
 | 컴포넌트 | 종류 | 역할 |
 |---|---|---|
-| `indices/IndexDashboard` | Server | 홈 카드 8종 조립 + 헤더(햄버거 메뉴 `HeaderMenu` — Phase 18) |
+| `indices/IndexDashboard` | Server | 홈 카드 8종 조립 + 헤더(좌 `NavIconLink` 홈 아이콘 + 우 햄버거 `HeaderMenu` — 제목·설명 문구는 Phase 26에서 제거) |
 | `indices/SummaryCard` | Server | **홈 요약 카드 공용 프리미티브** — value/change/footnote/placeholder/staleness 배지. 카드 전체가 Link |
 | `indices/HotStocksCard` | Server | 핫종목 전용 카드 — 당일 등락률 TOP 3 리스트 (SummaryCard 미사용) |
 | `indices/WatchlistCard` | Server | 관심종목 전용 카드 (§24) — 수익률 상위 3종목 리스트, 행마다 등록 기준일 대비 수익률 + 괄호 전일 등락률. 골격·staleness 배지는 SummaryCard composes(`STALENESS_LABELS` export 재사용), 리스트 폼은 HotStocksCard와 동일 |
