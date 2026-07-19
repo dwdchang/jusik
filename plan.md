@@ -2576,6 +2576,15 @@ interface WatchItem {
 - **비고(a11y)**: 제목 삭제로 홈 화면에서 `<h1>`이 사라짐 — 문서 제목(`layout.tsx` metadata "투자의 공간")은 유지되므로 수용. 필요해지면 시각적으로 숨긴 h1을 추후 별도 논의.
 - **상태**: 구현 완료(2026-07-19) — 계획 1·2번 그대로 구현(주석 블록 삭제 + `NavIconLink` home 배치, `.title`·`.subtitle` 제거 + `.header` `align-items: center`). lint·tsc 통과, research.md §2.3 갱신. 같은 커밋 흐름에 사용자 직접 수정분(문서 제목 "투자의 공간", `KIS_DATA_NOTICE` 문구 축약) 포함.
 
+### Phase 27 — 변동성 상세: 차트 하단 당월 일별 기록 목록 추가 (2026-07-19)
+
+- **요청 근거**: 사용자 지시 — `/indices/kospi-volatility` 상세에 차트만 있는데, 차트 밑에 **당월 일별 데이터 목록**을 추가. §9.4.4의 "차트 하나만, 하단 목록 없음(단순 유지)" 방침은 이 지시로 **변경 확정**.
+- **조사 결과 (2026-07-19)**: 일별 기록은 Redis `kospiVolatility:history`(`KospiVolatilityRecord`: `date`·`dailyGapPercent`)에 이미 전량 저장돼 있고 페이지가 `getVolatilityHistory()`를 이미 호출 중 — **추가 페치·저장 변경 0건**, 당월 필터만 걸면 됨. 목록 폼은 보유종목 상세의 "일별 기록" 패턴(`holdings/page.module.css`의 `.dailyList/.dailyRow`)을 이식.
+- **구현 계획 (파일 단위)**:
+  1. `app/indices/kospi-volatility/page.tsx` — `getVolatilityHistory()` 결과를 `records`로 보존 후 `aggregateMonthlyAverages` 호출. `todayKstDate().slice(0, 7)`로 당월 필터(`getVolatilityCardSummary`와 동일 패턴), 최신일 먼저(내림차순) 정렬해 차트 섹션 아래 "당월 일별 기록" 섹션 렌더 — 행: 날짜 + `dailyGapPercent.toFixed(2)%`(카드·차트 툴팁과 동일 포맷, `.numeric`). 당월 기록 0건이면 섹션 자체 미렌더(보유종목 관례). Server Component 유지(정적 목록 — Recharts 아님).
+  2. `app/indices/kospi-volatility/page.module.css` — `.sectionTitle`·`.dailyList`·`.dailyRow`·`.dailyDate`·`.dailyValue`를 보유종목 상세 CSS에서 이식(등락 색상 불필요 — 변동성은 방향성 없는 값이라 rise/fall 미적용).
+- **상태**: 구현 완료(2026-07-19) — 계획 1·2번 그대로 구현. lint·tsc 통과, research.md §2.3·§4.3 갱신. 실제 화면 확인은 사용자 확인 대기.
+
 ---
 
 ## 7. PR 분리 권장 (선택)
