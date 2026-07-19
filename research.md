@@ -83,8 +83,9 @@
 | `dlq/page.tsx` | QStash DLQ 읽기 전용 목록 (Phase 18) — `ensureAllowedSession` + `listDlqMessages(cursor)` 직접 호출(Redis 아닌 QStash API — §4.3 예외), `?cursor=` 페이지네이션. 햄버거 사이드바 "DLQ 확인"에서 진입, 재발송·삭제 없음 |
 | `alerts/page.tsx` | 알림 설정 (Phase 10) — `ensureAllowedSession` + `VAPID_PUBLIC_KEY`를 `PushSubscriptionManager`에 prop 전달 + 보유·관심종목별 알림 on/off(`StockAlertToggles`, 3단계에서 관심종목까지 확장) + 등록 기기 수 표시. 햄버거 사이드바 "알림 설정"에서 진입 |
 | `alerts/actions.ts` | Server Actions: 푸시 구독 등록/해지(입력 형식 검증 — endpoint https·keys 필수)·테스트 발송·종목별 알림 on/off(`setStockAlertEnabledAction` — 보유·관심종목만 허용, `alerts:{email}:muted` 갱신) |
-| `manifest.ts` | PWA 매니페스트(`/manifest.webmanifest`, Phase 10) — standalone·아이콘 192/512+maskable. iOS 푸시의 전제 조건 |
-| `apple-icon.png` | iOS 홈 화면 아이콘 (파일 컨벤션 — link 태그 자동 생성) |
+| `manifest.ts` | PWA 매니페스트(`/manifest.webmanifest`, Phase 10) — standalone·아이콘 192/512 + maskable 전용 `icon-512-maskable.png`(중앙 안전영역 여백). iOS 푸시의 전제 조건 |
+| `apple-icon.png` | iOS 홈 화면 아이콘 180×180 (파일 컨벤션 — link 태그 자동 생성). iOS는 투명 미지원이라 흰 배경 플랫·여백 없이 꽉 채움 |
+| `favicon.ico` | 브라우저 탭 아이콘 — 16·32·48 멀티사이즈 |
 | `api/auth/[...nextauth]/route.ts` | Auth.js 핸들러 re-export (3줄) |
 | `api/jobs/refresh-market-data/route.ts` | 시세 갱신 잡 엔드포인트 (POST, §4.1) |
 | `api/jobs/refresh-hot-stocks/route.ts` | 핫종목 갱신 잡 엔드포인트 (POST, §4.2) |
