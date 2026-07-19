@@ -160,7 +160,7 @@
 |---|---|---|
 | `indices/IndexDashboard` | Server | 홈 카드 9종 조립(§28에서 원/달러 카드 분리 신설, 시장 카드는 §33에서 `MarketCard` 리스트형으로 교체) + 헤더(좌 `NavIconLink` 홈 아이콘 + 우 햄버거 `HeaderMenu` — 제목·설명 문구는 Phase 26에서 제거) |
 | `indices/SummaryCard` | Server | **홈 요약 카드 공용 프리미티브** — value/change/footnote/placeholder/staleness 배지. 카드 전체가 Link |
-| `indices/MarketCard` | Server | 시장 전용 카드 (§33) — 금리·유가·금·비트코인(USD) 4행 동등 목록, 행마다 지표명·값·등락률. §30 추가 지표는 null이면 행 생략. 골격·배지는 SummaryCard composes, 리스트 폼은 WatchlistCard와 동일 관례, 카드 전체 `/indices/market` 링크 |
+| `indices/MarketCard` | Server | 시장 전용 카드 (§33) — 금리·유가·금·비트코인(USD) 4행 동등 목록, 행마다 지표명·값·등락률. 지표명은 §34에서 축약(`美 금리`·`WTI`·`GOLD`·`BTC($)`) — 통화 단위는 라벨에 두고 값 열은 숫자만, 각주는 기준일 한 줄. §30 추가 지표는 null이면 행 생략. 골격·배지는 SummaryCard composes, 리스트 폼은 WatchlistCard와 동일 관례, 카드 전체 `/indices/market` 링크 |
 | `indices/HotStocksCard` | Server | 핫종목 전용 카드 — 당일 등락률 TOP 4 리스트 (§33에서 4행 통일, SummaryCard 미사용) |
 | `indices/WatchlistCard` | Server | 관심종목 전용 카드 (§24) — 수익률 상위 4종목 리스트(§33), 행마다 등록 기준일 대비 수익률 + 괄호 전일 등락률. 골격·staleness 배지는 SummaryCard composes(`STALENESS_LABELS` export 재사용), 리스트 폼은 HotStocksCard와 동일 |
 | `indices/DividendCard` | Server | 배당 일정 전용 카드 (§25) — 다가오는 지급일 상위 4행(§33, 종목명·지급일 MM/DD·주당배당금), **보유종목 기준**. 골격·배지·리스트 폼은 WatchlistCard와 동일 관례, 카드 전체 `/dividends` 링크 |
