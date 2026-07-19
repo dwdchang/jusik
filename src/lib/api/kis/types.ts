@@ -208,6 +208,27 @@ export interface KisDividendResponse {
 }
 
 /**
+ * 관심종목(멀티종목) 시세조회 (FHKST11300006) — output 행. Phase 43.
+ * 1콜 최대 30종목이라 전 종목 현재가를 종목당 1콜 없이 확보한다.
+ */
+export interface KisMultiPriceRow {
+  /** 단축 종목코드 */
+  inter_shrn_iscd?: string;
+  /** 한글 종목명 */
+  inter_kor_isnm?: string;
+  /** 현재가(원) */
+  inter2_prpr?: string;
+  [key: string]: unknown;
+}
+
+export interface KisMultiPriceResponse {
+  rt_cd?: string;
+  msg_cd?: string;
+  msg1?: string;
+  output?: KisMultiPriceRow[];
+}
+
+/**
  * 국내주식 손익계산서 (FHKST66430200) — output 행.
  * 금액 단위 억원, 값은 연중 누적(YTD) — 분기 단독값은 차감 계산 (plan.md §13.4 실측).
  */

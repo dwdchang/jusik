@@ -6,6 +6,7 @@ import {
   KIS_FETCH_TIMEOUT_MS,
   KIS_INDEX_CODE,
   KIS_MARKET_DIV_CODE,
+  KIS_MULTI_PRICE_BATCH_SIZE,
   KIS_OVERSEAS_INDICATOR,
   KIS_OVERSEAS_LOOKBACK_DAYS,
   KIS_STOCK_MARKET_DIV_CODE,
@@ -24,6 +25,8 @@ import type {
   KisIndexDailyResponse,
   KisMarketCapRankingResponse,
   KisMarketCapRankingRow,
+  KisMultiPriceResponse,
+  KisMultiPriceRow,
   KisOverseasDailyResponse,
   KisStockBasicInfoResponse,
   KisStockDailyChartResponse,
@@ -270,6 +273,41 @@ export async function fetchKisDividends(
   );
 
   return data.output1 ?? [];
+}
+
+/**
+ * 관심종목(멀티종목) 시세조회 (FHKST11300006) — 1콜 최대 30종목. Phase 43.
+ * 파라미터가 `FID_COND_MRKT_DIV_CODE_N`/`FID_INPUT_ISCD_N`(N=1..30) 쌍으로 평탄하게
+ * 나열되는 특이 스펙이라 배열이 아닌 인덱스 접미사로 조립한다.
+ */
+export async function fetchKisMultiPrice(
+  symbolCodes: string[]
+): Promise<KisMultiPriceRow[]> {
+  if (symbolCodes.length === 0) {
+    return [];
+  }
+
+  if (symbolCodes.length > KIS_MULTI_PRICE_BATCH_SIZE) {
+    throw new Error(
+      `multi price accepts at most ${KIS_MULTI_PRICE_BATCH_SIZE} codes (got ${symbolCodes.length})`
+    );
+  }
+
+  const params: Record<string, string> = {};
+  symbolCodes.forEach((code, i) => {
+    const n = i + 1;
+    params[`FID_COND_MRKT_DIV_CODE_${n}`] = KIS_STOCK_MARKET_DIV_CODE;
+    params[`FID_INPUT_ISCD_${n}`] = code;
+  });
+
+  const data = await fetchKisJson<KisMultiPriceResponse>(
+    "multi price",
+    KIS_ENDPOINTS.MULTI_PRICE,
+    KIS_TR_ID.MULTI_PRICE,
+    params
+  );
+
+  return data.output ?? [];
 }
 
 /** 손익계산서 분기 조회 (FHKST66430200) — 값은 연중 누적(YTD, 억원), 최신순 */

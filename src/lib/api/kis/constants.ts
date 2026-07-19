@@ -33,6 +33,8 @@ export const KIS_ENDPOINTS = {
   FLUCTUATION_RANKING: "/uapi/domestic-stock/v1/ranking/fluctuation",
   /** 예탁원 배당일정 */
   DIVIDEND: "/uapi/domestic-stock/v1/ksdinfo/dividend",
+  /** 관심종목(멀티종목) 시세조회 — 1콜 최대 30종목 (Phase 43) */
+  MULTI_PRICE: "/uapi/domestic-stock/v1/quotations/intstock-multprice",
   /** 손익계산서 — 분기값은 연중 누적(YTD), 단위 억원 (plan.md §13.4 실측) */
   INCOME_STATEMENT: "/uapi/domestic-stock/v1/finance/income-statement",
   /** 재무비율 — 증가율은 전년 동기 대비 직접 제공 */
@@ -49,6 +51,7 @@ export const KIS_TR_ID = {
   MARKET_CAP_RANKING: "FHPST01740000",
   FLUCTUATION_RANKING: "FHPST01700000",
   DIVIDEND: "HHKDB669102C0",
+  MULTI_PRICE: "FHKST11300006",
   INCOME_STATEMENT: "FHKST66430200",
   FINANCIAL_RATIO: "FHKST66430300",
 } as const;
@@ -64,6 +67,20 @@ export const KIS_FLUCTUATION_RANKING_SIZE = 30;
 
 /** 배당 정보 집계 범위 — 최근 1년 주당배당금 합계로 시가배당률을 계산 */
 export const DIVIDEND_LOOKBACK_DAYS = 365;
+
+/** 멀티시세 1콜 종목 수 상한 — FID_COND_MRKT_DIV_CODE_1~30 (Phase 43) */
+export const KIS_MULTI_PRICE_BATCH_SIZE = 30;
+
+/**
+ * 배당률 순위의 연속 배당 연수 판정 범위(년) — Phase 43.
+ * 예탁원 배당일정은 F_DT~T_DT 범위 조회라 이 값을 키워도 종목당 콜 수는 1로 불변이다.
+ * KIS의 과거 조회 상한이 명세에 없어, 가장 이른 회차가 조회 시작 연도에 닿으면
+ * 상한에 걸린 것으로 보고 "N년+"로 표기한다 (yearsCapped).
+ */
+export const DIVIDEND_RANKING_LOOKBACK_YEARS = 10;
+
+/** 배당률 순위 표시 건수 — 전 종목 스캔 후 상위 N만 저장 (사용자 확정) */
+export const DIVIDEND_RANKING_SIZE = 100;
 
 /** 주식기본조회 상품유형코드 — 300: 국내주식 */
 export const KIS_STOCK_PRDT_TYPE_CD = "300";
