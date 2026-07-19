@@ -2731,6 +2731,17 @@ interface WatchItem {
 
 ---
 
+### Phase 38 — 홈·상세 화면 컨테이너 정렬 통일 (2026-07-19)
+
+- **요청 근거**: 사용자 지적 — "홈화면 UI와 각 항목 상세화면 UI의 위치가 미묘하게 다르다". 조사 후 1안(상세 화면 기준으로 홈을 맞춤) 확정.
+- **조사 결과 (2026-07-19)**: 상세 화면 13종(`holdings`·`holdings/[symbolCode]`·`watchlist`·`watchlist/[symbolCode]`·`hot-stocks`·`feeds`·`dividends`·`alerts`·`dlq`·`indices/market`·`indices/kospi-volatility`·`indices/trade/[yyyymm]`·`IndexDetailScreen`)의 `.page`+`.container` 블록은 **완전히 동일**(`max-width: --layout-max-width` 480px, `margin: 0 auto`, `padding: --space-16`, 헤더 `gap: --space-12`·`margin-bottom: --space-16`). 예외는 `trade/[yyyymm]` 하나뿐인데 헤더 `margin-bottom` 대신 컨테이너 `gap: --space-16`을 쓰는 방식이라 결과 간격은 같다. 어긋난 건 홈 `IndexDashboard.module.css`의 **두 값뿐** — `.dashboard` 패딩 `--space-12`(§35에서 축소), `.header` 아래 `--space-24`. 홈 아이콘+`h1` 배치·`--text-page-title`·`--weight-regular`·max-width·정렬은 §36에서 이미 일치. 체감되는 어긋남은 주로 패딩(좌우 정렬선 4px 밀림)에서 온다.
+- **구현 계획 (파일 단위)**:
+  1. `components/indices/IndexDashboard.module.css` — `.dashboard` 패딩 `--space-12`→`--space-16`, `.header` `margin-bottom` `--space-24`→`--space-16`. 상세 화면 `.container`와 같은 블록임을 머리말 주석에 명시(같이 고치라는 표식).
+- **부작용 인지**: §35에서 홈 카드 여백을 한 칸씩 줄이며 컨테이너 패딩도 12로 내렸는데, 이 중 **컨테이너 패딩만 되돌린다**(카드 패딩 16·gap 8은 유지). 카드 그리드 가용 폭이 좌우 8px 줄지만, 화면 간 정렬 일관성을 우선한 사용자 결정.
+- **상태**: 구현 완료(2026-07-19) — 계획 1번 그대로 구현. lint·tsc·build 통과. research.md §1 타이포/여백 항목 갱신. 실제 화면 확인은 사용자 확인 대기.
+
+---
+
 ## 7. PR 분리 권장 (선택)
 
 | PR | Phase | 리뷰 포인트 |

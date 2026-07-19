@@ -207,7 +207,10 @@
   `--text-page-title`·`--weight-regular` (§36 — 각 `page.module.css`에 같은
   `.title` 블록이 복붙되어 있으니 제목 스타일 변경 시 14곳을 함께 고친다).
   홈 카드 여백은 §35에서 한 칸씩 축소 — 카드 패딩 `--space-16`,
-  홈 컨테이너 패딩 `--space-12`, 카드 간 gap `--space-8`.
+  카드 간 gap `--space-8`. 단 **홈 컨테이너 패딩은 §38에서 `--space-16`으로
+  환원**(§35의 `--space-12`를 되돌림) — 홈 `.dashboard`와 상세 화면 13종의
+  `.container`가 `padding: --space-16`·헤더 `margin-bottom: --space-16`으로
+  동일해야 좌우 정렬선·제목 높이가 화면 간에 어긋나지 않는다.
 - `src/app/globals.css` — `.numeric` (`tabular-nums`) 등 전역. 숫자 UI는 항상 `.numeric` 병기.
 - `next.config.ts` — `staticPageGenerationTimeout: 300` + `/sw.js` no-cache 헤더(Phase 10).
 
