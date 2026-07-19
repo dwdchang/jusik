@@ -77,7 +77,7 @@ export interface IndexDetailData {
 }
 
 export const KIS_DATA_NOTICE =
-  "지수 데이터는 한국투자증권 OpenAPI 기준이며 약 10분 간격으로 갱신됩니다. (장중 시세 지연 가능)";
+  "지수 데이터는 10분 간격으로 갱신됩니다. (장중 시세 지연 가능)";
 
 /** kospiVolatility:history 일별 기록 — 코스피 일중 변동성 */
 export interface KospiVolatilityRecord {

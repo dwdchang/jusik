@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "jusik — 국내 지수",
+  title: "투자의 공간",
   description: "코스피·코스닥 지수 대시보드 (공공데이터포털)",
 };
 
