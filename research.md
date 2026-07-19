@@ -120,7 +120,7 @@
 | `indices/kisOverseasMapper.ts` | 해외(환율·금리·유가·금) 응답→도메인 매핑. 행별 전일 대비가 없어 인접 종가 차분으로 계산 |
 | `indices/upbitMapper.ts` | 업비트 티커·일봉→도메인 매핑 (§30) — `mapUpbitDetail`: 스냅샷(전일 종가 대비 직접 제공)+history(최근 7)+dailyRows(`prev_closing_price` 차분), `StoredMarketDetail` 동일 폼. 일봉 경계 KST 09:00 |
 | `indices/dxy.ts` | 달러 인덱스 계산 (§28) — `computeDxyDetail`(순수): KIS에 DXY 종목이 없어 환율 6종(`KIS_DXY_COMPONENTS`)의 일별 종가를 ICE 공식(가중 기하평균)으로 합성. 통화쌍별 휴장일이 달라 기준일 교집합에서만 계산, `StoredMarketDetail` 동일 폼 반환 |
-| `indices/getDashboard.ts` | 홈 데이터 리더 — `market:detail:*` 5종 MGET. 필수 4종 없으면 throw(`MARKET_DATA_EMPTY_MESSAGE`), oil은 null 허용 |
+| `indices/getDashboard.ts` | 홈 데이터 리더 — `market:detail:*` 7종 MGET. 필수 4종 없으면 throw(`MARKET_DATA_EMPTY_MESSAGE`), oil·gold·btcKrw(§32)는 null 허용 |
 | `indices/getIndexDetail.ts` / `getOverseasDetail.ts` | 상세 리더 — `market:detail:{key}` 1건. **두 파일 내용이 사실상 동일** (§8) |
 | `indices/volatility.ts` | 변동성 기록 store+계산+카드 요약 (한 파일에 쓰기·읽기 혼재) |
 | `indices/dates.ts` | `getLast7BusinessDates` — **현재 미사용 (레거시)** (§9.2) |
@@ -158,8 +158,8 @@
 
 | 컴포넌트 | 종류 | 역할 |
 |---|---|---|
-| `indices/IndexDashboard` | Server | 홈 카드 9종 조립(§28에서 원/달러 카드 분리 신설 — 시장 카드 대표값은 미국 10년물 금리로 교체) + 헤더(좌 `NavIconLink` 홈 아이콘 + 우 햄버거 `HeaderMenu` — 제목·설명 문구는 Phase 26에서 제거) |
-| `indices/SummaryCard` | Server | **홈 요약 카드 공용 프리미티브** — value/change/footnote/placeholder/staleness 배지. 카드 전체가 Link |
+| `indices/IndexDashboard` | Server | 홈 카드 9종 조립(§28에서 원/달러 카드 분리 신설 — 시장 카드 대표값은 미국 10년물 금리, §32에서 금·비트코인(원화) 보조 줄 2개 추가 — null이면 줄 생략) + 헤더(좌 `NavIconLink` 홈 아이콘 + 우 햄버거 `HeaderMenu` — 제목·설명 문구는 Phase 26에서 제거) |
+| `indices/SummaryCard` | Server | **홈 요약 카드 공용 프리미티브** — value/change/subItems(보조 시세 줄, §32)/footnote/placeholder/staleness 배지. 카드 전체가 Link |
 | `indices/HotStocksCard` | Server | 핫종목 전용 카드 — 당일 등락률 TOP 3 리스트 (SummaryCard 미사용) |
 | `indices/WatchlistCard` | Server | 관심종목 전용 카드 (§24) — 수익률 상위 3종목 리스트, 행마다 등록 기준일 대비 수익률 + 괄호 전일 등락률. 골격·staleness 배지는 SummaryCard composes(`STALENESS_LABELS` export 재사용), 리스트 폼은 HotStocksCard와 동일 |
 | `indices/DividendCard` | Server | 배당 일정 전용 카드 (§25) — 다가오는 지급일 상위 3행(종목명·지급일 MM/DD·주당배당금), **보유종목 기준**. 골격·배지·리스트 폼은 WatchlistCard와 동일 관례, 카드 전체 `/dividends` 링크 |
@@ -345,7 +345,7 @@ QStash 스케줄 (월 1회, 매월 5일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 5 *
 페이지가 부르는 내부 REST API는 없다 — Route Handler는 auth·잡 2종뿐이고, 모든
 페이지는 Server Component에서 lib 함수를 직접 호출한다.
 
-- **홈** `app/page.tsx`: `getDashboardData`(detail 5종 MGET) + 카드 요약 5종(보유·
+- **홈** `app/page.tsx`: `getDashboardData`(detail 7종 MGET) + 카드 요약 5종(보유·
   변동성·핫종목·관심종목·배당) + `getLastRefreshRecord` 병렬 → staleness 배지 판정 →
   `IndexDashboard`.
 - **지표 상세**: `IndexDetailScreen` → `getIndexDetail`/`getOverseasDetail` → detail 1건.
@@ -660,9 +660,11 @@ QStash 스케줄 (월 1회, 매월 5일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 5 *
   **임의 종목(미보유·미등록) 상세 조회 기능은 현재 없다** — 신규 요구가 이를 필요로
   하면 plan.md 작성 전에 확인.
 - 포트폴리오 히스토리 upsert는 스냅샷이 하나라도 없으면 그 사용자 전체 skip (과소 집계 방지).
-- 홈 `getDashboardData`는 필수 4종(kospi·kosdaq·usdkrw·us10y) 없으면 throw, **oil만
-  null 허용** (Phase 15 추가 키 — 새 지표 추가 시 같은 전략 참고). gold·btcKrw·btcUsd는
-  홈 미사용 — 시장·상세 페이지가 null(첫 갱신 전) 허용 렌더 (§30).
+- 홈 `getDashboardData`는 필수 4종(kospi·kosdaq·usdkrw·us10y) 없으면 throw,
+  **oil·gold·btcKrw는 null 허용** (나중에 추가된 키 — 새 지표 추가 시 같은 전략 참고).
+  gold·btcKrw는 §32에서 홈 시장 카드 보조 줄로 합류(null이면 줄 생략), btcUsd·dxy는
+  홈 미사용. 시장 카드 staleness 배지는 금리·유가·금 3종 기준 — btcKrw는 잡 `ok`
+  게이팅 밖 외부 지표라 제외 (§30 dxy 관례).
 - 비트코인은 24시간 거래 자산이지만 갱신은 시세 잡 시간창(평일 09:00~18:40)에만 —
   주말·야간 화면은 마지막 회차 시세(각주 안내, 사용자 확정 §30). 달러 표기는 업비트
   USDT-BTC 마켓 시세(USDT≈USD).

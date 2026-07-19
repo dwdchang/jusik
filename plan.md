@@ -2658,6 +2658,19 @@ interface WatchItem {
   3. **삭제** `app/indices/us10y/page.tsx`·`oil/page.tsx`·`gold/page.tsx`·`btc/page.tsx`(+`btc/page.module.css`), `components/indices/BtcDetailSection.tsx`(+module.css).
 - **상태**: 구현 완료(2026-07-19) — 계획 1~3번 그대로 구현. lint·tsc·프로덕션 빌드 통과(상세 라우트 4종 언마운트 확인). research.md §2 갱신. 실제 화면 확인은 사용자 확인 대기.
 
+### Phase 32 — 홈 시장 카드: 금·비트코인 보조 시세 표시 (2026-07-19)
+
+- **요청 근거**: 사용자 지시 — 홈 "시장" 카드 요약에 금리·금 시세·비트코인 시세를 간략하게 표시. 금리(미국 10년물)는 이미 카드 대표값이라, 금·비트코인(원화) 보조 줄 2개만 추가.
+- **조사 결과 (2026-07-19)**: ① `gold`·`btcKrw` 스냅샷은 §30에서 이미 `market:detail:*`에 저장 중 — 시장 페이지가 읽는 것과 동일 키를 홈 `getDashboardData` MGET에 추가하기만 하면 되고 **새 API 호출·잡 변경 0건**. ② `getDashboard.ts`의 `fetchedAtByKey` 주석이 "gold·btcKrw·btcUsd는 홈 카드가 없어 제외"라고 명시 — 이번에 gold를 포함으로 전환. ③ `SummaryCard`는 value 1개+change 1줄 구조라 보조 줄을 받는 prop이 없음 — 옵셔널 `subItems` 추가가 유일한 구조 변경 지점(미지정 카드 렌더 불변).
+- **구현 계획 (파일 단위)**:
+  1. `types/indices.ts` — `IndexDashboardData`에 `gold`·`btcKrw` 스냅샷 추가(§30 추가 키라 첫 갱신 전 null 허용 — oil 관례).
+  2. `lib/indices/getDashboard.ts` — MGET에 `gold`·`btcKrw` 추가(7키), asOf 최솟값 계산에 합류, `fetchedAtByKey`에 gold 추가(시장 카드 배지 판정 합류). btcKrw는 잡 `ok` 게이팅 제외 외부 지표(§30 dxy 관례)라 배지 판정에서 제외 유지.
+  3. `components/indices/SummaryCard.tsx` — 옵셔널 `subItems`(label·value·change) prop 추가, change와 footnote 사이 목록 렌더.
+  4. `components/indices/SummaryCard.module.css` — `.subItems`/`.subItem`/`.subLabel` 스타일 추가.
+  5. `components/indices/IndexDashboard.tsx` — 시장 카드에 금(`formatIndex`+등락률)·비트코인(원화 `formatBtcValue`+등락률) subItems 전달(null이면 해당 줄 생략), 각주 "유가·금·비트코인 포함" → "유가 포함"으로 정리.
+  6. `app/page.tsx` — 시장 카드 staleness 판정(`marketFetchedAt`)에 gold 합류(금리·유가·금 3종 중 최솟값), 주석 갱신.
+- **상태**: 구현 완료(2026-07-19) — 계획 1~6번 그대로 구현. lint·tsc·프로덕션 빌드 통과. research.md §2·§4·§9 갱신. 실제 화면 확인은 사용자 확인 대기.
+
 ---
 
 ## 7. PR 분리 권장 (선택)
