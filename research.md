@@ -94,6 +94,22 @@
 
 라우트별 `page.module.css` 동반. 오류 UI는 별도 error.tsx 없이 각 page의 try/catch 인라인 처리.
 
+**`loading.tsx` 9개 (§40)** — 라우트가 전부 동적(`auth()`가 쿠키 접근)이라 `loading.tsx`가
+없으면 Next가 동적 라우트를 **prefetch 대상에서 제외**한다. 이를 되살리려고 전 화면에 배치하되,
+중첩 상속을 이용해 파일 수를 줄였다. 전부 `components/ui/PageSkeleton`에 위임하는 한 줄짜리다.
+
+| 파일 | 커버 범위 | 변형 |
+|---|---|---|
+| `app/loading.tsx` | 홈 + 자기 `loading.tsx` 없는 하위 라우트 폴백 | dashboard, 카드 8 |
+| `app/login/loading.tsx` | 로그인 (홈 그리드 상속 차단용) | detail, 1 |
+| `app/indices/loading.tsx` | kospi·kosdaq·usdkrw·market·kospi-volatility·trade/[yyyymm] **6종** | detail+chart, 6 |
+| `app/holdings/loading.tsx` | 목록 + `[symbolCode]` 상세 | detail+chart, 5 |
+| `app/watchlist/loading.tsx` | 목록 + `[symbolCode]` 상세 | detail+chart, 5 |
+| `app/hot-stocks` · `feeds` · `dividends` · `alerts` · `dlq` `/loading.tsx` | 각 1화면 | detail, 5~10 |
+
+새 라우트를 추가할 때 위 디렉터리 아래면 `loading.tsx`가 자동 상속되고, 새 최상위 섹션이면
+직접 추가해야 prefetch가 동작한다.
+
 ### 2.2 `src/lib` — 도메인 로직
 
 | 파일 | 역할 |
@@ -705,6 +721,12 @@ QStash 스케줄 (월 1회, 매월 5일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 5 *
   사이드바 열림 상태만) — 새 인터랙션도 최소 Client 원칙.
 - 테마는 `data-theme` 속성 + localStorage(`jusik-theme`), FOUC 방지 인라인 스크립트.
 - 레이아웃 max-width 480px 모바일 우선 (`--layout-max-width`).
+- **화면 전환 스켈레톤은 `components/ui/PageSkeleton` 하나로 통일** (§40). Server Component라
+  클라이언트 JS가 없다 — `loading.tsx`가 곧 prefetch 경계라 여기에 `'use client'`가 들어가면
+  경계 자체가 무거워지므로 유지할 것. 자리표시자 크기는 실제 화면 토큰(`--space-16` 컨테이너,
+  `--card-padding` 카드)을 그대로 따라 데이터 도착 시 레이아웃이 튀지 않게 맞춰져 있다.
+  shimmer는 `prefers-reduced-motion: reduce`에서 정지. 차트 내부 로딩(`*ChartClient`의
+  `.chartSkeleton` "차트 로딩 중…")은 별개 계층이라 그대로 공존한다.
 - `params`/`searchParams`는 Promise — Next 16 규약대로 항상 `await` 후 사용. 검증 실패
   값은 redirect 또는 기본값 폴백(핫종목 `resolvePeriod` 참고).
 - 핫종목 표(`hot-stocks/page.module.css` `.table`)는 3개 탭이 같은 클래스를 공유하며

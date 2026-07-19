@@ -2757,6 +2757,31 @@ interface WatchItem {
 
 ---
 
+### Phase 40 — `loading.tsx` 도입으로 화면 전환 체감 속도 개선 (2026-07-19)
+
+- **요청 근거**: 사용자 질문 — "prefetch 기능 활용해 빠른 페이지 이동 가능한가". 조사 결과 **현재 prefetch가 사실상 무효**임을 확인하고, 이를 되살리는 1안(`loading.tsx` 추가)으로 확정.
+- **조사 결과 (2026-07-19)**:
+  1. `<Link>`는 15개 파일에서 쓰고 `prefetch` 프롭은 어디에도 없다 → 프로덕션 기본값(뷰포트 진입 시 자동 prefetch)이 이미 켜져 있다. **끄고 있어서 느린 게 아니다.**
+  2. 그런데 라우트가 **전부 동적**이다(`page.tsx`의 `auth()`·`ensureAllowedSession()`이 쿠키에 접근 → 정적 생성 불가). `next/dist/docs/01-app/02-guides/prefetching.md`의 정적/동적 대조표: 동적 페이지는 **`loading.js`가 없으면 prefetch 대상이 아니다**(Client Cache TTL도 Off, 클릭 시 서버 왕복 발생).
+  3. `find src -name "loading.tsx"` → **0개**. 즉 자동 prefetch가 가져오는 건 JS 청크뿐이고 RSC 페이로드는 클릭 후에야 요청된다. Redis 조회+렌더 시간이 그대로 흰 화면으로 노출되는 구조.
+  4. `loading.tsx`가 생기면 "레이아웃~첫 loading 경계"까지가 prefetch되고 클릭 즉시 스켈레톤이 그려진다. 부수 효과로 해당 경계의 클라이언트 캐시 TTL 30초가 붙는다.
+  5. **prefetch 부작용 검토**: prefetch는 방문 전에 서버 렌더를 돌리므로 순수하지 않은 레이아웃/페이지는 부작용이 앞당겨진다. 본 저장소의 해당 후보는 `page.tsx`의 `auth()` → `redirect("/login")` 하나인데, prefetch는 응답을 캐시에 담을 뿐 라우터를 이동시키지 않고 `redirect()`는 제어 흐름이라 문서가 경고하는 부작용(분석 전송·로그·DB 쓰기)에 해당하지 않는다 → **차단 요인 없음**. 저장소에 분석/로깅 호출을 하는 레이아웃도 없음(확인 완료).
+- **구현 계획 (파일 단위)**:
+  1. `components/ui/PageSkeleton.tsx`(신규) — 공용 스켈레톤. Server Component(클라이언트 JS 0). props `variant: "dashboard" | "detail"` · `count` · `chart`. `role="status"`+`aria-label`로 스크린리더 대응, 내부 막대는 `aria-hidden`.
+  2. `components/ui/PageSkeleton.module.css`(신규) — §6.4 페이지 골격 관례(`page > container > header/section`)와 §38·§39 여백 토큰(`--space-16` 컨테이너, `--card-padding` 카드)을 그대로 따라 **실제 화면과 같은 자리에 같은 크기**로 배치. shimmer 애니메이션은 `prefers-reduced-motion: reduce`에서 정지.
+  3. `loading.tsx` 9개 신설 — 라우트 중첩 상속을 이용해 **파일 수를 최소화**한다:
+     - `app/loading.tsx` — 홈(dashboard 변형, 카드 8). 하위 라우트 중 자기 `loading.tsx`가 없는 곳의 폴백도 겸함
+     - `app/login/loading.tsx` — 홈 스켈레톤 상속을 끊는 최소 변형(데이터 없는 화면)
+     - `app/indices/loading.tsx` — kospi·kosdaq·usdkrw·market·kospi-volatility·trade/[yyyymm] **6개를 한 파일로** 커버(전부 detail 골격)
+     - `app/holdings/loading.tsx` — 목록·`[symbolCode]` 상세 2개 커버
+     - `app/watchlist/loading.tsx` — 목록·`[symbolCode]` 상세 2개 커버
+     - `app/hot-stocks` · `app/feeds` · `app/dividends` · `app/alerts`(dlq는 `app/loading.tsx` 폴백으로 충분하나 목록형이라 별도 검토) 각 1개
+- **효과**: 동적 라우트가 prefetch 대상이 되어 클릭 시 흰 화면 대신 즉시 스켈레톤 → 최초 페인트가 서버 왕복 앞으로 당겨진다. 실제 데이터 도착 시각 자체는 변하지 않음(체감 개선이 목적).
+- **범위 밖(후속 후보)**: `experimental.staleTimes.dynamic`(기본 0초 → 뒤로가기마다 전량 재요청)은 "얼마나 낡은 시세를 보여줄 것인가"라는 도메인 결정이 필요해 이번 Phase에서 제외. 목록 화면의 hover-prefetch 전환도 속도가 아닌 요청량 절감 사안이라 제외.
+- **상태**: 구현 완료(2026-07-19) — 계획 1~3번 구현. lint·tsc·build 통과. research.md 갱신. 실제 화면 확인은 사용자 확인 대기.
+
+---
+
 ## 7. PR 분리 권장 (선택)
 
 | PR | Phase | 리뷰 포인트 |
