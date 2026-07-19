@@ -1,0 +1,178 @@
+/* 화면 전환 스켈레톤 (§40) — 골격은 §6.4 페이지 관례(page > container > header/section),
+   여백은 §38 컨테이너(--space-16)·§39 카드(--card-padding) 토큰을 그대로 따른다.
+   실제 화면과 같은 자리에 같은 크기로 그려야 데이터 도착 시 레이아웃이 튀지 않는다. */
+.page {
+  flex: 1;
+  width: 100%;
+  min-height: 100%;
+  background-color: var(--color-bg);
+}
+
+.container {
+  width: 100%;
+  max-width: var(--layout-max-width);
+  margin: 0 auto;
+  padding: var(--space-16);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  margin-bottom: var(--space-16);
+}
+
+/* NavIconLink(24px 아이콘) 자리 */
+.headerIcon {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+}
+
+/* h1.title 자리 — --text-page-title 20px의 실제 행 높이에 맞춘다 */
+.headerTitle {
+  width: 40%;
+  height: 20px;
+  border-radius: var(--radius-md);
+}
+
+/* .lastRefresh 자리 (우측 정렬, --text-micro) */
+.headerMeta {
+  margin-left: auto;
+  width: 84px;
+  height: 11px;
+  border-radius: var(--radius-md);
+}
+
+/* 홈 카드 그리드 — IndexDashboard.module.css의 .cards와 동일 규격 */
+.cards {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-8);
+}
+
+@media (min-width: 400px) {
+  .cards {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* SummaryCard와 같은 도형 (패딩·테두리·반경·그림자) */
+.card {
+  padding: var(--card-padding);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.cardTitle {
+  width: 52%;
+  height: 13px;
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-8);
+}
+
+.cardValue {
+  width: 72%;
+  height: 22px;
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-8);
+}
+
+.cardMeta {
+  width: 40%;
+  height: 12px;
+  border-radius: var(--radius-md);
+}
+
+/* 상세 화면 차트 블록 — IndexChartClient의 .chartSkeleton과 같은 높이대 */
+.chart {
+  height: 220px;
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-16);
+}
+
+/* 상세 화면 목록 — 한 줄에 라벨/값 두 덩이 */
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  padding: var(--card-padding);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.rowLabel {
+  width: 44%;
+  height: 14px;
+  border-radius: var(--radius-md);
+}
+
+.rowValue {
+  margin-left: auto;
+  width: 22%;
+  height: 14px;
+  border-radius: var(--radius-md);
+}
+
+/* 실제 회색 막대 — 위 자리표시자들이 공통으로 쓰는 표면.
+   --color-border를 surface와 섞어 라이트/다크 양쪽에서 자연스러운 명도를 얻는다. */
+.headerIcon,
+.headerTitle,
+.headerMeta,
+.cardTitle,
+.cardValue,
+.cardMeta,
+.chart,
+.rowLabel,
+.rowValue {
+  background-color: color-mix(
+    in srgb,
+    var(--color-border) 70%,
+    var(--color-surface)
+  );
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--color-surface) 65%, transparent) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: -120% 0;
+  }
+  to {
+    background-position: 120% 0;
+  }
+}
+
+/* 움직임 최소화 설정에서는 정지된 회색 막대만 남긴다 */
+@media (prefers-reduced-motion: reduce) {
+  .headerIcon,
+  .headerTitle,
+  .headerMeta,
+  .cardTitle,
+  .cardValue,
+  .cardMeta,
+  .chart,
+  .rowLabel,
+  .rowValue {
+    background-image: none;
+    animation: none;
+  }
+}
