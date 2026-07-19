@@ -2623,6 +2623,31 @@ interface WatchItem {
   5. `app/holdings/[symbolCode]/page.tsx` — 차트 섹션과 종목 정보 섹션 사이에 "일별 기록" 섹션 신규(2년 히스토리 → `{date, close, totalValue: close×수량, returnRate}`, 0건이면 미렌더).
 - **상태**: 구현 완료(2026-07-19) — 계획 1~5번 그대로 구현. lint·tsc·프로덕션 빌드 통과, research.md §2·§4.3 갱신. 실제 화면 확인은 사용자 확인 대기.
 
+### Phase 30 — 시장 상세: 수출입 제거 + 금 현물(국제) + 비트코인(원/달러 토글) 추가 (2026-07-19)
+
+- **요청 근거**: 사용자 지시 — ① `/indices/market`(시장 상세)에서 **수출입 카드 제거**(`/feeds`·관세청 수집 잡은 유지) ② **금 현물 시세(국제)** 항목 추가 — `GOLDLNPM` 확정 ③ **비트코인 시세** 항목 추가 — 업비트 원화/달러 **둘 다**, 보유종목 상세 차트의 수익률/원 단위 토글처럼 **원화↔달러 전환** ④ 주말 갱신은 하지 않음 — **평일 개장 시간 갱신 창을 그대로 사용**(스케줄 변경 없음).
+- **조사 결과 (2026-07-19 실측)**:
+  - **금**: KIS 해외지표 마스터(`frgn_code.mst`) C(상품) 카테고리에 금 3종 존재 — `GOLDLNPM`(LBMA 런던 금 현물)·`XAUUSDCOMP`(Tenfore 국제금가격)·`NYGOLD`(COMEX 뉴욕 금). **라이브 실측**(FHKST03030100, `N` 분류): 3종 모두 `rt_cd=0`·일자별 20~21행 정상 — §15.1의 "S 분류 output2 빈 응답" 케이스 아님. 응답 필드가 유가(`N`/`WTIF`)와 동일해 `kisOverseasMapper` 3종 그대로 재사용. **`N`/`GOLDLNPM` 채택**(국제 금 현물 대표 벤치마크, 사용자 확정).
+  - **비트코인**: KIS 마스터 전수 검색 — 비트코인 지수·시세 없음. 추정 코드 4종(`BTCUSD`·`BTC`·`XBTUSD`·`NYXBT`) 라이브 조회도 전부 빈 응답(값 0.00·0행) — **KIS 불가 확정**. **업비트 공개 시세 API**(인증·키 불필요) 실측: `GET /v1/ticker?markets=KRW-BTC`·`USDT-BTC`(현재가·전일 종가 대비·KST 기준시각), `GET /v1/candles/days`(일봉 시가·고가·저가·종가·`prev_closing_price`) 모두 정상 — 원화/달러(USDT) 두 마켓을 **한 소스**로 커버. 유량 여유 커서 회차당 4콜 무해. 일봉 경계는 KST 09:00(UTC 자정).
+  - **갱신 창**: 비KIS 소스지만 기존 시세 갱신 잡(`refresh-market-data`, 평일 09:00~18:40 가드) 안에서만 호출 — 주말·야간 미갱신 요건이 스케줄 변경 없이 자동 충족. 비트코인은 24시간 거래 자산이라 주말 화면은 금요일 마지막 회차 시세로 표시(각주 안내).
+- **구현 계획 (파일 단위)**:
+  1. `lib/api/kis/constants.ts` — `KIS_OVERSEAS_INDICATOR.GOLD = { marketDivCode: "N", code: "GOLDLNPM" }`(실측 주석).
+  2. `types/indices.ts` — `OverseasIndicator`에 `"GOLD"`(KIS 단일 조회 가능 4종으로 확장), `IndicatorId`에 외부(업비트) 지표 `"BTCKRW" | "BTCUSD"` 추가, `INDICATOR_NAMES` 3건 추가.
+  3. `lib/market/store.ts` — `MarketDetailKey`에 `"gold" | "btcKrw" | "btcUsd"`, `INDICATOR_TO_DETAIL_KEY` 3건 추가.
+  4. **신규** `lib/api/upbit/client.ts` — 업비트 공개 시세 API(서버 전용, 키 없음): `fetchUpbitTicker(market)`·`fetchUpbitDayCandles(market, count)` + 응답 타입. 15초 타임아웃·HTTP 오류 throw(KIS 클라이언트 관례).
+  5. **신규** `lib/indices/upbitMapper.ts` — `mapUpbitDetail(indicator, ticker, candles)`: 티커→스냅샷(전일 종가 대비 직접 제공), 일봉→history(최근 7 오름차순)·dailyRows(최신순 7, `prev_closing_price` 차분) — `StoredMarketDetail` 동일 폼.
+  6. `lib/jobs/refreshMarketData.ts` — ① `refreshIndices` tasks에 `gold` 추가(KIS 6종, 잡 `ok` 게이팅 포함 — oil 관례) ② `refreshBtc(fetchedAt)`: 업비트 2마켓 순차 조회 → `market:detail:btcKrw`·`btcUsd` 저장. **외부 부수 지표라 잡 전체 `ok` 게이팅 제외**(dxy 관례 — 실패 시 로그만, 다음 회차 자연 재시도). 리포트에 `btc` 필드.
+  7. `lib/indices/getDashboard.ts` — `fetchedAtByKey`의 `Exclude`에 신규 3키 추가(홈 미사용 — 추가 페치 없음).
+  8. **신규** `app/indices/gold/page.tsx` — `IndexDetailScreen market="GOLD"`(oil 미러).
+  9. **신규** `components/indices/BtcLineChart.tsx`(+module.css) — Recharts 차트, `currency` prop으로 축·툴팁 포맷 분기(원화 축은 M/B 축약, 달러 축은 소수 2자리).
+  10. **신규** `components/indices/BtcChartClient.tsx` — `dynamic` + `ssr: false` 래퍼(IndexChartClient 관례).
+  11. **신규** `components/indices/BtcDetailSection.tsx`(+module.css) — `'use client'`, **원화↔달러 토글**(HoldingsChart 토글 패턴): 스냅샷 카드 + 차트 + 일별 시세 목록이 선택 통화로 함께 전환. 통화별 포맷(원: 정수 `…원`, 달러: 소수 2자리). 데이터 없으면(첫 갱신 전) 준비 중 문구.
+  12. **신규** `app/indices/btc/page.tsx`(+module.css) — `getMarketDetails(["btcKrw","btcUsd"])` → `BtcDetailSection`, 푸터에 업비트 출처·평일 장중 갱신·주말 시세 각주.
+  13. `app/indices/market/page.tsx` — ① 수출입 카드·`getTradeStatsView`·무역 포맷 import·`signClass` 제거 ② `MARKET_ITEMS`에 `gold` 추가(미니 카드 3종) ③ 비트코인 커스텀 카드(원화 대표값+달러 병기, 원화 차트, `/indices/btc` 링크) ④ metadata·aria·푸터 문구 갱신.
+  14. `app/indices/market/page.module.css` — 미사용이 된 `.tradeStats`/`.tradeRow` 제거, 비트코인 카드 보조 값 스타일 추가.
+  15. `components/indices/IndexDashboard.tsx` — 홈 시장 카드 각주 "유가 포함" → "유가·금·비트코인 포함".
+- **상태**: 구현 완료(2026-07-19) — 계획 1~15번 그대로 구현. lint·tsc·프로덕션 빌드 통과(`/indices/gold`·`/indices/btc` 라우트 마운트 확인), 로컬 실측(tsx 단독 실행)으로 `market:detail:gold`(close 3,995.35·7행)·`btcKrw`(95,275,000원)·`btcUsd`(64,690.75) 저장 확인 — 첫 갱신 회차 전에도 화면 표시 가능. research.md §2·§3·§4·§5·§6·§9 갱신. 실제 화면 확인은 사용자 확인 대기.
+
 ---
 
 ## 7. PR 분리 권장 (선택)

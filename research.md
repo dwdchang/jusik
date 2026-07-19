@@ -67,8 +67,9 @@
 | `layout.tsx` | 루트 레이아웃. Geist 폰트, `tokens.css`+`globals.css` import, 테마 FOUC 방지 인라인 스크립트(`data-theme` 선결정) |
 | `page.tsx` | 홈 대시보드. 세션 검사 → 허용 외 이메일이면 access-denied 화면 → 카드 8종 데이터 병렬 조회(`Promise.all`) → `IndexDashboard` 렌더. staleness 배지 판정도 여기서 수행 |
 | `login/page.tsx` | Google 로그인 버튼 (Server Action으로 `signIn("google")`). 세션 있으면 `/` redirect, 인라인 `GoogleIcon` SVG 로컬 정의 |
-| `indices/kospi` `kosdaq` `usdkrw` `us10y` `oil/page.tsx` | 지표 상세 5종 — 전부 `ensureAllowedSession()` 후 `<IndexDetailScreen market=…>` 한 줄 위임. usdkrw만 children으로 `<DollarIndexSection>`(달러 인덱스, §28) 추가 |
-| `indices/market/page.tsx` | 시장 요약(금리·유가 미니 카드 2종 — 원/달러는 §28에서 홈 카드로 분리). `getMarketDetails` MGET 1회. + 수출입 미니 카드(Phase 17-4) — `getTradeStatsView`로 최신 확정월 수출/수입/무역수지+YoY, `/feeds` 링크 |
+| `indices/kospi` `kosdaq` `usdkrw` `us10y` `oil` `gold/page.tsx` | 지표 상세 6종 — 전부 `ensureAllowedSession()` 후 `<IndexDetailScreen market=…>` 한 줄 위임. usdkrw만 children으로 `<DollarIndexSection>`(달러 인덱스, §28) 추가. gold는 §30 신설(LBMA 런던 금 현물) |
+| `indices/btc/page.tsx` | 비트코인 상세 (§30) — `getMarketDetails(["btcKrw","btcUsd"])` MGET 1회 → `BtcDetailSection`(원화↔달러 토글). 푸터에 업비트 출처·평일 장중 갱신·주말 시세 각주 |
+| `indices/market/page.tsx` | 시장 요약(금리·유가·금 미니 카드 3종 + 비트코인 커스텀 카드 — 원/달러는 §28에서 홈 카드로 분리, 수출입 카드는 §30에서 제거). `getMarketDetails` MGET 1회(5키). 비트코인 카드는 원화 대표값+달러 병기, `/indices/btc` 링크 |
 | `indices/trade/[yyyymm]/page.tsx` | 수출입 상세(Phase 17-5) — 월 합계 3지표 + 품목별(국가 무관, HS 4단위 상위 15+기타) + 국가별(상위 8+기타, 클릭 시 품목 팝업). `getTradeDetailView` 1회. `/feeds` 수출입 탭의 월 링크로 진입 |
 | `indices/kospi-volatility/page.tsx` | 변동성 상세 — 월별 평균 막대 차트 + 당월 일별 기록 목록 |
 | `holdings/page.tsx` | 보유종목 목록·요약·연초 이후 추이·일별 기록(`DailyHistoryList` 접힘 목록, §29)·종목 추가 폼(`<details>` 토글, 종목명 검색 `<StockSearchInput>`) |
@@ -101,6 +102,7 @@
 | `api/kis/auth.ts` | KIS 토큰 발급·캐싱 — Redis 공유 캐시 + `SET NX PX` 분산 락 + 인스턴스 내 in-flight 합류 (§7.4) |
 | `api/kis/client.ts` | `fetchKisJson` 공통 래퍼(헤더·rt_cd 검증·15초 타임아웃) + 조회 함수 11종 (지수·해외·환율 통화쌍(`fetchKisFxPairDaily`, §28)·현재가·시총랭킹·등락률랭킹·배당·손익·재무비율·종목명·기간별시세 일/월) |
 | `api/kis/types.ts` | KIS 원본 응답 타입 (필드 전부 optional string, `[key: string]: unknown` 허용) |
+| `api/upbit/client.ts` | 업비트 공개 시세 API 클라이언트 (§30) — `fetchUpbitTicker`/`fetchUpbitDayCandles` + `UPBIT_BTC_MARKETS`(KRW-BTC·USDT-BTC). 인증·키 불필요, 15초 타임아웃. 호출 주체는 시세 갱신 잡뿐 |
 | `api/dart/client.ts` | DART OpenAPI 클라이언트 — `corpCode.xml` zip 파싱(fflate, 상장사만 매핑)·공시검색 `list.json`(status 013=빈 결과 정상 처리) |
 | `api/naver/client.ts` | 네이버 뉴스 검색 클라이언트 (Phase 17-3) — 종목명 키워드·`sort=date`, `<b>`/엔티티 제거, **제목+요약에 종목명 포함 기사만** 필터(저관련·오탐 제거), pubDate ms 파싱. 상위 10건 |
 | `api/customs/client.ts` | 관세청 수출입총괄(GW) 클라이언트 (Phase 17-4) — `getNewtradeList`(XML), `fetchTradeStats(strt,end)`. `총계`/비정형 year 제외·`year "YYYY.MM"→"YYYYMM"` 정규화·`parseNum` 경유·`resultCode≠00` throw. **조회 범위 최대 12개월(inclusive)** 제약 |
@@ -116,7 +118,8 @@
 | `date/kst.ts` | `todayKstDate()` — KST "YYYY-MM-DD" (유일한 공용 KST 날짜 헬퍼) · `kstYyyyMmDd(ms)`(17-3) · `currentKstMonth()`/`subtractMonths(ym,n)`(17-4, 수출입 월 판정·조회창) |
 | `format/*` | 표시 포맷 모음 (§6.2 카탈로그) |
 | `indices/kisMapper.ts` | 국내지수 응답→도메인 매핑 + **공용 유틸 `parseNum`/`applyKisSign`/`resolveDirection`/`formatBasDtLabel`** |
-| `indices/kisOverseasMapper.ts` | 해외(환율·금리·유가) 응답→도메인 매핑. 행별 전일 대비가 없어 인접 종가 차분으로 계산 |
+| `indices/kisOverseasMapper.ts` | 해외(환율·금리·유가·금) 응답→도메인 매핑. 행별 전일 대비가 없어 인접 종가 차분으로 계산 |
+| `indices/upbitMapper.ts` | 업비트 티커·일봉→도메인 매핑 (§30) — `mapUpbitDetail`: 스냅샷(전일 종가 대비 직접 제공)+history(최근 7)+dailyRows(`prev_closing_price` 차분), `StoredMarketDetail` 동일 폼. 일봉 경계 KST 09:00 |
 | `indices/dxy.ts` | 달러 인덱스 계산 (§28) — `computeDxyDetail`(순수): KIS에 DXY 종목이 없어 환율 6종(`KIS_DXY_COMPONENTS`)의 일별 종가를 ICE 공식(가중 기하평균)으로 합성. 통화쌍별 휴장일이 달라 기준일 교집합에서만 계산, `StoredMarketDetail` 동일 폼 반환 |
 | `indices/getDashboard.ts` | 홈 데이터 리더 — `market:detail:*` 5종 MGET. 필수 4종 없으면 throw(`MARKET_DATA_EMPTY_MESSAGE`), oil은 null 허용 |
 | `indices/getIndexDetail.ts` / `getOverseasDetail.ts` | 상세 리더 — `market:detail:{key}` 1건. **두 파일 내용이 사실상 동일** (§8) |
@@ -135,7 +138,7 @@
 | `hotstocks/universe.ts` | KIS 종목 마스터 zip 다운로드·EUC-KR 고정폭 파싱 — ST(주권)만, 스팩 제외, 코드 오름차순. 핫종목 잡 + 종목명 검색(`market:stockMaster`) 공용 |
 | `hotstocks/summary.ts` | 월간 랭킹 갱신 지연 판정 `isHotStocksStale` (핫종목 페이지 월간 뷰용) |
 | `hotstocks/dailyCard.ts` | 홈 핫종목 카드 요약 `getDailyHotCardSummary` — `market:dailyFluctuation` 당일 등락률 상위 3 |
-| `jobs/refreshMarketData.ts` | **시세 갱신 잡 파이프라인 본체** (§4.1) — 지수·종목·포트폴리오 갱신에 더해 달러 인덱스(`refreshDxy`, 환율 6종 순차 조회→계산, §28)·당일·주간 등락률 상위 30(`refreshDailyFluctuation`/`refreshWeeklyFluctuation`, 회차당 각 1콜)·종목 마스터(`refreshStockMaster`, 1일 1회) 저장. 넷 다 부수·실패 격리 |
+| `jobs/refreshMarketData.ts` | **시세 갱신 잡 파이프라인 본체** (§4.1) — 지수·종목·포트폴리오 갱신에 더해 달러 인덱스(`refreshDxy`, 환율 6종 순차 조회→계산, §28)·비트코인(`refreshBtc`, 업비트 2마켓 순차, §30)·당일·주간 등락률 상위 30(`refreshDailyFluctuation`/`refreshWeeklyFluctuation`, 회차당 각 1콜)·종목 마스터(`refreshStockMaster`, 1일 1회) 저장. 다섯 다 부수·실패 격리 |
 | `jobs/refreshHotStocks.ts` | **핫종목 갱신 잡 파이프라인 본체** (§4.2) |
 | `jobs/refreshFeeds.ts` | **피드(공시·뉴스·수출입) 갱신 잡 파이프라인 본체** (§4.5) — corpCode 매핑→종목별 공시(DART)+뉴스(네이버, 종목명 키워드) 조회·저장. 소스·종목별 실패 격리. + `refreshTradeStats`(17-4) — 종목 무관 월 1회성(스냅샷 최신월<직전 완결월일 때만), 12개월 한도 때문에 2회 호출(최근 12개월+전년동월)→13개월 연속 저장. 잡 `ok` 게이팅 제외(다음 회차 가드가 재시도). 알림 훅 2종: `evaluateFeedAlerts`(공시·시장경보) + `evaluateDividendAlerts`(배당 지급일 당일, §25) |
 | `jobs/collectTargets.ts` | 잡 공용 수집 대상 조회 — `collectHoldings`/`collectWatchlists`/`unionSymbolCodes`/`errorMessage` (시세·피드 잡 공유, Phase 17-1에서 refreshMarketData 로컬 함수를 추출) |
@@ -165,6 +168,8 @@
 | `indices/DollarIndexSection` | Server(async) | 원/달러 상세 하단 달러 인덱스 섹션 (§28) — `getOverseasDetail("DXY")` → IndexCard+차트+근사치 각주. 첫 갱신 전엔 준비 중 문구 |
 | `indices/IndexCard` / `IndexDailyList` / `DataAsOfFooter` | Server | 상세 스냅샷 카드 / 일별 시세 리스트 / 홈 푸터 |
 | `indices/IndexChartClient` → `IndexLineChart` | Client | Recharts 래핑 패턴: Client 셸이 `dynamic(…, { ssr: false })` + 스켈레톤 → 실제 차트 |
+| `indices/BtcChartClient` → `BtcLineChart` | Client | 동일 패턴, 비트코인 전용 (§30) — `currency` prop으로 축·툴팁 포맷 분기(원화 M/B 축약, 달러 소수 2자리) |
+| `indices/BtcDetailSection` | Client | 비트코인 상세 본문 (§30) — 원화↔달러 토글(HoldingsChart 토글 패턴): 스냅샷 카드·차트·일별 목록이 선택 통화로 함께 전환. 데이터는 서버가 두 통화 전량 주입, 토글은 순수 UI 상태. 카드·목록 폼은 IndexCard/IndexDailyList 이식 |
 | `indices/VolatilityChartClient` → `VolatilityChart` | Client | 동일 패턴, BarChart |
 | `holdings/HoldingsChartClient` → `HoldingsChart` | Client | 동일 패턴, LineChart + 수익률%↔원단위 토글. **보유종목 홈/상세·관심종목 상세 3곳 공용** (관심종목에선 totalValue 자리에 종가를 넣어 재활용) |
 | `holdings/DailyHistoryList` | Client | 일별 기록 목록 (§29) — 접힘 기본 `<details>`(네이티브, JS 무관) + 월 단위 페이지네이션(`useState` 월 인덱스, 기록 있는 달만 이전/다음, 양 끝 disabled). 서버가 히스토리 전체를 props로 주입. 보유종목 홈/상세 2곳 공용 — 상세만 `close` 종가 열 추가. rise/fall 판정은 로컬 사본(`resolveDirection`을 클라이언트 번들에 안 넣기 위함) |
@@ -201,8 +206,8 @@
 
 ## 3. 아키텍처 대원칙 (모든 계획이 지켜야 함)
 
-1. **외부 API 호출은 잡 경유만 한다.** KIS는 시세·핫종목 잡 2종, DART는 피드 잡이
-   유일한 호출 경로다. 화면(Server Component)·Server Action은 외부 API를 절대
+1. **외부 API 호출은 잡 경유만 한다.** KIS는 시세·핫종목 잡 2종, DART는 피드 잡,
+   업비트(비트코인, §30)는 시세 잡이 유일한 호출 경로다. 화면(Server Component)·Server Action은 외부 API를 절대
    직접 호출하지 않고 Redis 스냅샷만 읽는다 (plan.md §11.6). 사용자 액션은 임의 시각에
    발생해 KIS 허용 시간 규칙과 충돌하므로, 등록 폼은 형식 검증만 하고 종목명·시세·
    기준가는 다음 갱신 회차에 잡이 채운다 (§11.10-A4, §15.4).
@@ -228,10 +233,12 @@ QStash 스케줄 4개 (평일 09:00~15:30 10분 간격 / 15:40 / 18:15 KST)
       ① verifyJobRequest: QStash 서명 → CRON_SECRET Bearer 폴백 (실패 401)
       ② isWithinKisCallWindow 가드 (밖이면 no-op 200; manual+?force=true만 우회)
   → refreshMarketData(trigger)  [lib/jobs/refreshMarketData.ts]
-      1. refreshIndices: KIS 5종 병렬(allSettled) → market:detail:{kospi|kosdaq|usdkrw|us10y|oil}
-         (snapshot + history 7일 + dailyRows, 매퍼: kisMapper / kisOverseasMapper)
+      1. refreshIndices: KIS 6종 병렬(allSettled) → market:detail:{kospi|kosdaq|usdkrw|us10y|oil|gold}
+         (snapshot + history 7일 + dailyRows, 매퍼: kisMapper / kisOverseasMapper. gold=N/GOLDLNPM, §30)
       1a. refreshDxy: 환율 통화쌍 6콜 순차(FX@EUR·JPY·GBP·CAD·SEK·CHF) → computeDxyDetail
            (ICE 공식 근사, 기준일 교집합) → market:detail:dxy — 파생 부수 지표, 잡 ok 게이팅 제외 (§28)
+      1a'. refreshBtc: 업비트 2마켓 순차(KRW-BTC·USDT-BTC, 티커+일봉 각 1콜) → mapUpbitDetail
+           → market:detail:{btcKrw|btcUsd} — 외부 부수 지표, 잡 ok 게이팅 제외 (§30)
       1b. refreshDailyFluctuation: 등락률 순위(FHPST01700000) 1콜 → market:dailyFluctuation
            (basePrice=전일 종가: 현재가−prdy_vrss 부호 적용, §20)
       1b'. refreshWeeklyFluctuation: 동일 API fid_input_cnt_1="5" 1콜 →
@@ -345,6 +352,9 @@ QStash 스케줄 (월 1회, 매월 5일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 5 *
   `IndexDashboard`.
 - **지표 상세**: `IndexDetailScreen` → `getIndexDetail`/`getOverseasDetail` → detail 1건.
   usdkrw는 children `DollarIndexSection`이 `market:detail:dxy` 1건 추가 조회 (§28).
+  비트코인(`/indices/btc`)만 커스텀 페이지 — `getMarketDetails(["btcKrw","btcUsd"])` MGET
+  1회 → `BtcDetailSection` 토글 (§30). 시장(`/indices/market`)은 금리·유가·금·비트코인
+  2키를 합쳐 MGET 1회(5키).
 - **보유종목**: `getHoldings`(복호화) → `getPortfolioValuation`(`market:stock:*` MGET) +
   `getPortfolioHistory`. 상세는 + `getStockInfo`(스냅샷+정보 블록 조합) + `getStockHistory`.
   일별 기록 목록(`DailyHistoryList`)은 홈=`getPortfolioHistory`·상세=`getStockHistory`
@@ -383,7 +393,7 @@ QStash 스케줄 (월 1회, 매월 5일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 5 *
 
 | 키 | 값 | 암호화 | 쓰기 주체 | 읽기 주체 |
 |---|---|---|---|---|
-| `market:detail:{kospi\|kosdaq\|usdkrw\|us10y\|oil\|dxy}` | `StoredMarketDetail` (snapshot+history+dailyRows+fetchedAt). dxy는 환율 6종 합성 파생 지표 (§28) | ✕ | 시세 잡 | 홈·지표 상세·시장 |
+| `market:detail:{kospi\|kosdaq\|usdkrw\|us10y\|oil\|gold\|dxy\|btcKrw\|btcUsd}` | `StoredMarketDetail` (snapshot+history+dailyRows+fetchedAt). dxy는 환율 6종 합성 파생 지표(§28), gold는 KIS N/GOLDLNPM, btcKrw·btcUsd는 업비트 외부 지표(§30) | ✕ | 시세 잡 | 홈·지표 상세·시장 |
 | `market:stock:{code}` | `StoredStockSnapshot` (price·changeRate·marketName·raw 전체·fetchedAt) | ✕ | 시세 잡 | 평가·관심종목·상세 |
 | `market:stockInfo:{code}` | `StoredStockInfoBlocks` (순위·배당·실적 + 배당 확정 회차 `rounds` — optional, 구 스냅샷 호환, §25) | ✕ | 시세 잡(확정 회차/신규) | `getStockInfo`·배당 일정 리더·배당 알림 훅 |
 | `market:lastRefreshAt` | `LastRefreshRecord` (at·trigger·ok) | ✕ | 시세 잡(전부 성공 시) | 홈 배지·각 페이지 「마지막 갱신」 |
@@ -454,11 +464,12 @@ QStash 스케줄 (월 1회, 매월 5일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 5 *
   `formatRatio`(StockInfoBlocks에서 export) — PER/PBR 등.
   `formatMonthDisplay`/`formatMonthRangeDisplay` (hotstocks/months).
   `format/trade.ts`(17-4) — `formatUsdEok`/`formatUsdEokSigned`("607.5억 달러", 1억 달러=1e8 USD)·`formatYyyymm`(2026.06)·`formatYoy`(전년동월비 %, null→"—").
+  `format/btc.ts`(§30) — `formatBtcValue`/`formatBtcChange`(통화별: 원화 정수 "…원", 달러 소수 2자리)·`BtcCurrency` 타입 — 서버·클라이언트 공용.
 
 ### 6.3 타입
 
-- `types/indices.ts` — `IndicatorId`(=`MarketIndex`|`OverseasIndicator`|`"DXY"` —
-  DXY는 환율 6종 합성 파생 지표, §28),
+- `types/indices.ts` — `IndicatorId`(=`MarketIndex`|`OverseasIndicator`(GOLD 포함 4종)|`"DXY"`|`"BTCKRW"`|`"BTCUSD"` —
+  DXY는 환율 6종 합성 파생 지표(§28), BTC 2종은 업비트 외부 지표(§30)),
   `IndexSnapshot`/`IndexSeries`/`IndexDailyRow`/`IndexDetailData`/`IndexDashboardData`,
   `PriceDirection`, 변동성 3종, `KIS_DATA_NOTICE`, `INDICATOR_NAMES`.
 - `types/holdings.ts` — `Holding`(totalCost 모델), `PortfolioDailyRecord`,
@@ -599,6 +610,9 @@ QStash 스케줄 (월 1회, 매월 5일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 5 *
 - 배당 주당배당금 0원은 **미확정 회차** → 확정분만 집계.
 - 기간별시세 1회 최대 100행. 월봉은 진행 중인 달 미포함(FID_INPUT_DATE_2 월말 지정 시).
 - OIL은 `N/WTIF`만 사용 — `S/M0401` 계열은 output2가 비어 응답 (사용 금지).
+- GOLD는 `N/GOLDLNPM`(LBMA 런던 금 현물) — `N/XAUUSDCOMP`·`N/NYGOLD`도 정상 응답하지만
+  현물 벤치마크로 GOLDLNPM 채택(2026-07-19 실측, §30). 비트코인은 KIS에 없음(마스터
+  전수 + 추정 코드 4종 빈 응답 확인) → 업비트 공개 API 사용.
 - 종목 마스터 파일 그룹코드 오프셋은 `tail[1:3]` — **공식 파이썬 샘플([0:2])과 1바이트
   다름** (2026-07-11 원시 바이트 실측 우선).
 - 시총 랭킹은 1회 상위 30건 → 밖이면 "30위권 밖" 라벨.
@@ -650,7 +664,11 @@ QStash 스케줄 (월 1회, 매월 5일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 5 *
   하면 plan.md 작성 전에 확인.
 - 포트폴리오 히스토리 upsert는 스냅샷이 하나라도 없으면 그 사용자 전체 skip (과소 집계 방지).
 - 홈 `getDashboardData`는 필수 4종(kospi·kosdaq·usdkrw·us10y) 없으면 throw, **oil만
-  null 허용** (Phase 15 추가 키 — 새 지표 추가 시 같은 전략 참고).
+  null 허용** (Phase 15 추가 키 — 새 지표 추가 시 같은 전략 참고). gold·btcKrw·btcUsd는
+  홈 미사용 — 시장·상세 페이지가 null(첫 갱신 전) 허용 렌더 (§30).
+- 비트코인은 24시간 거래 자산이지만 갱신은 시세 잡 시간창(평일 09:00~18:40)에만 —
+  주말·야간 화면은 마지막 회차 시세(각주 안내, 사용자 확정 §30). 달러 표기는 업비트
+  USDT-BTC 마켓 시세(USDT≈USD).
 - 알림(Web Push)은 **Phase 10 3단계까지 전부 구현** — PWA·구독 등록·발송
   유틸(`lib/push/*`)·`/alerts` 화면(1단계) + 시세 알림 조건 3종·신고가 추적·2시간
   쿨다운(2단계, `lib/alerts/evaluate.ts`) + 공시 8유형·KRX 시장경보(3단계,
