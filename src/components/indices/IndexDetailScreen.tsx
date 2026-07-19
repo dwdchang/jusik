@@ -9,7 +9,14 @@ import { IndexChartClient } from "./IndexChartClient";
 import { IndexDailyList } from "./IndexDailyList";
 import styles from "./IndexDetailScreen.module.css";
 
-export async function IndexDetailScreen({ market }: { market: IndicatorId }) {
+export async function IndexDetailScreen({
+  market,
+  children,
+}: {
+  market: IndicatorId;
+  /** 일별 시세 섹션과 푸터 사이에 렌더되는 추가 섹션 (§28 달러 인덱스 등) */
+  children?: React.ReactNode;
+}) {
   let data: IndexDetailData;
 
   try {
@@ -69,6 +76,8 @@ export async function IndexDetailScreen({ market }: { market: IndicatorId }) {
           <h2 className={styles.sectionTitle}>일별 시세</h2>
           <IndexDailyList rows={data.dailyRows} />
         </section>
+
+        {children}
 
         <footer className={styles.footer}>
           <p className={styles.notice}>{data.dataNotice}</p>

@@ -4,15 +4,18 @@ import {
 } from "@/lib/alerts/evaluate";
 import {
   fetchKisFluctuationRanking,
+  fetchKisFxPairDaily,
   fetchKisIndexDaily,
   fetchKisMarketCapRanking,
   fetchKisOverseasDaily,
   fetchKisStockName,
   fetchKisStockSnapshot,
 } from "@/lib/api/kis/client";
+import { KIS_DXY_COMPONENTS } from "@/lib/api/kis/constants";
 import type {
   KisIndexDailyResponse,
   KisMarketCapRankingRow,
+  KisOverseasDailyResponse,
 } from "@/lib/api/kis/types";
 import { todayKstDate } from "@/lib/date/kst";
 import { saveHoldings, upsertPortfolioHistory } from "@/lib/holdings/store";
@@ -22,6 +25,7 @@ import {
 } from "@/lib/holdings/stockHistory";
 import { fetchStockInfoBlocks } from "@/lib/holdings/stockInfo";
 import { fetchHotStockUniverse } from "@/lib/hotstocks/universe";
+import { computeDxyDetail } from "@/lib/indices/dxy";
 import {
   applyKisSign,
   mapKisDailyRows,
@@ -85,6 +89,8 @@ export interface RefreshMarketDataReport {
   /** KIS 기준일(basDt) == KST 오늘 — 휴장일이면 false, 알림 판정 skip (§11.10-A5) */
   tradingDay: boolean;
   indices: Array<{ key: MarketDetailKey; ok: boolean; error?: string }>;
+  /** 달러 인덱스(환율 6종 계산, §28) 저장 결과 — 파생 부수 지표라 잡 전체 ok에 영향 없음 */
+  dxy: { ok: boolean; error?: string };
   volatility: { ok: boolean; upserted?: number; error?: string };
   /** 당일 등락률 순위 저장 결과 — 부수 데이터라 실패해도 잡 전체 ok에 영향 없음 */
   dailyFluctuation: { ok: boolean; count?: number; error?: string };
@@ -210,6 +216,30 @@ async function refreshIndices(fetchedAt: string): Promise<{
   });
 
   return { results, kospiRaw };
+}
+
+/**
+ * 달러 인덱스 → market:detail:dxy 저장 (§28).
+ * KIS에 DXY 종목이 없어 환율 통화쌍 6종을 순차 조회(유량 배려)한 뒤 ICE 공식
+ * 근사치로 계산한다. 파생 부수 지표라 실패해도 잡 전체 ok에 영향 없이 로그만
+ * 남긴다 — 다음 회차가 자연 재시도. export는 로컬 실측용.
+ */
+export async function refreshDxy(
+  fetchedAt: string
+): Promise<RefreshMarketDataReport["dxy"]> {
+  try {
+    const rawByCode = new Map<string, KisOverseasDailyResponse>();
+
+    for (const { code } of KIS_DXY_COMPONENTS) {
+      rawByCode.set(code, await fetchKisFxPairDaily(code));
+    }
+
+    await setMarketDetail("dxy", { ...computeDxyDetail(rawByCode), fetchedAt });
+    return { ok: true };
+  } catch (error) {
+    console.error("[job] dxy refresh failed:", error);
+    return { ok: false, error: errorMessage(error) };
+  }
 }
 
 /**
@@ -620,6 +650,9 @@ export async function refreshMarketData(
   // 1. 지수·환율·금리·유가 5종 → market:detail:*
   const { results: indices, kospiRaw } = await refreshIndices(startedAt);
 
+  // 1a. 달러 인덱스(환율 6종 계산, §28) → market:detail:dxy (파생 부수 지표, 실패 격리)
+  const dxy = await refreshDxy(startedAt);
+
   // 1b. 당일 등락률 순위 상위 30 → market:dailyFluctuation (부수 데이터, 실패 격리)
   const dailyFluctuation = await refreshDailyFluctuation(startedAt);
 
@@ -718,6 +751,7 @@ export async function refreshMarketData(
     finishedAt,
     tradingDay,
     indices,
+    dxy,
     volatility,
     dailyFluctuation,
     weeklyFluctuation,

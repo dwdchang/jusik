@@ -24,12 +24,11 @@ import styles from "./page.module.css";
 
 export const metadata: Metadata = {
   title: "시장 — jusik",
-  description: "원/달러 환율 · 미국 10년물 금리 · 국제유가 WTI · 수출입 통계 요약",
+  description: "미국 10년물 금리 · 국제유가 WTI · 수출입 통계 요약",
 };
 
-/** 미니 카드 3종 — 각 개별 상세 페이지로 링크 (plan.md §15.2) */
+/** 미니 카드 2종 — 각 개별 상세 페이지로 링크 (plan.md §15.2, §28에서 원/달러 분리) */
 const MARKET_ITEMS: Array<{ key: MarketDetailKey; href: string }> = [
-  { key: "usdkrw", href: "/indices/usdkrw" },
   { key: "us10y", href: "/indices/us10y" },
   { key: "oil", href: "/indices/oil" },
 ];
@@ -78,7 +77,7 @@ export default async function MarketOverviewPage() {
           ) : null}
         </header>
 
-        <section className={styles.cards} aria-label="시장 지표 3종">
+        <section className={styles.cards} aria-label="시장 지표 2종">
           {MARKET_ITEMS.map((item, i) => {
             const stored = rows[i];
 

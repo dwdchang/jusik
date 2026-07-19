@@ -104,21 +104,18 @@ export default async function HomePage() {
     );
   }
 
-  // 카드 배지 — 지수 2종은 각 지표의 fetchedAt, 시장 카드는 환율·금리·유가
-  // 3종 중 가장 오래된 수집 시각(§15.2), 보유종목·변동성은 마지막 갱신 잡
-  // 성공 시각 기준. 장중(평일 09:00~18:20 KST)에만 판정된다 (§11.10-B)
+  // 카드 배지 — 지수 2종·원/달러는 각 지표의 fetchedAt, 시장 카드는 금리·유가
+  // 2종 중 가장 오래된 수집 시각(§15.2, §28에서 원/달러 분리), 보유종목·변동성은
+  // 마지막 갱신 잡 성공 시각 기준. 장중(평일 09:00~18:20 KST)에만 판정된다 (§11.10-B)
   const lastRefreshAt = lastRefresh?.at ?? null;
   const marketFetchedAt =
-    [
-      data.fetchedAtByKey.usdkrw,
-      data.fetchedAtByKey.us10y,
-      data.fetchedAtByKey.oil,
-    ]
+    [data.fetchedAtByKey.us10y, data.fetchedAtByKey.oil]
       .filter((at): at is string => at !== null)
       .sort()[0] ?? null;
   const staleness: DashboardStaleness = {
     kospi: resolveStaleness(data.fetchedAtByKey.kospi),
     kosdaq: resolveStaleness(data.fetchedAtByKey.kosdaq),
+    usdkrw: resolveStaleness(data.fetchedAtByKey.usdkrw),
     market: resolveStaleness(marketFetchedAt),
     holdings: resolveStaleness(lastRefreshAt),
     volatility: resolveStaleness(lastRefreshAt),

@@ -28,10 +28,11 @@ import { SummaryCard } from "./SummaryCard";
 import { WatchlistCard } from "./WatchlistCard";
 
 /** 카드 배지 판정 결과 — 장중(09:00~18:20 KST)에만 non-null (§11.10-B).
- * market은 환율·금리·유가 3종 중 가장 오래된 수집 시각 기준 (§15.2) */
+ * market은 금리·유가 2종 중 가장 오래된 수집 시각 기준 (§15.2, §28에서 원/달러 분리) */
 export type DashboardStaleness = Record<
   | "kospi"
   | "kosdaq"
+  | "usdkrw"
   | "market"
   | "holdings"
   | "volatility"
@@ -98,19 +99,26 @@ export function IndexDashboard({
           )}
         />
         <SummaryCard
+          {...indexSummaryProps(
+            data.usdKrw,
+            "/indices/usdkrw",
+            staleness.usdkrw
+          )}
+        />
+        <SummaryCard
           title="시장"
           href="/indices/market"
           staleness={staleness.market}
-          value={formatIndex(data.usdKrw.close)}
+          value={formatIndex(data.usTreasury10y.close)}
           change={{
             text: formatChange(
-              data.usdKrw.changeAmount,
-              data.usdKrw.changeRate
+              data.usTreasury10y.changeAmount,
+              data.usTreasury10y.changeRate
             ),
-            direction: data.usdKrw.direction,
+            direction: data.usTreasury10y.direction,
           }}
-          footnote={`원/달러 대표 표시 · 금리·유가 포함 — 기준일 ${formatBasDtDisplay(
-            data.usdKrw.basDt
+          footnote={`미국 10년물 금리 대표 표시 · 유가 포함 — 기준일 ${formatBasDtDisplay(
+            data.usTreasury10y.basDt
           )}`}
         />
         {holdingsSummary !== null ? (

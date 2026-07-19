@@ -18,8 +18,9 @@ export const MARKET_DATA_EMPTY_MESSAGE =
   "아직 수집된 시세 데이터가 없습니다. 평일 09:00~15:30(KST) 갱신 회차 이후 표시됩니다.";
 
 export interface DashboardData extends IndexDashboardData {
-  /** 카드 배지 판정용 — 지표별 잡 수집 시각 (§11.10-B2). oil은 수집 전 null */
-  fetchedAtByKey: Record<MarketDetailKey, string | null>;
+  /** 카드 배지 판정용 — 지표별 잡 수집 시각 (§11.10-B2). oil은 수집 전 null.
+   * dxy는 홈 카드가 없어 제외 (§28) */
+  fetchedAtByKey: Record<Exclude<MarketDetailKey, "dxy">, string | null>;
 }
 
 export async function getDashboardData(): Promise<DashboardData> {

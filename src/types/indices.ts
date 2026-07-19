@@ -5,11 +5,14 @@
 
 export type MarketIndex = "KOSPI" | "KOSDAQ";
 
-/** KIS 해외지수/환율/금리/유가 계열 지표 */
+/** KIS 해외지수/환율/금리/유가 계열 지표 — FHKST03030100 단일 조회 가능 3종 */
 export type OverseasIndicator = "USDKRW" | "US10Y" | "OIL";
 
-/** 홈/상세에서 다루는 전체 지표 식별자 */
-export type IndicatorId = MarketIndex | OverseasIndicator;
+/**
+ * 홈/상세에서 다루는 전체 지표 식별자.
+ * DXY는 KIS에 종목이 없어 환율 6종으로 계산하는 파생 지표 (plan.md §28).
+ */
+export type IndicatorId = MarketIndex | OverseasIndicator | "DXY";
 
 export const INDICATOR_NAMES: Record<IndicatorId, string> = {
   KOSPI: "코스피",
@@ -17,6 +20,7 @@ export const INDICATOR_NAMES: Record<IndicatorId, string> = {
   USDKRW: "원/달러 환율",
   US10Y: "미국 10년물 국채금리(%)",
   OIL: "국제유가 WTI(USD/배럴)",
+  DXY: "달러 인덱스",
 };
 
 export type PriceDirection = "rise" | "fall" | "flat";

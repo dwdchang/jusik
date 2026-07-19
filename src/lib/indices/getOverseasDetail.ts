@@ -6,15 +6,16 @@ import { MARKET_DATA_EMPTY_MESSAGE } from "./getDashboard";
 import {
   KIS_DATA_NOTICE,
   type IndexDetailData,
-  type OverseasIndicator,
+  type IndicatorId,
+  type MarketIndex,
 } from "@/types/indices";
 
 /**
- * 환율/금리 상세 — QStash 갱신 잡이 저장한 `market:detail:{key}`를 읽는다.
- * KIS 직접 호출 없음 (Phase 11 §11.6).
+ * 환율/금리/유가·달러 인덱스 상세 — QStash 갱신 잡이 저장한
+ * `market:detail:{key}`를 읽는다. KIS 직접 호출 없음 (Phase 11 §11.6).
  */
 export async function getOverseasDetail(
-  indicator: OverseasIndicator
+  indicator: Exclude<IndicatorId, MarketIndex>
 ): Promise<IndexDetailData> {
   const stored = await getMarketDetail(INDICATOR_TO_DETAIL_KEY[indicator]);
 

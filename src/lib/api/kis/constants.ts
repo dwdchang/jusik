@@ -91,6 +91,25 @@ export const KIS_OVERSEAS_INDICATOR = {
 /** 해외 기간별시세 조회 기간(일) — 최근 7거래일 확보용 여유 포함 */
 export const KIS_OVERSEAS_LOOKBACK_DAYS = 31;
 
+/**
+ * 달러 인덱스(DXY) 계산용 환율 통화쌍 — plan.md §28 (2026-07-19 실측 검증).
+ * KIS 마스터에 DXY 종목이 없어 ICE 공식의 가중 기하평균으로 계산한다:
+ * DXY = 50.14348112 × EURUSD^-0.576 × USDJPY^0.136 × GBPUSD^-0.119
+ *       × USDCAD^0.091 × USDSEK^0.042 × USDCHF^0.036
+ * 6종 모두 marketDivCode X, 호가 방향은 공식과 일치 확인. ICE 공표값 대비
+ * 소수점 수준 오차가 있을 수 있는 근사치다.
+ */
+export const KIS_DXY_BASE = 50.14348112;
+
+export const KIS_DXY_COMPONENTS = [
+  { code: "FX@EUR", exponent: -0.576 },
+  { code: "FX@JPY", exponent: 0.136 },
+  { code: "FX@GBP", exponent: -0.119 },
+  { code: "FX@CAD", exponent: 0.091 },
+  { code: "FX@SEK", exponent: 0.042 },
+  { code: "FX@CHF", exponent: 0.036 },
+] as const;
+
 /** 업종(지수) 시장 분류 코드 */
 export const KIS_MARKET_DIV_CODE = "U";
 

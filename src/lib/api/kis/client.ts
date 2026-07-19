@@ -142,6 +142,27 @@ export async function fetchKisOverseasDaily(
 }
 
 /**
+ * 환율 통화쌍 기간별시세 조회 (FHKST03030100, marketDivCode X) — 달러 인덱스
+ * 계산용 (plan.md §28). 고정 3종의 fetchKisOverseasDaily와 달리 코드를 직접 받는다.
+ */
+export async function fetchKisFxPairDaily(
+  code: string
+): Promise<KisOverseasDailyResponse> {
+  return fetchKisJson<KisOverseasDailyResponse>(
+    "fx pair daily",
+    KIS_ENDPOINTS.OVERSEAS_DAILY_CHART,
+    KIS_TR_ID.OVERSEAS_DAILY_CHART,
+    {
+      FID_COND_MRKT_DIV_CODE: "X",
+      FID_INPUT_ISCD: code,
+      FID_INPUT_DATE_1: kstYyyyMmDd(KIS_OVERSEAS_LOOKBACK_DAYS),
+      FID_INPUT_DATE_2: todayKstYyyyMmDd(),
+      FID_PERIOD_DIV_CODE: "D",
+    }
+  );
+}
+
+/**
  * 국내주식 현재가 전체 필드 (FHKST01010100) — 현재가·시가총액·PER/PBR·52주 최고/최저 등.
  * Phase 11부터 갱신 잡이 종목당 1회 호출해 `market:stock:{code}`에 저장한다.
  */
