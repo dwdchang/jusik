@@ -71,8 +71,8 @@
 | `indices/market/page.tsx` | 시장 요약(금리·유가 미니 카드 2종 — 원/달러는 §28에서 홈 카드로 분리). `getMarketDetails` MGET 1회. + 수출입 미니 카드(Phase 17-4) — `getTradeStatsView`로 최신 확정월 수출/수입/무역수지+YoY, `/feeds` 링크 |
 | `indices/trade/[yyyymm]/page.tsx` | 수출입 상세(Phase 17-5) — 월 합계 3지표 + 품목별(국가 무관, HS 4단위 상위 15+기타) + 국가별(상위 8+기타, 클릭 시 품목 팝업). `getTradeDetailView` 1회. `/feeds` 수출입 탭의 월 링크로 진입 |
 | `indices/kospi-volatility/page.tsx` | 변동성 상세 — 월별 평균 막대 차트 + 당월 일별 기록 목록 |
-| `holdings/page.tsx` | 보유종목 목록·요약·연초 이후 추이·종목 추가 폼(`<details>` 토글, 종목명 검색 `<StockSearchInput>`) |
-| `holdings/[symbolCode]/page.tsx` | 보유종목 상세 — 평가 요약·수정/삭제(`?edit=1`)·2년 추이·정보 블록 4종 + 인라인 알림 토글(`AlertToggleButton`) |
+| `holdings/page.tsx` | 보유종목 목록·요약·연초 이후 추이·일별 기록(`DailyHistoryList` 접힘 목록, §29)·종목 추가 폼(`<details>` 토글, 종목명 검색 `<StockSearchInput>`) |
+| `holdings/[symbolCode]/page.tsx` | 보유종목 상세 — 평가 요약·수정/삭제(`?edit=1`)·2년 추이·일별 기록(`DailyHistoryList` 접힘 목록+종가 열, §29)·정보 블록 4종 + 인라인 알림 토글(`AlertToggleButton`) |
 | `holdings/actions.ts` | Server Actions: add/update/delete. **형식 검증만** 하고 KIS 호출 없음 (§6.4) |
 | `watchlist/page.tsx` | 관심종목 목록 — 등록 기준일 종가 대비 수익률, 기준일 변경/삭제(`?edit=1` 토글 — 보유종목 상세 패턴, 평상시 숨김·섹션 제목 옆 "수정"/"취소" `editToggle` 링크, §23). 추가 폼은 종목명 검색 `<StockSearchInput>` |
 | `watchlist/[symbolCode]/page.tsx` | 관심종목 상세 — 등록일 이후 추이·정보 블록 + 인라인 알림 토글 (보유종목 상세와 구조 동일) |
@@ -167,6 +167,7 @@
 | `indices/IndexChartClient` → `IndexLineChart` | Client | Recharts 래핑 패턴: Client 셸이 `dynamic(…, { ssr: false })` + 스켈레톤 → 실제 차트 |
 | `indices/VolatilityChartClient` → `VolatilityChart` | Client | 동일 패턴, BarChart |
 | `holdings/HoldingsChartClient` → `HoldingsChart` | Client | 동일 패턴, LineChart + 수익률%↔원단위 토글. **보유종목 홈/상세·관심종목 상세 3곳 공용** (관심종목에선 totalValue 자리에 종가를 넣어 재활용) |
+| `holdings/DailyHistoryList` | Client | 일별 기록 목록 (§29) — 접힘 기본 `<details>`(네이티브, JS 무관) + 월 단위 페이지네이션(`useState` 월 인덱스, 기록 있는 달만 이전/다음, 양 끝 disabled). 서버가 히스토리 전체를 props로 주입. 보유종목 홈/상세 2곳 공용 — 상세만 `close` 종가 열 추가. rise/fall 판정은 로컬 사본(`resolveDirection`을 클라이언트 번들에 안 넣기 위함) |
 | `stocks/StockInfoBlocks` | Server | 정보 블록 4종(시총·배당·실적·투자지표) — 보유·관심 상세 공용, `formatRatio` export |
 | `stocks/StockSearchInput` | Client | 등록 폼 종목명 검색 입력 — 디바운스 250ms→`searchStocks` 액션, 결과 드롭다운(키보드 ↑↓/Enter/Esc), 선택 시 hidden `symbolCode` 채우고 배지 표시. 보유·관심 추가 폼 공용 |
 | `feeds/FeedTabsClient` | **Client** | 뉴스/공시/수출입 3탭 + 게시판 + 아코디언 (Phase 17-2/17-3/17-4). 데이터는 Server가 props로 주입, Client는 탭 선택·아코디언 open/close만. 3탭 모두 실동작(공시=제출인·접수일+DART 원문, 뉴스=출처·발행일+원문 새 탭 / 기본 선택 뉴스, 수출입=`TradeBoard` 최신월 3지표+YoY 요약 + 최근 13개월 표, 아코디언 없음). **17-2b에서 홈 전체폭→`/feeds/page.tsx`로 렌더 위치만 이동**. ~~`stocks/StockDisclosures`~~는 A안 철회로 **삭제** |
@@ -346,6 +347,8 @@ QStash 스케줄 (월 1회, 매월 5일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 5 *
   usdkrw는 children `DollarIndexSection`이 `market:detail:dxy` 1건 추가 조회 (§28).
 - **보유종목**: `getHoldings`(복호화) → `getPortfolioValuation`(`market:stock:*` MGET) +
   `getPortfolioHistory`. 상세는 + `getStockInfo`(스냅샷+정보 블록 조합) + `getStockHistory`.
+  일별 기록 목록(`DailyHistoryList`)은 홈=`getPortfolioHistory`·상세=`getStockHistory`
+  결과를 그대로 재사용 — 추가 페치 없음 (§29).
 - **관심종목**: `getWatchlist` + `getStockSnapshots` + `computeWatchReturnRate`.
   상세는 보유종목 상세와 동일 구성에 기준가 대비 차트.
 - **홈 "뉴스·공시" 카드**: `getTodayFeedCounts(email)`(feeds/homeFeed) — 오늘 공시·뉴스 건수

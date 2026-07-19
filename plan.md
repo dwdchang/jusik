@@ -2610,6 +2610,19 @@ interface WatchItem {
   14. `app/indices/market/page.tsx` — 미니 카드에서 usdkrw 제거(금리·유가 2종 + 수출입), metadata·aria 문구 갱신.
 - **상태**: 구현 완료(2026-07-19) — 계획 1~14번 그대로 구현. lint·tsc·프로덕션 빌드 통과, `refreshDxy` 로컬 실측(tsx 단독 실행)으로 `market:detail:dxy` 저장 확인. research.md §2·§4·§5 갱신. 실제 화면 확인은 사용자 확인 대기.
 
+### Phase 29 — 보유종목 일별 기록: 접힘 기본 `<details>` + 월 단위 페이지네이션 (2026-07-19)
+
+- **요청 근거**: 사용자 지시 — ① 일별 기록 목록을 평소 숨겼다가 클릭 시 펼침 ② 펼치면 **당월만** 표시, 게시판처럼 이전/다음 버튼으로 한 페이지 1개월씩 조회 ③ 보유종목 홈(`/holdings`)의 기존 목록에 적용 + 종목별 상세(`/holdings/[symbolCode]`)에는 목록 **신규 추가**.
+- **방식 결정**: 접기는 네이티브 `<details>`/`<summary>`(방법 1 — JS 불필요·a11y 기본 제공), 월 페이지네이션은 **B안: 작은 클라이언트 컴포넌트**(`useState` 월 인덱스). URL 쿼리 방식(A안)은 월 넘김마다 서버 왕복 + `<details>` 접힘 리셋이라 기각. "현재 보는 월"은 순수 UI 상태로 클라이언트가 자연스럽고, `HoldingsChart`의 단위 토글과 같은 선례. 데이터는 서버가 전량 내려주므로 페칭 규칙(Server Component 우선) 위반 없음.
+- **조사 결과 (2026-07-19)**: 홈은 `getPortfolioHistory`, 상세는 `getStockHistory`(2년)를 이미 호출·차트에 사용 중 — **추가 페치·저장 변경 0건**. 목록 폼·`<details>` 토글 CSS는 기존 `.dailyList` 계열·종목 추가 폼 `.addToggle` 패턴 이식.
+- **구현 계획 (파일 단위)**:
+  1. **신규** `components/holdings/DailyHistoryList.tsx`(`'use client'`) — props `rows: {date, close?, totalValue, returnRate}[]`. `<details>`(기본 접힘) + summary "일별 기록" + 월 내비(`← 이전 | YYYY년 M월 | 다음 →`) + 월별 목록(최신일 먼저). 기록 있는 달만 최신순 배열로 만들어 빈 달 자동 건너뜀, 양 끝에서 버튼 disabled, 기본은 최신 달(=당월). `close` 전달 시에만 종가 열 렌더. rise/fall 판정은 로컬 3줄 사본(`resolveDirection` 의미 동일 — KIS mapper를 클라이언트 번들에 안 넣기 위함).
+  2. **신규** `components/holdings/DailyHistoryList.module.css` — `.toggle`(addToggle 이식+쉐브론 회전)·`.monthNav`/`.monthButton`/`.monthLabel`·`.dailyList` 계열(page.module.css 이식+`.dailyClose`)·rise/fall/flat.
+  3. `app/holdings/page.tsx` — 기존 "일별 기록" 섹션(인라인 `<ol>`)을 `<DailyHistoryList rows={dailyRows}/>`로 교체. rows는 **연도 필터 없이 전체 히스토리**(월 페이지네이션이 과거 달까지 커버 — 기존 올해 한정에서 확장). 차트는 기존 `yearHistory` 유지.
+  4. `app/holdings/page.module.css` — 이식 후 미사용이 된 `.dailyList`/`.dailyRow`/`.dailyDate`/`.dailyValue`/`.dailyRate` 제거.
+  5. `app/holdings/[symbolCode]/page.tsx` — 차트 섹션과 종목 정보 섹션 사이에 "일별 기록" 섹션 신규(2년 히스토리 → `{date, close, totalValue: close×수량, returnRate}`, 0건이면 미렌더).
+- **상태**: 구현 완료(2026-07-19) — 계획 1~5번 그대로 구현. lint·tsc·프로덕션 빌드 통과, research.md §2·§4.3 갱신. 실제 화면 확인은 사용자 확인 대기.
+
 ---
 
 ## 7. PR 분리 권장 (선택)
