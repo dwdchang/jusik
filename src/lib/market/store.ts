@@ -47,6 +47,18 @@ export interface StoredStockSnapshot {
   fetchedAt: string;
 }
 
+/** 확정 배당 회차 1행 — 배당 일정 화면·지급일 알림용 (Phase 25) */
+export interface DividendRound {
+  /** 배당 기준일 "YYYY-MM-DD" */
+  recordDate: string;
+  /** 배당종류 — "분기" | "결산" | "중간" 등 */
+  kind: string | null;
+  /** 주당배당금(원) — 확정분만 저장 (0원 미확정 회차 제외) */
+  amountPerShare: number;
+  /** 현금배당 지급일 "YYYY-MM-DD" — 공시로 확정되기 전엔 null ("미정" 표기) */
+  payDate: string | null;
+}
+
 /** market:stockInfo:{symbolCode} — 가격 무관 정보 블록 (확정 회차에 1일 1회 갱신) */
 export interface StoredStockInfoBlocks {
   symbolCode: string;
@@ -57,6 +69,8 @@ export interface StoredStockInfoBlocks {
     kindLabel: string | null;
     annualDividendPerShare: number;
     lastPayDate: string | null;
+    /** 확정 회차별 원본 행 — 필드 추가(Phase 25) 이전 스냅샷에는 없으므로 optional */
+    rounds?: DividendRound[];
   } | null;
   /** 실적 — 분기 단독값·YoY·QoQ (stockInfo.ts에서 계산) */
   earnings: StockEarningsInfo | null;
@@ -210,6 +224,27 @@ export async function getStockInfoBlocks(
   symbolCode: string
 ): Promise<StoredStockInfoBlocks | null> {
   return getRedis().get<StoredStockInfoBlocks>(stockInfoKey(symbolCode));
+}
+
+/** 종목별 정보 블록 일괄 조회 (배당 일정 병합용, MGET 1회) — 없는 종목은 맵에서 빠진다 */
+export async function getStockInfoBlocksMap(
+  symbolCodes: string[]
+): Promise<Map<string, StoredStockInfoBlocks>> {
+  if (symbolCodes.length === 0) {
+    return new Map();
+  }
+
+  const rows = await getRedis().mget<Array<StoredStockInfoBlocks | null>>(
+    ...symbolCodes.map(stockInfoKey)
+  );
+
+  const bySymbol = new Map<string, StoredStockInfoBlocks>();
+  rows.forEach((row, i) => {
+    if (row !== null) {
+      bySymbol.set(symbolCodes[i], row);
+    }
+  });
+  return bySymbol;
 }
 
 export async function setStockInfoBlocks(

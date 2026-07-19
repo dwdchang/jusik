@@ -14,6 +14,7 @@ import type {
 import {
   getStockInfoBlocks,
   getStockSnapshot,
+  type DividendRound,
   type StoredStockInfoBlocks,
 } from "@/lib/market/store";
 
@@ -137,10 +138,24 @@ function buildDividendBlock(
     .sort()
     .at(-1);
 
+  // 확정 회차 원본 행 — 배당 일정 화면·지급일 알림이 읽는다 (Phase 25).
+  // 지급일 미정(빈 문자열)은 null로 저장했다가 예탁원 데이터가 공시를 반영하면
+  // 이후 갱신 회차의 SET 덮어쓰기로 자연히 채워진다.
+  const rounds: DividendRound[] = confirmed
+    .map((row) => ({
+      recordDate: toIsoDate(row.record_date),
+      kind: row.divi_kind?.trim() || null,
+      amountPerShare: toNumber(row.per_sto_divi_amt) ?? 0,
+      payDate: toIsoDate(row.divi_pay_dt),
+    }))
+    .filter((round): round is DividendRound => round.recordDate !== null)
+    .sort((a, b) => a.recordDate.localeCompare(b.recordDate));
+
   return {
     kindLabel: latest?.divi_kind?.trim() || null,
     annualDividendPerShare,
     lastPayDate: toIsoDate(lastPayDate),
+    rounds,
   };
 }
 

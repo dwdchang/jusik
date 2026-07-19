@@ -1,4 +1,8 @@
 import {
+  evaluateDividendAlerts,
+  type DividendAlertsReport,
+} from "@/lib/alerts/dividendAlerts";
+import {
   evaluateFeedAlerts,
   type FeedAlertsReport,
 } from "@/lib/alerts/feedAlerts";
@@ -126,6 +130,12 @@ export interface RefreshFeedsReport {
   };
   /** 공시·시장경보 알림 훅 결과 — 실패해도 잡 ok는 게이팅하지 않는다 (§10.6 3단계) */
   alerts: { evaluated: boolean; reason?: string; summary?: FeedAlertsReport };
+  /** 배당 지급일 당일 알림 훅 결과 — 실패해도 잡 ok는 게이팅하지 않는다 (Phase 25) */
+  dividendAlerts: {
+    evaluated: boolean;
+    reason?: string;
+    summary?: DividendAlertsReport;
+  };
   /** 데이터 갱신 성공 여부 — false면 잡 엔드포인트가 500을 반환(QStash 재시도) */
   ok: boolean;
 }
@@ -399,6 +409,7 @@ export async function refreshFeeds(
       news: [],
       tradeStats,
       alerts: { evaluated: false, reason: "no target symbols" },
+      dividendAlerts: { evaluated: false, reason: "no target symbols" },
       ok: true,
     };
   }
@@ -432,6 +443,19 @@ export async function refreshFeeds(
     alerts = { evaluated: false, reason: errorMessage(error) };
   }
 
+  // 6. 배당 지급일 당일 알림 훅 — 보유 사용자만 대상 (Phase 25), 실패해도 로그만
+  let dividendAlerts: RefreshFeedsReport["dividendAlerts"];
+  try {
+    const summary = await evaluateDividendAlerts({
+      holdingsByEmail,
+      names: codeNames,
+    });
+    dividendAlerts = { evaluated: true, summary };
+  } catch (error) {
+    console.error("[job] dividend alert evaluation failed:", error);
+    dividendAlerts = { evaluated: false, reason: errorMessage(error) };
+  }
+
   // tradeStats는 ok 게이팅에서 제외 — 월간 소스 실패로 뉴스·공시 파이프라인을
   // 반복 재실행시키지 않고, 가드가 다음 회차에 자연히 재시도한다 (§17-4).
   const ok =
@@ -449,6 +473,7 @@ export async function refreshFeeds(
     news,
     tradeStats,
     alerts,
+    dividendAlerts,
     ok,
   };
 }

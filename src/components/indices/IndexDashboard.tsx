@@ -1,4 +1,5 @@
 import { HeaderMenu } from "@/components/nav/HeaderMenu";
+import type { DividendCardSummary } from "@/lib/dividends/summary";
 import type { TodayFeedCounts } from "@/lib/feeds/homeFeed";
 import { formatBasDtDisplay } from "@/lib/format/basDt";
 import {
@@ -18,6 +19,7 @@ import type {
   VolatilityCardSummary,
 } from "@/types/indices";
 import { DataAsOfFooter } from "./DataAsOfFooter";
+import { DividendCard } from "./DividendCard";
 import { FeedSummaryCard } from "./FeedSummaryCard";
 import { HotStocksCard } from "./HotStocksCard";
 import styles from "./IndexDashboard.module.css";
@@ -27,7 +29,13 @@ import { WatchlistCard } from "./WatchlistCard";
 /** 카드 배지 판정 결과 — 장중(09:00~18:20 KST)에만 non-null (§11.10-B).
  * market은 환율·금리·유가 3종 중 가장 오래된 수집 시각 기준 (§15.2) */
 export type DashboardStaleness = Record<
-  "kospi" | "kosdaq" | "market" | "holdings" | "volatility" | "watchlist",
+  | "kospi"
+  | "kosdaq"
+  | "market"
+  | "holdings"
+  | "volatility"
+  | "watchlist"
+  | "dividends",
   StalenessLevel | null
 >;
 
@@ -55,6 +63,7 @@ export function IndexDashboard({
   volatilitySummary,
   hotStocksSummary,
   watchlistSummary,
+  dividendSummary,
   staleness,
   feedCounts,
 }: {
@@ -63,6 +72,7 @@ export function IndexDashboard({
   volatilitySummary: VolatilityCardSummary | null;
   hotStocksSummary: DailyHotCardSummary | null;
   watchlistSummary: WatchlistCardSummary | null;
+  dividendSummary: DividendCardSummary | null;
   staleness: DashboardStaleness;
   feedCounts: TodayFeedCounts;
 }) {
@@ -167,6 +177,10 @@ export function IndexDashboard({
         <WatchlistCard
           summary={watchlistSummary}
           staleness={staleness.watchlist}
+        />
+        <DividendCard
+          summary={dividendSummary}
+          staleness={staleness.dividends}
         />
         <FeedSummaryCard counts={feedCounts} />
       </section>

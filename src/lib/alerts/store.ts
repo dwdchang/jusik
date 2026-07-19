@@ -136,8 +136,19 @@ export async function setCooldown(
   });
 }
 
+/**
+ * 배당 지급일 당일 알림 발송 마커 TTL — 2일 (Phase 25).
+ * 피드 잡이 매시 도는 동안 같은 지급일 알림이 반복 발송되지 않게 막고,
+ * 지급일이 지나면 Redis TTL이 자동 정리한다 (쿨다운 키 관례 — 평문).
+ */
+const DIVIDEND_SENT_TTL_SECONDS = 2 * 24 * 60 * 60;
+
 function disclosureCursorKey(symbolCode: string): string {
   return `alerts:disclosure:last:${symbolCode}`;
+}
+
+function dividendSentKey(symbolCode: string, payDate: string): string {
+  return `alerts:dividend:sent:${symbolCode}:${payDate}`;
 }
 
 function marketWarnKey(symbolCode: string): string {
@@ -200,4 +211,23 @@ export async function setMarketWarnState(
   state: MarketWarnState
 ): Promise<void> {
   await getRedis().set(marketWarnKey(symbolCode), state);
+}
+
+/** 배당 지급일 알림을 이미 발송했으면 true — 종목×지급일 단위 전역 마커 (Phase 25) */
+export async function wasDividendAlertSent(
+  symbolCode: string,
+  payDate: string
+): Promise<boolean> {
+  return (await getRedis().exists(dividendSentKey(symbolCode, payDate))) > 0;
+}
+
+export async function markDividendAlertSent(
+  symbolCode: string,
+  payDate: string
+): Promise<void> {
+  await getRedis().set(
+    dividendSentKey(symbolCode, payDate),
+    new Date().toISOString(),
+    { ex: DIVIDEND_SENT_TTL_SECONDS }
+  );
 }

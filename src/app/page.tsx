@@ -5,6 +5,7 @@ import {
   type DashboardStaleness,
 } from "@/components/indices/IndexDashboard";
 import { isEmailAllowed } from "@/lib/auth/allowedEmails";
+import { getDividendCardSummary } from "@/lib/dividends/summary";
 import { getTodayFeedCounts } from "@/lib/feeds/homeFeed";
 import { getHoldingsCardSummary } from "@/lib/holdings/summary";
 import { getDailyHotCardSummary } from "@/lib/hotstocks/dailyCard";
@@ -53,17 +54,19 @@ export default async function HomePage() {
   let volatilitySummary: Awaited<ReturnType<typeof getVolatilityCardSummary>>;
   let hotStocksSummary: Awaited<ReturnType<typeof getDailyHotCardSummary>>;
   let watchlistSummary: Awaited<ReturnType<typeof getWatchlistCardSummary>>;
+  let dividendSummary: Awaited<ReturnType<typeof getDividendCardSummary>>;
   let lastRefresh: Awaited<ReturnType<typeof getLastRefreshRecord>>;
   let feedCounts: Awaited<ReturnType<typeof getTodayFeedCounts>>;
 
   try {
-    // 카드 요약(보유종목·변동성·핫종목·관심종목)과 피드 건수는 실패 시 빈/null 반환 — 홈 전체를 막지 않는다
+    // 카드 요약(보유종목·변동성·핫종목·관심종목·배당)과 피드 건수는 실패 시 빈/null 반환 — 홈 전체를 막지 않는다
     [
       data,
       holdingsSummary,
       volatilitySummary,
       hotStocksSummary,
       watchlistSummary,
+      dividendSummary,
       lastRefresh,
       feedCounts,
     ] = await Promise.all([
@@ -72,6 +75,7 @@ export default async function HomePage() {
       getVolatilityCardSummary(),
       getDailyHotCardSummary(),
       getWatchlistCardSummary(email),
+      getDividendCardSummary(email),
       getLastRefreshRecord().catch(() => null),
       getTodayFeedCounts(email).catch(() => ({
         disclosures: 0,
@@ -119,6 +123,7 @@ export default async function HomePage() {
     holdings: resolveStaleness(lastRefreshAt),
     volatility: resolveStaleness(lastRefreshAt),
     watchlist: resolveStaleness(lastRefreshAt),
+    dividends: resolveStaleness(lastRefreshAt),
   };
 
   return (
@@ -129,6 +134,7 @@ export default async function HomePage() {
         volatilitySummary={volatilitySummary}
         hotStocksSummary={hotStocksSummary}
         watchlistSummary={watchlistSummary}
+        dividendSummary={dividendSummary}
         staleness={staleness}
         feedCounts={feedCounts}
       />

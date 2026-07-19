@@ -1,0 +1,68 @@
+/* 홈 "배당 일정" 카드 — 골격은 SummaryCard, 리스트 행 폼은 HotStocksCard와 동일 (Phase 25) */
+.card {
+  composes: card from "./SummaryCard.module.css";
+}
+
+.badge {
+  composes: badge from "./SummaryCard.module.css";
+}
+
+.badgeWarn {
+  composes: badgeWarn from "./SummaryCard.module.css";
+}
+
+.badgeCritical {
+  composes: badgeCritical from "./SummaryCard.module.css";
+}
+
+.title {
+  composes: title from "./SummaryCard.module.css";
+}
+
+.footnote {
+  composes: footnote from "./SummaryCard.module.css";
+}
+
+.placeholder {
+  composes: placeholder from "./SummaryCard.module.css";
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  margin-bottom: var(--space-12);
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-8);
+  font-size: var(--text-caption);
+  min-width: 0;
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  color: var(--color-text-primary);
+  font-weight: var(--weight-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 지급일 (MM/DD) */
+.date {
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+  font-size: var(--text-micro);
+}
+
+/* 주당배당금 */
+.amount {
+  flex-shrink: 0;
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+}
