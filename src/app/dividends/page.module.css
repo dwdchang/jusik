@@ -138,3 +138,75 @@
   color: var(--color-text-tertiary);
   line-height: 1.5;
 }
+
+/* 배당률 순위 표 — Phase 43.
+   컬럼 8개라 모바일 한 줄에 안 들어가므로 가로 스크롤(사용자 확정).
+   순위·종목명 2열은 sticky로 고정해 오른쪽 끝을 볼 때도 행 식별이 유지된다. */
+.tableScroll {
+  overflow-x: auto;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  -webkit-overflow-scrolling: touch;
+}
+
+.rankTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-caption);
+  white-space: nowrap;
+}
+
+.rankTable th,
+.rankTable td {
+  padding: var(--space-8) var(--space-12);
+  text-align: right;
+  font-weight: var(--weight-regular);
+  color: var(--color-text-primary);
+}
+
+.rankTable thead th {
+  font-size: var(--text-caption-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.rankTable tbody tr + tr th,
+.rankTable tbody tr + tr td {
+  border-top: 1px solid var(--color-border);
+}
+
+/* sticky 셀은 배경이 없으면 스크롤 시 뒤 열이 비쳐 보인다 */
+.stickyRank,
+.stickyName {
+  position: sticky;
+  background-color: var(--color-surface);
+}
+
+.stickyRank {
+  left: 0;
+  text-align: right;
+  color: var(--color-text-tertiary);
+}
+
+.stickyName {
+  left: 52px;
+  text-align: left;
+  border-right: 1px solid var(--color-border);
+}
+
+.rankName {
+  color: var(--color-text-primary);
+  font-weight: var(--weight-medium);
+  text-decoration: none;
+}
+
+.rankName:hover {
+  text-decoration: underline;
+}
+
+.rankYield {
+  font-weight: var(--weight-semibold);
+  color: var(--color-primary);
+}
