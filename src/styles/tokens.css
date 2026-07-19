@@ -51,6 +51,12 @@
   --space-20: 20px;
   --space-24: 24px;
 
+  /* 카드 도형(surface+border+radius) 내부 여백 — 홈·상세 39곳 공용 (§39).
+     16→12px로 한 칸 축소. 값이 39개 파일에 복붙되던 것을 토큰 하나로 모았으니
+     카드 여백을 다시 조정할 땐 여기만 고친다. 화면 가장자리 여백(각 화면
+     `.container`/`.dashboard`의 --space-16)은 §38 정렬 통일이 걸려 있어 별개다. */
+  --card-padding: var(--space-12);
+
   /* Layout */
   --layout-max-width: 480px;
   --header-height: 56px;

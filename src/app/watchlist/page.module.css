@@ -72,7 +72,7 @@
 }
 
 .emptyNotice {
-  padding: var(--space-16);
+  padding: var(--card-padding);
   background-color: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -133,7 +133,7 @@
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: var(--space-8);
-  padding: var(--space-16);
+  padding: var(--card-padding);
   background-color: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -186,7 +186,7 @@
 }
 
 .item {
-  padding: var(--space-16);
+  padding: var(--card-padding);
   background-color: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -330,7 +330,7 @@
 
 .footer {
   margin-top: var(--space-24);
-  padding: var(--space-16);
+  padding: var(--card-padding);
   background-color: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);

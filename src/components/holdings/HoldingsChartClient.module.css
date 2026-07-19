@@ -1,6 +1,6 @@
 .chartSkeleton {
   min-height: var(--chart-height);
-  padding: var(--space-16);
+  padding: var(--card-padding);
   display: flex;
   align-items: center;
   justify-content: center;
