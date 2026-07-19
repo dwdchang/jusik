@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { BtcChartClient } from "@/components/indices/BtcChartClient";
 import { IndexChartClient } from "@/components/indices/IndexChartClient";
+import { IndexDailyList } from "@/components/indices/IndexDailyList";
 import { NavIconLink } from "@/components/nav/NavIconLink";
 import { ensureAllowedSession } from "@/lib/auth/ensureAllowedSession";
 import { formatBasDtDisplay } from "@/lib/format/basDt";
@@ -22,12 +22,8 @@ export const metadata: Metadata = {
   description: "미국 10년물 금리 · 국제유가 WTI · 금 현물(국제) · 비트코인",
 };
 
-/** 미니 카드 3종 — 각 개별 상세 페이지로 링크 (plan.md §15.2, §28 원/달러 분리, §30 금 추가) */
-const MARKET_ITEMS: Array<{ key: MarketDetailKey; href: string }> = [
-  { key: "us10y", href: "/indices/us10y" },
-  { key: "oil", href: "/indices/oil" },
-  { key: "gold", href: "/indices/gold" },
-];
+/** 미니 카드 3종 (plan.md §15.2, §28 원/달러 분리, §30 금 추가, §31 개별 상세 제거) */
+const MARKET_ITEMS: MarketDetailKey[] = ["us10y", "oil", "gold"];
 
 export default async function MarketOverviewPage() {
   await ensureAllowedSession();
@@ -35,11 +31,7 @@ export default async function MarketOverviewPage() {
   let rows: Array<StoredMarketDetail | null>;
 
   try {
-    rows = await getMarketDetails([
-      ...MARKET_ITEMS.map((item) => item.key),
-      "btcKrw",
-      "btcUsd",
-    ]);
+    rows = await getMarketDetails([...MARKET_ITEMS, "btcKrw", "btcUsd"]);
   } catch (error) {
     console.error("[MarketOverviewPage] getMarketDetails failed:", error);
     rows = [...MARKET_ITEMS.map(() => null), null, null];
@@ -68,12 +60,12 @@ export default async function MarketOverviewPage() {
         </header>
 
         <section className={styles.cards} aria-label="시장 지표 4종">
-          {MARKET_ITEMS.map((item, i) => {
+          {MARKET_ITEMS.map((itemKey, i) => {
             const stored = rows[i];
 
             if (stored === null) {
               return (
-                <article key={item.key} className={styles.card}>
+                <article key={itemKey} className={styles.card}>
                   <p className={styles.emptyNotice}>
                     아직 수집된 데이터가 없습니다. 다음 갱신 회차(평일
                     09:00~18:15 KST)에 반영됩니다.
@@ -85,14 +77,10 @@ export default async function MarketOverviewPage() {
             const { snapshot } = stored;
 
             return (
-              <article key={item.key} className={styles.card}>
+              <article key={itemKey} className={styles.card}>
                 <div className={styles.cardHead}>
                   <div>
-                    <h2 className={styles.cardTitle}>
-                      <Link href={item.href} className={styles.cardLink}>
-                        {snapshot.name}
-                      </Link>
-                    </h2>
+                    <h2 className={styles.cardTitle}>{snapshot.name}</h2>
                     <p className={styles.basDt}>
                       기준일 {formatBasDtDisplay(snapshot.basDt)}
                     </p>
@@ -111,9 +99,15 @@ export default async function MarketOverviewPage() {
                   </div>
                 </div>
                 <IndexChartClient series={stored.history} />
-                <Link href={item.href} className={styles.detailLink}>
-                  일별 시세 보기 →
-                </Link>
+                <details className={styles.dailyDetails}>
+                  <summary className={styles.dailyToggle}>
+                    일별 기록
+                    <span className={styles.chevron} aria-hidden="true">
+                      ▾
+                    </span>
+                  </summary>
+                  <IndexDailyList rows={stored.dailyRows} />
+                </details>
               </article>
             );
           })}
@@ -128,11 +122,7 @@ export default async function MarketOverviewPage() {
               <>
                 <div className={styles.cardHead}>
                   <div>
-                    <h2 className={styles.cardTitle}>
-                      <Link href="/indices/btc" className={styles.cardLink}>
-                        비트코인
-                      </Link>
-                    </h2>
+                    <h2 className={styles.cardTitle}>비트코인</h2>
                     <p className={styles.basDt}>
                       기준일 {formatBasDtDisplay(btcKrw.snapshot.basDt)}
                     </p>
@@ -167,9 +157,35 @@ export default async function MarketOverviewPage() {
                   </div>
                 </div>
                 <BtcChartClient series={btcKrw.history} currency="KRW" />
-                <Link href="/indices/btc" className={styles.detailLink}>
-                  일별 시세 보기 →
-                </Link>
+                <details className={styles.dailyDetails}>
+                  <summary className={styles.dailyToggle}>
+                    일별 기록
+                    <span className={styles.chevron} aria-hidden="true">
+                      ▾
+                    </span>
+                  </summary>
+                  <ol className={styles.dailyList}>
+                    {btcKrw.dailyRows.map((row) => (
+                      <li key={row.basDt} className={styles.dailyRow}>
+                        <span className={styles.dailyDate}>{row.date}</span>
+                        <span className={`${styles.dailyClose} numeric`}>
+                          {formatBtcValue(row.close, "KRW")}
+                        </span>
+                        <span
+                          className={`${styles.dailyChange} numeric ${
+                            styles[row.direction]
+                          }`}
+                        >
+                          {formatBtcChange(
+                            row.changeAmount,
+                            row.changeRate,
+                            "KRW"
+                          )}
+                        </span>
+                      </li>
+                    ))}
+                  </ol>
+                </details>
               </>
             )}
           </article>

@@ -60,15 +60,6 @@
   color: var(--color-text-primary);
 }
 
-.cardLink {
-  color: inherit;
-  text-decoration: none;
-}
-
-.cardLink:hover {
-  color: var(--color-primary);
-}
-
 .basDt {
   margin-top: var(--space-4);
   font-size: var(--text-micro);
@@ -104,17 +95,90 @@
   color: var(--color-flat);
 }
 
-.detailLink {
-  display: inline-block;
-  margin-top: var(--space-8);
+/* 일별 기록 접힘 (§31) — holdings DailyHistoryList 토글 폼 이식 */
+.dailyDetails {
+  margin-top: var(--space-12);
+}
+
+.dailyToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-8) var(--space-16);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   font-size: var(--text-caption);
   font-weight: var(--weight-medium);
   color: var(--color-text-secondary);
-  text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+  list-style: none; /* 기본 ▸ 마커 제거 (Safari는 아래 ::-webkit-details-marker) */
+  transition: border-color 0.15s ease, color 0.15s ease;
 }
 
-.detailLink:hover {
+.dailyToggle::-webkit-details-marker {
+  display: none;
+}
+
+.dailyToggle:hover {
+  border-color: var(--color-primary);
   color: var(--color-primary);
+}
+
+.dailyDetails[open] .dailyToggle {
+  margin-bottom: var(--space-8);
+}
+
+.chevron {
+  font-size: var(--text-micro);
+  transition: transform 0.15s ease;
+}
+
+.dailyDetails[open] .chevron {
+  transform: rotate(180deg);
+}
+
+/* 비트코인 일별 목록 (§31) — IndexDailyList 폼 이식 (원화 포맷 전용) */
+.dailyList {
+  list-style: none;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.dailyRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  padding: var(--space-12) var(--space-16);
+}
+
+.dailyRow + .dailyRow {
+  border-top: 1px solid var(--color-border);
+}
+
+.dailyDate {
+  font-size: var(--text-caption);
+  color: var(--color-text-secondary);
+  min-width: 44px;
+}
+
+.dailyClose {
+  flex: 1;
+  text-align: right;
+  font-size: var(--text-caption);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.dailyChange {
+  min-width: 120px;
+  text-align: right;
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
 }
 
 .emptyNotice {
