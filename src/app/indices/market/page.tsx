@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { BtcChartClient } from "@/components/indices/BtcChartClient";
 import { IndexChartClient } from "@/components/indices/IndexChartClient";
 import { NavIconLink } from "@/components/nav/NavIconLink";
 import { ensureAllowedSession } from "@/lib/auth/ensureAllowedSession";
 import { formatBasDtDisplay } from "@/lib/format/basDt";
+import { formatBtcChange, formatBtcValue } from "@/lib/format/btc";
 import { formatChange } from "@/lib/format/change";
 import { formatKstDateTime } from "@/lib/format/datetime";
 import { formatIndex } from "@/lib/format/index";
@@ -12,34 +14,20 @@ import {
   type MarketDetailKey,
   type StoredMarketDetail,
 } from "@/lib/market/store";
-import { getTradeStatsView } from "@/lib/feeds/tradeStats";
-import {
-  formatUsdEok,
-  formatUsdEokSigned,
-  formatYoy,
-  formatYyyymm,
-} from "@/lib/format/trade";
 import { KIS_DATA_NOTICE } from "@/types/indices";
 import styles from "./page.module.css";
 
 export const metadata: Metadata = {
   title: "시장 — jusik",
-  description: "미국 10년물 금리 · 국제유가 WTI · 수출입 통계 요약",
+  description: "미국 10년물 금리 · 국제유가 WTI · 금 현물(국제) · 비트코인",
 };
 
-/** 미니 카드 2종 — 각 개별 상세 페이지로 링크 (plan.md §15.2, §28에서 원/달러 분리) */
+/** 미니 카드 3종 — 각 개별 상세 페이지로 링크 (plan.md §15.2, §28 원/달러 분리, §30 금 추가) */
 const MARKET_ITEMS: Array<{ key: MarketDetailKey; href: string }> = [
   { key: "us10y", href: "/indices/us10y" },
   { key: "oil", href: "/indices/oil" },
+  { key: "gold", href: "/indices/gold" },
 ];
-
-/** 양수=상승색, 음수=하락색 (수출입 증감·수지) */
-function signClass(value: number | null): string {
-  if (value === null || value === 0) {
-    return styles.flat;
-  }
-  return value > 0 ? styles.rise : styles.fall;
-}
 
 export default async function MarketOverviewPage() {
   await ensureAllowedSession();
@@ -47,16 +35,18 @@ export default async function MarketOverviewPage() {
   let rows: Array<StoredMarketDetail | null>;
 
   try {
-    rows = await getMarketDetails(MARKET_ITEMS.map((item) => item.key));
+    rows = await getMarketDetails([
+      ...MARKET_ITEMS.map((item) => item.key),
+      "btcKrw",
+      "btcUsd",
+    ]);
   } catch (error) {
     console.error("[MarketOverviewPage] getMarketDetails failed:", error);
-    rows = MARKET_ITEMS.map(() => null);
+    rows = [...MARKET_ITEMS.map(() => null), null, null];
   }
 
-  const tradeStats = await getTradeStatsView().catch((error) => {
-    console.error("[MarketOverviewPage] getTradeStatsView failed:", error);
-    return null;
-  });
+  const btcKrw = rows[MARKET_ITEMS.length];
+  const btcUsd = rows[MARKET_ITEMS.length + 1];
 
   const fetchedAts = rows
     .map((row) => row?.fetchedAt)
@@ -77,7 +67,7 @@ export default async function MarketOverviewPage() {
           ) : null}
         </header>
 
-        <section className={styles.cards} aria-label="시장 지표 2종">
+        <section className={styles.cards} aria-label="시장 지표 4종">
           {MARKET_ITEMS.map((item, i) => {
             const stored = rows[i];
 
@@ -128,80 +118,69 @@ export default async function MarketOverviewPage() {
             );
           })}
 
-          <article className={styles.card} aria-label="수출입 통계">
-            <div className={styles.cardHead}>
-              <div>
-                <h2 className={styles.cardTitle}>
-                  <Link href="/feeds" className={styles.cardLink}>
-                    수출입
-                  </Link>
-                </h2>
-                <p className={styles.basDt}>
-                  {tradeStats !== null
-                    ? `${formatYyyymm(tradeStats.latest.yyyymm)} 확정`
-                    : "월간 통계"}
-                </p>
-              </div>
-            </div>
-
-            {tradeStats !== null ? (
+          <article className={styles.card} aria-label="비트코인">
+            {btcKrw === null ? (
+              <p className={styles.emptyNotice}>
+                아직 수집된 데이터가 없습니다. 다음 갱신 회차(평일 09:00~18:15
+                KST)에 반영됩니다.
+              </p>
+            ) : (
               <>
-                <dl className={styles.tradeStats}>
-                  <div className={styles.tradeRow}>
-                    <dt>수출</dt>
-                    <dd>
-                      <span className="numeric">
-                        {formatUsdEok(tradeStats.latest.expDlr)}
-                      </span>
-                      <span
-                        className={`numeric ${signClass(tradeStats.latest.expYoy)}`}
-                      >
-                        {formatYoy(tradeStats.latest.expYoy)}
-                      </span>
-                    </dd>
+                <div className={styles.cardHead}>
+                  <div>
+                    <h2 className={styles.cardTitle}>
+                      <Link href="/indices/btc" className={styles.cardLink}>
+                        비트코인
+                      </Link>
+                    </h2>
+                    <p className={styles.basDt}>
+                      기준일 {formatBasDtDisplay(btcKrw.snapshot.basDt)}
+                    </p>
                   </div>
-                  <div className={styles.tradeRow}>
-                    <dt>수입</dt>
-                    <dd>
-                      <span className="numeric">
-                        {formatUsdEok(tradeStats.latest.impDlr)}
-                      </span>
-                      <span
-                        className={`numeric ${signClass(tradeStats.latest.impYoy)}`}
-                      >
-                        {formatYoy(tradeStats.latest.impYoy)}
-                      </span>
-                    </dd>
+                  <div className={styles.cardValues}>
+                    <p className={`${styles.value} numeric`}>
+                      {formatBtcValue(btcKrw.snapshot.close, "KRW")}
+                    </p>
+                    <p
+                      className={`${styles.change} numeric ${
+                        styles[btcKrw.snapshot.direction]
+                      }`}
+                    >
+                      {formatBtcChange(
+                        btcKrw.snapshot.changeAmount,
+                        btcKrw.snapshot.changeRate,
+                        "KRW"
+                      )}
+                    </p>
+                    {btcUsd !== null ? (
+                      <p className={`${styles.subValue} numeric`}>
+                        {formatBtcValue(btcUsd.snapshot.close, "USD")} USD{" "}
+                        <span className={styles[btcUsd.snapshot.direction]}>
+                          {formatBtcChange(
+                            btcUsd.snapshot.changeAmount,
+                            btcUsd.snapshot.changeRate,
+                            "USD"
+                          )}
+                        </span>
+                      </p>
+                    ) : null}
                   </div>
-                  <div className={styles.tradeRow}>
-                    <dt>무역수지</dt>
-                    <dd>
-                      <span
-                        className={`numeric ${signClass(tradeStats.latest.balPayments)}`}
-                      >
-                        {formatUsdEokSigned(tradeStats.latest.balPayments)}
-                      </span>
-                    </dd>
-                  </div>
-                </dl>
-                <Link href="/feeds" className={styles.detailLink}>
-                  월별 추이 보기 →
+                </div>
+                <BtcChartClient series={btcKrw.history} currency="KRW" />
+                <Link href="/indices/btc" className={styles.detailLink}>
+                  일별 시세 보기 →
                 </Link>
               </>
-            ) : (
-              <p className={styles.emptyNotice}>
-                아직 수집된 수출입 통계가 없습니다. 매월 관세청 확정 통계 공표 후
-                갱신됩니다.
-              </p>
             )}
           </article>
         </section>
 
         <footer className={styles.footer}>
           <p className={styles.notice}>
-            {KIS_DATA_NOTICE} 유가는 WTI 서부텍사스산 근월물 기준(USD/배럴)
-            입니다. 수출입은 관세청 확정 통계(월간, 억 달러 = 1억 USD)이며 증감률은
-            전년동월비입니다.
+            {KIS_DATA_NOTICE} 유가는 WTI 서부텍사스산 근월물 기준(USD/배럴),
+            금은 LBMA 런던 금 현물 기준(USD/트로이온스)입니다. 비트코인은
+            업비트 원화(KRW-BTC)·USDT(USDT-BTC) 마켓 시세이며 갱신은 평일
+            09:00~18:15(KST)에만 이루어집니다.
           </p>
         </footer>
       </div>

@@ -1,0 +1,145 @@
+.toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--space-12);
+}
+
+.toggle {
+  display: flex;
+  gap: 4px;
+  padding: 2px;
+  background-color: var(--color-bg);
+  border-radius: var(--radius-md);
+}
+
+.toggleButton,
+.toggleActive {
+  padding: 4px var(--space-8);
+  border: none;
+  border-radius: 10px;
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  background-color: transparent;
+  color: var(--color-text-tertiary);
+}
+
+.toggleActive {
+  background-color: var(--color-surface);
+  color: var(--color-text-primary);
+  font-weight: var(--weight-semibold);
+  box-shadow: var(--shadow-sm);
+}
+
+.section {
+  margin-bottom: var(--space-16);
+}
+
+.sectionTitle {
+  font-size: var(--text-caption);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-8);
+}
+
+/* 스냅샷 카드 — IndexCard 폼 이식 */
+.card {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-20);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.name {
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-8);
+}
+
+.close {
+  font-size: var(--text-price);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tight);
+  color: var(--color-text-primary);
+  line-height: 1.2;
+  margin-bottom: var(--space-8);
+}
+
+.change {
+  font-size: var(--text-caption);
+  font-weight: var(--weight-semibold);
+  margin-bottom: var(--space-12);
+}
+
+.basDt {
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+}
+
+/* 일별 시세 목록 — IndexDailyList 폼 이식 */
+.list {
+  list-style: none;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  padding: var(--space-12) var(--space-16);
+}
+
+.row + .row {
+  border-top: 1px solid var(--color-border);
+}
+
+.date {
+  font-size: var(--text-caption);
+  color: var(--color-text-secondary);
+  min-width: 44px;
+}
+
+.rowClose {
+  flex: 1;
+  text-align: right;
+  font-size: var(--text-caption);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.rowChange {
+  min-width: 120px;
+  text-align: right;
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+}
+
+.rise {
+  color: var(--color-rise);
+}
+
+.fall {
+  color: var(--color-fall);
+}
+
+.flat {
+  color: var(--color-flat);
+}
+
+.emptyNotice {
+  padding: var(--space-16);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-caption);
+  color: var(--color-text-tertiary);
+  line-height: 1.5;
+}

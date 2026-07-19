@@ -86,6 +86,8 @@ export const KIS_OVERSEAS_INDICATOR = {
   USDKRW: { marketDivCode: "X", code: "FX@KRW" },
   US10Y: { marketDivCode: "I", code: "Y0202" },
   OIL: { marketDivCode: "N", code: "WTIF" },
+  /** LBMA 런던 금 현물 (USD/온스) — N/GOLDLNPM 일자별 정상 (2026-07-19 실측, §30) */
+  GOLD: { marketDivCode: "N", code: "GOLDLNPM" },
 } as const;
 
 /** 해외 기간별시세 조회 기간(일) — 최근 7거래일 확보용 여유 포함 */

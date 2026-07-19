@@ -1,0 +1,45 @@
+.page {
+  flex: 1;
+  width: 100%;
+  min-height: 100%;
+  background-color: var(--color-bg);
+}
+
+.container {
+  width: 100%;
+  max-width: var(--layout-max-width);
+  margin: 0 auto;
+  padding: var(--space-16);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-16);
+}
+
+.lastRefresh {
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+}
+
+.footer {
+  margin-top: var(--space-24);
+  padding: var(--space-16);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.notice {
+  font-size: var(--text-caption);
+  color: var(--color-text-secondary);
+  line-height: 1.5;
+  margin-bottom: var(--space-12);
+}
+
+.asOf {
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+}

@@ -12,6 +12,11 @@ import {
   fetchKisStockSnapshot,
 } from "@/lib/api/kis/client";
 import { KIS_DXY_COMPONENTS } from "@/lib/api/kis/constants";
+import {
+  fetchUpbitDayCandles,
+  fetchUpbitTicker,
+  UPBIT_BTC_MARKETS,
+} from "@/lib/api/upbit/client";
 import type {
   KisIndexDailyResponse,
   KisMarketCapRankingRow,
@@ -38,11 +43,13 @@ import {
   mapKisOverseasHistory,
   mapKisOverseasSnapshot,
 } from "@/lib/indices/kisOverseasMapper";
+import { mapUpbitDetail } from "@/lib/indices/upbitMapper";
 import {
   computeVolatilityRecords,
   upsertVolatilityRecords,
 } from "@/lib/indices/volatility";
 import {
+  INDICATOR_TO_DETAIL_KEY,
   getStockInfoBlocks,
   setDailyFluctuation,
   setLastRefreshRecord,
@@ -91,6 +98,8 @@ export interface RefreshMarketDataReport {
   indices: Array<{ key: MarketDetailKey; ok: boolean; error?: string }>;
   /** 달러 인덱스(환율 6종 계산, §28) 저장 결과 — 파생 부수 지표라 잡 전체 ok에 영향 없음 */
   dxy: { ok: boolean; error?: string };
+  /** 비트코인(업비트 원화·USDT, §30) 저장 결과 — 외부 부수 지표라 잡 전체 ok에 영향 없음 */
+  btc: { ok: boolean; error?: string };
   volatility: { ok: boolean; upserted?: number; error?: string };
   /** 당일 등락률 순위 저장 결과 — 부수 데이터라 실패해도 잡 전체 ok에 영향 없음 */
   dailyFluctuation: { ok: boolean; count?: number; error?: string };
@@ -133,7 +142,7 @@ async function evaluateAlertsHook(context: {
   return evaluatePriceAlerts(context);
 }
 
-/** 지수·환율·금리·유가 5종 조회 → market:detail:* 저장 (지표별 실패 격리) */
+/** 지수·환율·금리·유가·금 6종 조회 → market:detail:* 저장 (지표별 실패 격리) */
 async function refreshIndices(fetchedAt: string): Promise<{
   results: RefreshMarketDataReport["indices"];
   kospiRaw: KisIndexDailyResponse | null;
@@ -202,6 +211,18 @@ async function refreshIndices(fetchedAt: string): Promise<{
         });
       },
     },
+    {
+      key: "gold",
+      run: async () => {
+        const raw = await fetchKisOverseasDaily("GOLD");
+        await setMarketDetail("gold", {
+          snapshot: mapKisOverseasSnapshot(raw, "GOLD"),
+          history: mapKisOverseasHistory(raw, "GOLD"),
+          dailyRows: mapKisOverseasDailyRows(raw, "GOLD"),
+          fetchedAt,
+        });
+      },
+    },
   ];
 
   const settled = await Promise.allSettled(tasks.map((task) => task.run()));
@@ -238,6 +259,34 @@ export async function refreshDxy(
     return { ok: true };
   } catch (error) {
     console.error("[job] dxy refresh failed:", error);
+    return { ok: false, error: errorMessage(error) };
+  }
+}
+
+/**
+ * 비트코인 → market:detail:btcKrw·btcUsd 저장 (§30).
+ * KIS에 종목이 없어 업비트 공개 API(원화·USDT 마켓)를 순차 조회한다.
+ * 외부 부수 지표라 실패해도 잡 전체 ok에 영향 없이 로그만 남긴다 —
+ * 다음 회차가 자연 재시도. export는 로컬 실측용.
+ */
+export async function refreshBtc(
+  fetchedAt: string
+): Promise<RefreshMarketDataReport["btc"]> {
+  try {
+    for (const indicator of ["BTCKRW", "BTCUSD"] as const) {
+      const market = UPBIT_BTC_MARKETS[indicator];
+      const ticker = await fetchUpbitTicker(market);
+      // 최신순 7행의 전일 대비 계산에 8번째 행은 불필요(prev_closing_price 직접 제공)
+      const candles = await fetchUpbitDayCandles(market, 7);
+
+      await setMarketDetail(INDICATOR_TO_DETAIL_KEY[indicator], {
+        ...mapUpbitDetail(indicator, ticker, candles),
+        fetchedAt,
+      });
+    }
+    return { ok: true };
+  } catch (error) {
+    console.error("[job] btc refresh failed:", error);
     return { ok: false, error: errorMessage(error) };
   }
 }
@@ -653,6 +702,9 @@ export async function refreshMarketData(
   // 1a. 달러 인덱스(환율 6종 계산, §28) → market:detail:dxy (파생 부수 지표, 실패 격리)
   const dxy = await refreshDxy(startedAt);
 
+  // 1a'. 비트코인(업비트 원화·USDT, §30) → market:detail:btcKrw·btcUsd (외부 부수 지표, 실패 격리)
+  const btc = await refreshBtc(startedAt);
+
   // 1b. 당일 등락률 순위 상위 30 → market:dailyFluctuation (부수 데이터, 실패 격리)
   const dailyFluctuation = await refreshDailyFluctuation(startedAt);
 
@@ -752,6 +804,7 @@ export async function refreshMarketData(
     tradingDay,
     indices,
     dxy,
+    btc,
     volatility,
     dailyFluctuation,
     weeklyFluctuation,

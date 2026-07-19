@@ -117,7 +117,7 @@ export function IndexDashboard({
             ),
             direction: data.usTreasury10y.direction,
           }}
-          footnote={`미국 10년물 금리 대표 표시 · 유가 포함 — 기준일 ${formatBasDtDisplay(
+          footnote={`미국 10년물 금리 대표 표시 · 유가·금·비트코인 포함 — 기준일 ${formatBasDtDisplay(
             data.usTreasury10y.basDt
           )}`}
         />

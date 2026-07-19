@@ -32,7 +32,7 @@
   color: var(--color-text-tertiary);
 }
 
-/* 미니 카드 3종 세로 나열 (§15.2) */
+/* 미니 카드 세로 나열 (§15.2) */
 .cards {
   display: flex;
   flex-direction: column;
@@ -123,38 +123,11 @@
   line-height: 1.5;
 }
 
-/* 수출입 미니 카드 (§17-4) */
-.tradeStats {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-8);
-  margin: 0 0 var(--space-8);
-}
-
-.tradeRow {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-12);
-}
-
-.tradeRow dt {
-  font-size: var(--text-caption);
+/* 비트코인 카드 달러 병기 줄 (§30) */
+.subValue {
+  margin-top: var(--space-4);
+  font-size: var(--text-micro);
   color: var(--color-text-tertiary);
-}
-
-.tradeRow dd {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-8);
-  margin: 0;
-  font-size: var(--text-body);
-  font-weight: var(--weight-semibold);
-  color: var(--color-text-primary);
-}
-
-.tradeRow dd span:last-child {
-  font-size: var(--text-caption);
 }
 
 .footer {

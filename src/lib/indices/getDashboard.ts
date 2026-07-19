@@ -19,8 +19,11 @@ export const MARKET_DATA_EMPTY_MESSAGE =
 
 export interface DashboardData extends IndexDashboardData {
   /** 카드 배지 판정용 — 지표별 잡 수집 시각 (§11.10-B2). oil은 수집 전 null.
-   * dxy는 홈 카드가 없어 제외 (§28) */
-  fetchedAtByKey: Record<Exclude<MarketDetailKey, "dxy">, string | null>;
+   * dxy(§28)·gold·btcKrw·btcUsd(§30)는 홈 카드가 없어 제외 */
+  fetchedAtByKey: Record<
+    Exclude<MarketDetailKey, "dxy" | "gold" | "btcKrw" | "btcUsd">,
+    string | null
+  >;
 }
 
 export async function getDashboardData(): Promise<DashboardData> {

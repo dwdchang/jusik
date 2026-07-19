@@ -20,7 +20,10 @@ export type MarketDetailKey =
   | "usdkrw"
   | "us10y"
   | "oil"
-  | "dxy";
+  | "gold"
+  | "dxy"
+  | "btcKrw"
+  | "btcUsd";
 
 export const INDICATOR_TO_DETAIL_KEY: Record<IndicatorId, MarketDetailKey> = {
   KOSPI: "kospi",
@@ -28,7 +31,10 @@ export const INDICATOR_TO_DETAIL_KEY: Record<IndicatorId, MarketDetailKey> = {
   USDKRW: "usdkrw",
   US10Y: "us10y",
   OIL: "oil",
+  GOLD: "gold",
   DXY: "dxy",
+  BTCKRW: "btcKrw",
+  BTCUSD: "btcUsd",
 };
 
 /** market:detail:{key} — 상세 페이지가 그대로 읽는 스냅샷+차트+일별 리스트 */
