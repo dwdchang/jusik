@@ -40,6 +40,47 @@
   margin-bottom: var(--space-16);
 }
 
+.sectionTitle {
+  font-size: var(--text-caption);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-8);
+}
+
+.dailyList {
+  list-style: none;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.dailyRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  padding: var(--space-12) var(--space-16);
+}
+
+.dailyRow + .dailyRow {
+  border-top: 1px solid var(--color-border);
+}
+
+.dailyDate {
+  font-size: var(--text-caption);
+  color: var(--color-text-secondary);
+  min-width: 84px;
+}
+
+.dailyValue {
+  flex: 1;
+  text-align: right;
+  font-size: var(--text-caption);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+}
+
 .emptyNotice {
   padding: var(--space-16);
   background-color: var(--color-surface);
