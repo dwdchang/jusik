@@ -13,6 +13,8 @@ import { STALENESS_LABELS } from "./SummaryCard";
  * 행 폼은 WatchlistCard 관례(지표명 + 값 + 등락률). §30 추가 지표
  * (유가·금·비트코인)는 첫 갱신 회차 전 null이라 해당 행을 생략한다.
  * staleness 배지는 SummaryCard와 동일 정책(§11.10-B2) — 홈에서 판정값을 받는다.
+ * §34에서 지표명을 축약(美 금리·WTI·GOLD·BTC($))해 말줄임을 없애고,
+ * 통화 단위는 라벨로 옮겨 값 열은 숫자만·각주는 기준일만 한 줄로 유지한다.
  */
 export function MarketCard({
   usTreasury10y,
@@ -29,7 +31,7 @@ export function MarketCard({
 }) {
   const rows = [
     {
-      label: "미국 10년물 금리",
+      label: "美 금리",
       value: formatIndex(usTreasury10y.close),
       changeRate: usTreasury10y.changeRate,
       direction: usTreasury10y.direction,
@@ -37,7 +39,7 @@ export function MarketCard({
     ...(oil !== null
       ? [
         {
-          label: "국제유가 WTI",
+          label: "WTI",
           value: formatIndex(oil.close),
           changeRate: oil.changeRate,
           direction: oil.direction,
@@ -47,7 +49,7 @@ export function MarketCard({
     ...(gold !== null
       ? [
         {
-          label: "금 현물",
+          label: "GOLD",
           value: formatIndex(gold.close),
           changeRate: gold.changeRate,
           direction: gold.direction,
@@ -57,8 +59,8 @@ export function MarketCard({
     ...(btcUsd !== null
       ? [
         {
-          label: "비트코인",
-          value: `${formatBtcValue(btcUsd.close, "USD")} USD`,
+          label: "BTC($)",
+          value: formatBtcValue(btcUsd.close, "USD"),
           changeRate: btcUsd.changeRate,
           direction: btcUsd.direction,
         },
@@ -95,7 +97,7 @@ export function MarketCard({
         ))}
       </ul>
       <p className={styles.footnote}>
-        기준일 {formatBasDtDisplay(usTreasury10y.basDt)} · 비트코인 USDT≈USD
+        기준일 {formatBasDtDisplay(usTreasury10y.basDt)}
       </p>
     </Link>
   );
