@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AlertToggleButton } from "@/components/alerts/AlertToggleButton";
+import { DailyHistoryList } from "@/components/holdings/DailyHistoryList";
+import type { DailyHistoryRow } from "@/components/holdings/DailyHistoryList";
 import { HoldingsChartClient } from "@/components/holdings/HoldingsChartClient";
 import type { HoldingsChartPoint } from "@/components/holdings/HoldingsChart";
 import { NavIconLink } from "@/components/nav/NavIconLink";
@@ -94,6 +96,17 @@ export default async function HoldingDetailPage({
   const chartPoints: HoldingsChartPoint[] = history.map((row) => ({
     fullDate: row.date,
     date: row.date.slice(5).replace("-", "/"),
+    totalValue: row.close * totalQuantity,
+    returnRate:
+      totalCost > 0
+        ? ((row.close * totalQuantity - totalCost) / totalCost) * 100
+        : 0,
+  }));
+
+  // 일별 기록 목록 — 차트와 같은 2년 히스토리를 월 단위로 넘겨본다 (§29)
+  const dailyRows: DailyHistoryRow[] = history.map((row) => ({
+    date: row.date,
+    close: row.close,
     totalValue: row.close * totalQuantity,
     returnRate:
       totalCost > 0
@@ -281,6 +294,12 @@ export default async function HoldingDetailPage({
             </p>
           )}
         </section>
+
+        {dailyRows.length > 0 ? (
+          <section className={styles.section} aria-label="일별 기록">
+            <DailyHistoryList rows={dailyRows} />
+          </section>
+        ) : null}
 
         <section className={styles.section} aria-label="종목 정보">
           <div className={styles.sectionHead}>

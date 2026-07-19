@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { DailyHistoryList } from "@/components/holdings/DailyHistoryList";
+import type { DailyHistoryRow } from "@/components/holdings/DailyHistoryList";
 import { HoldingsChartClient } from "@/components/holdings/HoldingsChartClient";
 import type { HoldingsChartPoint } from "@/components/holdings/HoldingsChart";
 import { NavIconLink } from "@/components/nav/NavIconLink";
@@ -85,6 +87,16 @@ export default async function HoldingsPage({
 
   const dailyChangeRate = valuation ? valuation.totalDailyChangeRate : null;
 
+  // 일별 기록 목록은 월 단위 페이지네이션이라 연도 필터 없이 전체 히스토리를 넘긴다 (§29)
+  const dailyRows: DailyHistoryRow[] = history.map((row) => ({
+    date: row.date,
+    totalValue: row.totalValue,
+    returnRate:
+      row.totalCost > 0
+        ? ((row.totalValue - row.totalCost) / row.totalCost) * 100
+        : 0,
+  }));
+
   return (
     <main className={styles.page}>
       <div className={styles.container}>
@@ -168,32 +180,9 @@ export default async function HoldingsPage({
           )}
         </section>
 
-        {yearHistory.length > 0 ? (
+        {dailyRows.length > 0 ? (
           <section className={styles.section} aria-label="일별 기록">
-            <h2 className={styles.sectionTitle}>일별 기록</h2>
-            <ol className={styles.dailyList}>
-              {[...yearHistory].reverse().map((row) => {
-                const rate =
-                  row.totalCost > 0
-                    ? ((row.totalValue - row.totalCost) / row.totalCost) * 100
-                    : 0;
-                return (
-                  <li key={row.date} className={styles.dailyRow}>
-                    <span className={styles.dailyDate}>{row.date}</span>
-                    <span className={`${styles.dailyValue} numeric`}>
-                      {formatKrw(row.totalValue)}
-                    </span>
-                    <span
-                      className={`${styles.dailyRate} numeric ${
-                        styles[resolveDirection(rate)]
-                      }`}
-                    >
-                      {formatChangeRate(rate)}
-                    </span>
-                  </li>
-                );
-              })}
-            </ol>
+            <DailyHistoryList rows={dailyRows} />
           </section>
         ) : null}
 

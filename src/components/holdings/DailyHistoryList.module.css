@@ -1,0 +1,137 @@
+/* 접기 토글 — holdings 종목 추가 폼(.addToggle) 패턴 이식 */
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-8) var(--space-16);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  user-select: none;
+  list-style: none; /* 기본 ▸ 마커 제거 (Safari는 아래 ::-webkit-details-marker) */
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.toggle::-webkit-details-marker {
+  display: none;
+}
+
+.toggle:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.details[open] .toggle {
+  margin-bottom: var(--space-8);
+}
+
+.chevron {
+  font-size: var(--text-micro);
+  transition: transform 0.15s ease;
+}
+
+.details[open] .chevron {
+  transform: rotate(180deg);
+}
+
+.monthNav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+  margin-bottom: var(--space-8);
+}
+
+.monthButton {
+  padding: var(--space-8) var(--space-12);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.monthButton:hover:not(:disabled) {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.monthButton:disabled {
+  color: var(--color-text-tertiary);
+  cursor: default;
+  opacity: 0.5;
+}
+
+.monthLabel {
+  font-size: var(--text-caption);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+}
+
+/* 일별 목록 — holdings/page.module.css의 .dailyList 계열 이식 */
+.dailyList {
+  list-style: none;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.dailyRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-12);
+  padding: var(--space-12) var(--space-16);
+}
+
+.dailyRow + .dailyRow {
+  border-top: 1px solid var(--color-border);
+}
+
+.dailyDate {
+  font-size: var(--text-caption);
+  color: var(--color-text-secondary);
+  min-width: 84px;
+}
+
+.dailyClose {
+  flex: 1;
+  text-align: right;
+  font-size: var(--text-caption);
+  color: var(--color-text-secondary);
+}
+
+.dailyValue {
+  flex: 1;
+  text-align: right;
+  font-size: var(--text-caption);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.dailyRate {
+  min-width: 72px;
+  text-align: right;
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+}
+
+.rise {
+  color: var(--color-rise);
+}
+
+.fall {
+  color: var(--color-fall);
+}
+
+.flat {
+  color: var(--color-flat);
+}
