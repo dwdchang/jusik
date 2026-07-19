@@ -120,7 +120,7 @@
 | `indices/kisOverseasMapper.ts` | 해외(환율·금리·유가·금) 응답→도메인 매핑. 행별 전일 대비가 없어 인접 종가 차분으로 계산 |
 | `indices/upbitMapper.ts` | 업비트 티커·일봉→도메인 매핑 (§30) — `mapUpbitDetail`: 스냅샷(전일 종가 대비 직접 제공)+history(최근 7)+dailyRows(`prev_closing_price` 차분), `StoredMarketDetail` 동일 폼. 일봉 경계 KST 09:00 |
 | `indices/dxy.ts` | 달러 인덱스 계산 (§28) — `computeDxyDetail`(순수): KIS에 DXY 종목이 없어 환율 6종(`KIS_DXY_COMPONENTS`)의 일별 종가를 ICE 공식(가중 기하평균)으로 합성. 통화쌍별 휴장일이 달라 기준일 교집합에서만 계산, `StoredMarketDetail` 동일 폼 반환 |
-| `indices/getDashboard.ts` | 홈 데이터 리더 — `market:detail:*` 7종 MGET. 필수 4종 없으면 throw(`MARKET_DATA_EMPTY_MESSAGE`), oil·gold·btcKrw(§32)는 null 허용 |
+| `indices/getDashboard.ts` | 홈 데이터 리더 — `market:detail:*` 7종 MGET. 필수 4종 없으면 throw(`MARKET_DATA_EMPTY_MESSAGE`), oil·gold·btcUsd(§33)는 null 허용 |
 | `indices/getIndexDetail.ts` / `getOverseasDetail.ts` | 상세 리더 — `market:detail:{key}` 1건. **두 파일 내용이 사실상 동일** (§8) |
 | `indices/volatility.ts` | 변동성 기록 store+계산+카드 요약 (한 파일에 쓰기·읽기 혼재) |
 | `indices/dates.ts` | `getLast7BusinessDates` — **현재 미사용 (레거시)** (§9.2) |
@@ -136,7 +136,7 @@
 | `hotstocks/months.ts` | 월 문자열("YYYY-MM") 계산 — `baseMonthKst`(전월)/`addMonths`/월초·월말/표시 포맷 |
 | `hotstocks/universe.ts` | KIS 종목 마스터 zip 다운로드·EUC-KR 고정폭 파싱 — ST(주권)만, 스팩 제외, 코드 오름차순. 핫종목 잡 + 종목명 검색(`market:stockMaster`) 공용 |
 | `hotstocks/summary.ts` | 월간 랭킹 갱신 지연 판정 `isHotStocksStale` (핫종목 페이지 월간 뷰용) |
-| `hotstocks/dailyCard.ts` | 홈 핫종목 카드 요약 `getDailyHotCardSummary` — `market:dailyFluctuation` 당일 등락률 상위 3 |
+| `hotstocks/dailyCard.ts` | 홈 핫종목 카드 요약 `getDailyHotCardSummary` — `market:dailyFluctuation` 당일 등락률 상위 4 (§33에서 4행 통일) |
 | `jobs/refreshMarketData.ts` | **시세 갱신 잡 파이프라인 본체** (§4.1) — 지수·종목·포트폴리오 갱신에 더해 달러 인덱스(`refreshDxy`, 환율 6종 순차 조회→계산, §28)·비트코인(`refreshBtc`, 업비트 2마켓 순차, §30)·당일·주간 등락률 상위 30(`refreshDailyFluctuation`/`refreshWeeklyFluctuation`, 회차당 각 1콜)·종목 마스터(`refreshStockMaster`, 1일 1회) 저장. 다섯 다 부수·실패 격리 |
 | `jobs/refreshHotStocks.ts` | **핫종목 갱신 잡 파이프라인 본체** (§4.2) |
 | `jobs/refreshFeeds.ts` | **피드(공시·뉴스·수출입) 갱신 잡 파이프라인 본체** (§4.5) — corpCode 매핑→종목별 공시(DART)+뉴스(네이버, 종목명 키워드) 조회·저장. 소스·종목별 실패 격리. + `refreshTradeStats`(17-4) — 종목 무관 월 1회성(스냅샷 최신월<직전 완결월일 때만), 12개월 한도 때문에 2회 호출(최근 12개월+전년동월)→13개월 연속 저장. 잡 `ok` 게이팅 제외(다음 회차 가드가 재시도). 알림 훅 2종: `evaluateFeedAlerts`(공시·시장경보) + `evaluateDividendAlerts`(배당 지급일 당일, §25) |
@@ -147,22 +147,23 @@
 | `alerts/evaluate.ts` | 시세 알림 판정·발송 (Phase 10 2단계, 관심종목 확장) — `evaluatePriceAlerts`: 보유+관심종목 union(`collectAlertTargets` — 종목 단위 dedupe, 보유 우선·같은 종목 보유 내역 합산) 대상으로 지수 MGET→조건 3종(기준가 −10%(보유=매입가/관심=등록가, 미확정 skip)/신고가 −10%/지수 −2%+종목 −12%) OR 판정→발송·쿨다운. 순수 판정부 `evaluateTarget`·시장 매핑 `marketIndexOf` 분리 |
 | `alerts/feedAlerts.ts` | 공시·시장경보 알림 판정·발송 (Phase 10 3단계) — `evaluateFeedAlerts`(feeds 잡 훅 전용): 공시 8유형 키워드 분류기 `matchDisclosureCategories`(회사채는 "파생결합" 제외)·경보 상태 추출 `extractMarketWarnState`·diff `diffMarketWarnStates` 분리. 커서·상태는 발송 결과와 무관하게 전진(중복 방지 우선), 쿨다운 없음 |
 | `alerts/dividendAlerts.ts` | 배당 지급일 당일 알림 (§25) — `evaluateDividendAlerts`(feeds 잡 훅 전용): 보유종목 union(**관심종목 제외**)의 `rounds`에서 지급일=KST 오늘·주당배당금>0 회차 추출(같은 날 여러 회차는 합산) → 종목×지급일 전역 마커로 중복 차단(발송 전 기록 — 중복 방지 우선) → 보유 사용자에게만 발송(음소거 공유·이메일 단위 실패 격리). KIS 추가 호출 0 |
-| `dividends/summary.ts` | 배당 일정 리더 (§25) — **보유종목만**(`getHoldings` 기반, 관심종목 제외) `getStockInfoBlocksMap`으로 `rounds` 병합. `getDividendSchedule`(상세 목록 — 예상 지급액=주당배당금×보유수량 읽기 시 계산, 지급일 미정 먼저→미래→과거 내림차순)·`getDividendCardSummary`(홈 카드 — 지급일 ≥ KST 오늘 오름차순 상위 3, 실패 시 null) |
+| `dividends/summary.ts` | 배당 일정 리더 (§25) — **보유종목만**(`getHoldings` 기반, 관심종목 제외) `getStockInfoBlocksMap`으로 `rounds` 병합. `getDividendSchedule`(상세 목록 — 예상 지급액=주당배당금×보유수량 읽기 시 계산, 지급일 미정 먼저→미래→과거 내림차순)·`getDividendCardSummary`(홈 카드 — 지급일 ≥ KST 오늘 오름차순 상위 4, 실패 시 null) |
 | `push/store.ts` | 웹 푸시 구독 store (Phase 10) — `push:subs:{email}` `secureJson` 암호화(endpoint가 곧 발송 권한), endpoint 기준 dedup 등록/해지/`prunePushSubscriptions`(발송 경로 전용) |
 | `push/send.ts` | 웹 푸시 발송 공용 유틸 (Phase 10) — `sendPushToEmail(email, payload)`: VAPID env 검증, 구독별 실패 격리, 410/404 자동 정리. 페이로드 계약 `{title, body, url?, tag?}`는 `public/sw.js`와 동기화 필수. 잡 훅(2·3단계)·테스트 발송 액션 공유 |
 | `watchlist/store.ts` | 관심종목 store — 암호화 (신규 키라 평문 하위호환 없음) |
-| `watchlist/summary.ts` | `computeWatchReturnRate`(순수 함수) + 홈 카드 요약 `getWatchlistCardSummary` — 수익률 상위 3종목 개별 목록(`top3`: 등록 기준일 대비 수익률 + 전일 등락률, §24) |
+| `watchlist/summary.ts` | `computeWatchReturnRate`(순수 함수) + 홈 카드 요약 `getWatchlistCardSummary` — 수익률 상위 4종목 개별 목록(`top4`: 등록 기준일 대비 수익률 + 전일 등락률, §24·§33) |
 | `theme.ts` | `THEME_STORAGE_KEY`·`Theme` 타입만 |
 
 ### 2.3 `src/components`
 
 | 컴포넌트 | 종류 | 역할 |
 |---|---|---|
-| `indices/IndexDashboard` | Server | 홈 카드 9종 조립(§28에서 원/달러 카드 분리 신설 — 시장 카드 대표값은 미국 10년물 금리, §32에서 금·비트코인(원화) 보조 줄 2개 추가 — null이면 줄 생략) + 헤더(좌 `NavIconLink` 홈 아이콘 + 우 햄버거 `HeaderMenu` — 제목·설명 문구는 Phase 26에서 제거) |
-| `indices/SummaryCard` | Server | **홈 요약 카드 공용 프리미티브** — value/change/subItems(보조 시세 줄, §32)/footnote/placeholder/staleness 배지. 카드 전체가 Link |
-| `indices/HotStocksCard` | Server | 핫종목 전용 카드 — 당일 등락률 TOP 3 리스트 (SummaryCard 미사용) |
-| `indices/WatchlistCard` | Server | 관심종목 전용 카드 (§24) — 수익률 상위 3종목 리스트, 행마다 등록 기준일 대비 수익률 + 괄호 전일 등락률. 골격·staleness 배지는 SummaryCard composes(`STALENESS_LABELS` export 재사용), 리스트 폼은 HotStocksCard와 동일 |
-| `indices/DividendCard` | Server | 배당 일정 전용 카드 (§25) — 다가오는 지급일 상위 3행(종목명·지급일 MM/DD·주당배당금), **보유종목 기준**. 골격·배지·리스트 폼은 WatchlistCard와 동일 관례, 카드 전체 `/dividends` 링크 |
+| `indices/IndexDashboard` | Server | 홈 카드 9종 조립(§28에서 원/달러 카드 분리 신설, 시장 카드는 §33에서 `MarketCard` 리스트형으로 교체) + 헤더(좌 `NavIconLink` 홈 아이콘 + 우 햄버거 `HeaderMenu` — 제목·설명 문구는 Phase 26에서 제거) |
+| `indices/SummaryCard` | Server | **홈 요약 카드 공용 프리미티브** — value/change/footnote/placeholder/staleness 배지. 카드 전체가 Link |
+| `indices/MarketCard` | Server | 시장 전용 카드 (§33) — 금리·유가·금·비트코인(USD) 4행 동등 목록, 행마다 지표명·값·등락률. §30 추가 지표는 null이면 행 생략. 골격·배지는 SummaryCard composes, 리스트 폼은 WatchlistCard와 동일 관례, 카드 전체 `/indices/market` 링크 |
+| `indices/HotStocksCard` | Server | 핫종목 전용 카드 — 당일 등락률 TOP 4 리스트 (§33에서 4행 통일, SummaryCard 미사용) |
+| `indices/WatchlistCard` | Server | 관심종목 전용 카드 (§24) — 수익률 상위 4종목 리스트(§33), 행마다 등록 기준일 대비 수익률 + 괄호 전일 등락률. 골격·staleness 배지는 SummaryCard composes(`STALENESS_LABELS` export 재사용), 리스트 폼은 HotStocksCard와 동일 |
+| `indices/DividendCard` | Server | 배당 일정 전용 카드 (§25) — 다가오는 지급일 상위 4행(§33, 종목명·지급일 MM/DD·주당배당금), **보유종목 기준**. 골격·배지·리스트 폼은 WatchlistCard와 동일 관례, 카드 전체 `/dividends` 링크 |
 | `indices/IndexDetailScreen` | Server(async) | **지표 상세 3종(코스피·코스닥·원달러) 공용 화면** — `getIndexDetail`/`getOverseasDetail` 분기, 카드+차트+일별 리스트+푸터. `children` 슬롯(일별 시세와 푸터 사이 — usdkrw의 달러 인덱스 섹션용, §28) |
 | `indices/DollarIndexSection` | Server(async) | 원/달러 상세 하단 달러 인덱스 섹션 (§28) — `getOverseasDetail("DXY")` → IndexCard+차트+근사치 각주. 첫 갱신 전엔 준비 중 문구 |
 | `indices/IndexCard` / `IndexDailyList` / `DataAsOfFooter` | Server | 상세 스냅샷 카드 / 일별 시세 리스트 / 홈 푸터 |
@@ -362,7 +363,7 @@ QStash 스케줄 (월 1회, 매월 5일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 5 *
   집계 → `FeedSummaryCard`. 홈 `Promise.all`에 `.catch(() => 기본 0)` 격리로 합류.
 - **배당 일정(`/dividends`, §25)**: `getDividendSchedule(email)` — `getHoldings`(보유종목만) →
   `getStockInfoBlocksMap` MGET → `rounds` 병합·예상 지급액(주당배당금×보유수량) 계산.
-  홈 카드는 `getDividendCardSummary`(지급일 ≥ 오늘 상위 3, 실패 시 null 격리).
+  홈 카드는 `getDividendCardSummary`(지급일 ≥ 오늘 상위 4, 실패 시 null 격리).
 - **뉴스·공시 상세(`/feeds`)**: `getDisclosureBoard`·`getNewsBoard(email)` — `market:disclosures:{code}`·
   `market:news:{code}` MGET 병합·상위 40건 → `FeedTabsClient`. (Phase 17-2에서 A안 철회 — 보유·관심
   상세 페이지는 더 이상 공시를 읽지 않는다. 17-2b에서 게시판을 홈 전체폭→`/feeds`로 이동.)
@@ -661,10 +662,10 @@ QStash 스케줄 (월 1회, 매월 5일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 5 *
   하면 plan.md 작성 전에 확인.
 - 포트폴리오 히스토리 upsert는 스냅샷이 하나라도 없으면 그 사용자 전체 skip (과소 집계 방지).
 - 홈 `getDashboardData`는 필수 4종(kospi·kosdaq·usdkrw·us10y) 없으면 throw,
-  **oil·gold·btcKrw는 null 허용** (나중에 추가된 키 — 새 지표 추가 시 같은 전략 참고).
-  gold·btcKrw는 §32에서 홈 시장 카드 보조 줄로 합류(null이면 줄 생략), btcUsd·dxy는
-  홈 미사용. 시장 카드 staleness 배지는 금리·유가·금 3종 기준 — btcKrw는 잡 `ok`
-  게이팅 밖 외부 지표라 제외 (§30 dxy 관례).
+  **oil·gold·btcUsd는 null 허용** (나중에 추가된 키 — 새 지표 추가 시 같은 전략 참고).
+  oil·gold·btcUsd는 §33에서 홈 시장 카드 4행 목록으로 합류(null이면 행 생략),
+  btcKrw·dxy는 홈 미사용. 시장 카드 staleness 배지는 금리·유가·금 3종 기준 —
+  btcUsd는 잡 `ok` 게이팅 밖 외부 지표라 제외 (§30 dxy 관례).
 - 비트코인은 24시간 거래 자산이지만 갱신은 시세 잡 시간창(평일 09:00~18:40)에만 —
   주말·야간 화면은 마지막 회차 시세(각주 안내, 사용자 확정 §30). 달러 표기는 업비트
   USDT-BTC 마켓 시세(USDT≈USD).

@@ -2671,6 +2671,21 @@ interface WatchItem {
   6. `app/page.tsx` — 시장 카드 staleness 판정(`marketFetchedAt`)에 gold 합류(금리·유가·금 3종 중 최솟값), 주석 갱신.
 - **상태**: 구현 완료(2026-07-19) — 계획 1~6번 그대로 구현. lint·tsc·프로덕션 빌드 통과. research.md §2·§4·§9 갱신. 실제 화면 확인은 사용자 확인 대기.
 
+### Phase 33 — 홈 시장 카드 리스트형 전환(비트코인 USD) + 리스트 카드 4행 통일 (2026-07-19)
+
+- **요청 근거**: 사용자 지시 — ① §32의 시장 카드(금리 대표값+보조 줄)가 아니라 관심종목 카드처럼 **모든 항목 동등한 행 리스트**로: 금리·유가·금·비트코인 4행, 비트코인은 **달러 표시**. ② 시장이 4행이 되므로 다른 리스트 카드(핫종목·관심종목·배당)도 **4행으로 통일**.
+- **조사 결과 (2026-07-19)**: ① `btcUsd` 스냅샷은 §30부터 저장 중 — 홈 MGET 키만 `btcKrw`→`btcUsd` 교체, 표기는 시장 페이지 병기 폼(`formatBtcValue(…, "USD") + " USD"`). ② 리스트 카드 3종은 전부 `slice(0, 3)` 상수 하나 — 핫종목은 상위 30 저장이라 항상 4행, 관심종목·배당은 있는 만큼(최대 4). ③ 관심종목 카드가 이미 "골격은 SummaryCard composes + 자체 리스트" 패턴 — 시장도 동일 패턴의 전용 컴포넌트로 분리하고, §32에서 SummaryCard에 넣은 `subItems` prop은 되돌려 프리미티브 복원. ④ 지수 3종·보유·변동성(단일 지표)·뉴스공시(2종뿐)는 대상 아님.
+- **구현 계획 (파일 단위)**:
+  1. `types/indices.ts` — `IndexDashboardData.btcKrw` → `btcUsd`로 교체.
+  2. `lib/indices/getDashboard.ts` — OPTIONAL_KEYS `btcKrw`→`btcUsd`, 반환 필드 교체. `fetchedAtByKey`(금리·유가·금 배지 기준)는 불변.
+  3. `components/indices/SummaryCard.tsx`(+module.css) — §32 `subItems` prop·`SummaryCardSubItem`·`.subItems` 계열 스타일 제거(프리미티브 복원).
+  4. **신규** `components/indices/MarketCard.tsx`(+module.css) — WatchlistCard 패턴(골격 composes + 자체 리스트): 미국 10년물 금리·국제유가 WTI·금 현물·비트코인(USD) 4행, 행 폼 `지표명(좌) + 값(numeric) + 등락률(색상)`. null 지표는 행 생략(첫 갱신 전), 각주 기준일+USDT≈USD 안내, staleness 배지 동일 정책.
+  5. `components/indices/IndexDashboard.tsx` — 시장 `SummaryCard` → `MarketCard` 교체, `formatBtcValue` import 이동.
+  6. `lib/hotstocks/dailyCard.ts` + `components/indices/HotStocksCard.tsx` — `top3`→`top4`(slice 4), 각주 "TOP 3"→"TOP 4".
+  7. `lib/watchlist/summary.ts` + `components/indices/WatchlistCard.tsx` — `top3`→`top4`(slice 4), 각주 분기 `count > 3`→`> 4`·"상위 3"→"상위 4".
+  8. `lib/dividends/summary.ts` — `slice(0, 3)`→`(0, 4)`, 주석 갱신 (+`DividendCard` 주석).
+- **상태**: 구현 완료(2026-07-19) — 계획 1~8번 그대로 구현. lint·tsc·프로덕션 빌드 통과. research.md §2·§4·§9 갱신. 실제 화면 확인은 사용자 확인 대기.
+
 ---
 
 ## 7. PR 분리 권장 (선택)
