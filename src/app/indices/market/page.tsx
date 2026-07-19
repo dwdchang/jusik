@@ -18,7 +18,7 @@ import { KIS_DATA_NOTICE } from "@/types/indices";
 import styles from "./page.module.css";
 
 export const metadata: Metadata = {
-  title: "시장 — jusik",
+  title: "글로벌 지표 — jusik",
   description: "미국 10년물 금리 · 국제유가 WTI · 금 현물(국제) · 비트코인",
 };
 
@@ -51,7 +51,7 @@ export default async function MarketOverviewPage() {
       <div className={styles.container}>
         <header className={styles.header}>
           <NavIconLink href="/" label="홈으로" icon="home" />
-          <h1 className={styles.title}>시장</h1>
+          <h1 className={styles.title}>글로벌 지표</h1>
           {oldestFetchedAt !== null ? (
             <span className={styles.lastRefresh}>
               마지막 갱신: {formatKstDateTime(oldestFetchedAt)}
@@ -59,7 +59,7 @@ export default async function MarketOverviewPage() {
           ) : null}
         </header>
 
-        <section className={styles.cards} aria-label="시장 지표 4종">
+        <section className={styles.cards} aria-label="글로벌 지표 4종">
           {MARKET_ITEMS.map((itemKey, i) => {
             const stored = rows[i];
 
