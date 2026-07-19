@@ -1,4 +1,5 @@
 import { HeaderMenu } from "@/components/nav/HeaderMenu";
+import { NavIconLink } from "@/components/nav/NavIconLink";
 import type { DividendCardSummary } from "@/lib/dividends/summary";
 import type { TodayFeedCounts } from "@/lib/feeds/homeFeed";
 import { formatBasDtDisplay } from "@/lib/format/basDt";
@@ -79,13 +80,7 @@ export function IndexDashboard({
   return (
     <div className={styles.dashboard}>
       <header className={styles.header}>
-        <div>
-          <h1 className={styles.title}>시장 지표</h1>
-          <p className={styles.subtitle}>
-            지수 · 시장(환율·금리·유가) · 보유종목 요약 — 카드를 누르면 상세로
-            이동
-          </p>
-        </div>
+        <NavIconLink href="/" label="홈" icon="home" />
         <div className={styles.headerActions}>
           <HeaderMenu />
         </div>
@@ -128,13 +123,13 @@ export function IndexDashboard({
             change={
               holdingsSummary.dailyChangeRate !== null
                 ? {
-                    text: `전일 대비 ${formatChangeRate(
-                      holdingsSummary.dailyChangeRate
-                    )}`,
-                    direction: resolveDirection(
-                      holdingsSummary.dailyChangeRate
-                    ),
-                  }
+                  text: `전일 대비 ${formatChangeRate(
+                    holdingsSummary.dailyChangeRate
+                  )}`,
+                  direction: resolveDirection(
+                    holdingsSummary.dailyChangeRate
+                  ),
+                }
                 : undefined
             }
             footnote="총 수익률 · 현재가 기준"
@@ -155,13 +150,13 @@ export function IndexDashboard({
             change={
               volatilitySummary.monthOverMonthDiff !== null
                 ? {
-                    text: `전월 대비 ${formatPercentPoint(
-                      volatilitySummary.monthOverMonthDiff
-                    )}`,
-                    direction: resolveDirection(
-                      volatilitySummary.monthOverMonthDiff
-                    ),
-                  }
+                  text: `전월 대비 ${formatPercentPoint(
+                    volatilitySummary.monthOverMonthDiff
+                  )}`,
+                  direction: resolveDirection(
+                    volatilitySummary.monthOverMonthDiff
+                  ),
+                }
                 : undefined
             }
             footnote="당월 평균 · 일중 (고가−저가)/저가"
