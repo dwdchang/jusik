@@ -23,7 +23,7 @@
 
 ## 1. 프로젝트 개요
 
-- **앱**: KOSPI/KOSDAQ 개인 지수 대시보드. 홈 카드 7종(코스피·코스닥·시장·보유종목·
+- **앱**: KOSPI/KOSDAQ 개인 지수 대시보드. 홈 카드 7종(코스피·코스닥·글로벌 지표·보유종목·
   코스피 변동성·핫종목·관심종목) + 각 상세 페이지.
 - **스택**: Next.js 16.2.6 (App Router, `src/app`) · React 19.2.4 · TypeScript Strict ·
   Recharts 3 (차트, 유일한 Client 라이브러리) · Upstash Redis (REST) · Upstash QStash
@@ -68,7 +68,7 @@
 | `page.tsx` | 홈 대시보드. 세션 검사 → 허용 외 이메일이면 access-denied 화면 → 카드 8종 데이터 병렬 조회(`Promise.all`) → `IndexDashboard` 렌더. staleness 배지 판정도 여기서 수행 |
 | `login/page.tsx` | Google 로그인 버튼 (Server Action으로 `signIn("google")`). 세션 있으면 `/` redirect, 인라인 `GoogleIcon` SVG 로컬 정의 |
 | `indices/kospi` `kosdaq` `usdkrw/page.tsx` | 지표 상세 3종 — 전부 `ensureAllowedSession()` 후 `<IndexDetailScreen market=…>` 한 줄 위임(제목 `<h1>`도 §36에서 공용 컴포넌트에 들어가 3화면 동시 적용). usdkrw만 children으로 `<DollarIndexSection>`(달러 인덱스, §28) 추가. us10y·oil·gold·btc 개별 상세는 §31에서 제거(시장 카드 접힘 목록으로 대체) |
-| `indices/market/page.tsx` | 시장 요약(금리·유가·금 미니 카드 3종 + 비트코인 커스텀 카드 — 원/달러는 §28에서 홈 카드로 분리, 수출입 카드는 §30에서 제거). `getMarketDetails` MGET 1회(5키). 카드마다 "일별 기록" `<details>` 접힘 목록(§31 — KIS 3종은 `IndexDailyList` 재사용, 비트코인은 원화 목록 인라인)·개별 상세 링크 없음. 비트코인 카드는 원화 대표값+달러 병기 |
+| `indices/market/page.tsx` | 글로벌 지표 요약(§37에서 표시명 `시장`→`글로벌 지표` — 라우트·컴포넌트명·Redis 키는 `market` 유지). 금리·유가·금 미니 카드 3종 + 비트코인 커스텀 카드 — 원/달러는 §28에서 홈 카드로 분리, 수출입 카드는 §30에서 제거). `getMarketDetails` MGET 1회(5키). 카드마다 "일별 기록" `<details>` 접힘 목록(§31 — KIS 3종은 `IndexDailyList` 재사용, 비트코인은 원화 목록 인라인)·개별 상세 링크 없음. 비트코인 카드는 원화 대표값+달러 병기 |
 | `indices/trade/[yyyymm]/page.tsx` | 수출입 상세(Phase 17-5) — 월 합계 3지표 + 품목별(국가 무관, HS 4단위 상위 15+기타) + 국가별(상위 8+기타, 클릭 시 품목 팝업). `getTradeDetailView` 1회. `/feeds` 수출입 탭의 월 링크로 진입 |
 | `indices/kospi-volatility/page.tsx` | 변동성 상세 — 월별 평균 막대 차트 + 당월 일별 기록 목록 |
 | `holdings/page.tsx` | 보유종목 목록·요약·연초 이후 추이·일별 기록(`DailyHistoryList` 접힘 목록, §29)·종목 추가 폼(`<details>` 토글, 종목명 검색 `<StockSearchInput>`) |
@@ -159,9 +159,9 @@
 
 | 컴포넌트 | 종류 | 역할 |
 |---|---|---|
-| `indices/IndexDashboard` | Server | 홈 카드 9종 조립(§28에서 원/달러 카드 분리 신설, 시장 카드는 §33에서 `MarketCard` 리스트형으로 교체) + 헤더(좌 `NavIconLink` 홈 아이콘 + `<h1>Dashboard</h1>` + 우 햄버거 `HeaderMenu` — Phase 26에서 제거했던 제목을 §36에서 영어 제목으로 복원, 설명 문구는 그대로 없음) |
+| `indices/IndexDashboard` | Server | 홈 카드 9종 조립(§28에서 원/달러 카드 분리 신설, 글로벌 지표 카드는 §33에서 `MarketCard` 리스트형으로 교체) + 헤더(좌 `NavIconLink` 홈 아이콘 + `<h1>Dashboard</h1>` + 우 햄버거 `HeaderMenu` — Phase 26에서 제거했던 제목을 §36에서 영어 제목으로 복원, 설명 문구는 그대로 없음) |
 | `indices/SummaryCard` | Server | **홈 요약 카드 공용 프리미티브** — value/change/placeholder/staleness 배지(§35에서 `footnote` prop 폐지 — 홈 각주 전면 제거). 카드 전체가 Link |
-| `indices/MarketCard` | Server | 시장 전용 카드 (§33) — 금리·유가·금·비트코인(USD) 4행 동등 목록, 행마다 지표명·값·등락률. 지표명은 §34에서 축약(`美 금리`·`WTI`·`GOLD`·`BTC($)`) — 통화 단위는 라벨에 두고 값 열은 숫자만. 각주는 §35에서 제거, 등락률만 `--text-caption-sm`(12px)로 1pt 축소. §30 추가 지표는 null이면 행 생략. 골격·배지는 SummaryCard composes, 리스트 폼은 WatchlistCard와 동일 관례, 카드 전체 `/indices/market` 링크 |
+| `indices/MarketCard` | Server | 「글로벌 지표」 전용 카드 (§33, 제목은 §37에서 `시장`→`글로벌 지표`) — 금리·유가·금·비트코인(USD) 4행 동등 목록, 행마다 지표명·값·등락률. 지표명은 §34에서 축약(`美 금리`·`WTI`·`GOLD`·`BTC`) — 4행 모두 값 열은 숫자만(전부 USD 기준이라 §37에서 BTC의 `($)`도 제거, 통화 안내는 상세 화면 각주에만). 각주는 §35에서 제거, 등락률만 `--text-caption-sm`(12px)로 1pt 축소. §30 추가 지표는 null이면 행 생략. 골격·배지는 SummaryCard composes, 리스트 폼은 WatchlistCard와 동일 관례, 카드 전체 `/indices/market` 링크 |
 | `indices/HotStocksCard` | Server | 핫종목 전용 카드 — 당일 등락률 TOP 4 리스트 (§33에서 4행 통일, SummaryCard 미사용) |
 | `indices/WatchlistCard` | Server | 관심종목 전용 카드 (§24) — 수익률 상위 4종목 리스트(§33), 행마다 등록 기준일 대비 수익률 + 전일 등락률(§35에서 괄호 제거 — `.daily` 11px로 구분). 골격·staleness 배지는 SummaryCard composes(`STALENESS_LABELS` export 재사용), 리스트 폼은 HotStocksCard와 동일 |
 | `indices/DividendCard` | Server | 배당 일정 전용 카드 (§25) — 다가오는 지급일 상위 4행(§33, 종목명·지급일 MM/DD·주당배당금), **보유종목 기준**. 골격·배지·리스트 폼은 WatchlistCard와 동일 관례, 카드 전체 `/dividends` 링크 |
@@ -361,7 +361,7 @@ QStash 스케줄 (월 1회, 매월 5일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 5 *
   `IndexDashboard`.
 - **지표 상세**: `IndexDetailScreen` → `getIndexDetail`/`getOverseasDetail` → detail 1건.
   usdkrw는 children `DollarIndexSection`이 `market:detail:dxy` 1건 추가 조회 (§28).
-  시장(`/indices/market`)은 금리·유가·금·비트코인 2키를 합쳐 MGET 1회(5키) — 카드별
+  글로벌 지표(`/indices/market`)는 금리·유가·금·비트코인 2키를 합쳐 MGET 1회(5키) — 카드별
   일별 기록도 이 `dailyRows`를 그대로 접힘 목록으로 렌더(추가 페치 없음, §31).
 - **보유종목**: `getHoldings`(복호화) → `getPortfolioValuation`(`market:stock:*` MGET) +
   `getPortfolioHistory`. 상세는 + `getStockInfo`(스냅샷+정보 블록 조합) + `getStockHistory`.
@@ -673,8 +673,8 @@ QStash 스케줄 (월 1회, 매월 5일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 5 *
 - 포트폴리오 히스토리 upsert는 스냅샷이 하나라도 없으면 그 사용자 전체 skip (과소 집계 방지).
 - 홈 `getDashboardData`는 필수 4종(kospi·kosdaq·usdkrw·us10y) 없으면 throw,
   **oil·gold·btcUsd는 null 허용** (나중에 추가된 키 — 새 지표 추가 시 같은 전략 참고).
-  oil·gold·btcUsd는 §33에서 홈 시장 카드 4행 목록으로 합류(null이면 행 생략),
-  btcKrw·dxy는 홈 미사용. 시장 카드 staleness 배지는 금리·유가·금 3종 기준 —
+  oil·gold·btcUsd는 §33에서 홈 글로벌 지표 카드 4행 목록으로 합류(null이면 행 생략),
+  btcKrw·dxy는 홈 미사용. 글로벌 지표 카드 staleness 배지는 금리·유가·금 3종 기준 —
   btcUsd는 잡 `ok` 게이팅 밖 외부 지표라 제외 (§30 dxy 관례).
 - 비트코인은 24시간 거래 자산이지만 갱신은 시세 잡 시간창(평일 09:00~18:40)에만 —
   주말·야간 화면은 마지막 회차 시세(각주 안내, 사용자 확정 §30). 달러 표기는 업비트

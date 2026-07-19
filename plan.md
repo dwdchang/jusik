@@ -2719,6 +2719,16 @@ interface WatchItem {
   4. `components/indices/IndexDashboard.tsx`(+module.css) — 헤더에 `<h1 className={styles.title}>Dashboard</h1>` 추가. `.header`도 같은 방식으로 `gap` + `.headerActions { margin-left: auto }`로 전환해 좌(홈 아이콘)–제목–우(햄버거) 배치 유지.
 - **상태**: 구현 완료(2026-07-19) — 계획 1~4번 그대로 구현. lint·tsc 통과. research.md §2 갱신. 실제 화면 확인은 사용자 확인 대기.
 
+### Phase 37 — "시장" → "글로벌 지표" 개명 + BTC 라벨에서 ($) 제거 (2026-07-19)
+
+- **요청 근거**: 사용자 지시 2건 — ① 홈 시장 카드의 `BTC($)` 라벨이 모바일에서 값을 가려 `BTC`로 축약 ② "시장"이라는 이름이 카드 내용(해외 금리·원자재·BTC)과 맞지 않아 개명 — 후보 4종(글로벌 지표/매크로/시장 지표/해외 지표) 제시 후 **"글로벌 지표" 확정**.
+- **조사 결과 (2026-07-19)**: ① 최초 검토에서 "($)를 빼면 통화 단서가 사라진다"고 보고했으나, **사용자 지적대로 오판** — 같은 카드의 WTI·GOLD도 `formatIndex()`로 숫자만 출력하며 둘 다 USD 기준이라 통화 표기가 없다. BTC에만 ($)를 붙인 §34 결정이 오히려 불일치였고, 제거가 카드 안 표기를 일관되게 만든다. 통화 상세는 상세 화면 각주(`USD/배럴`·`USD/트로이온스`·업비트 마켓 안내)에 남아 정보 손실 없음. ② "시장" 문자열은 홈 카드 `<h2>`·상세 `<h1>`·`metadata.title`·`aria-label` 4곳 + 주석 2곳뿐 — 햄버거 메뉴·다른 화면에 `/indices/market` 링크가 없어(전역 grep: `MarketCard`의 카드 링크 1건) 개명 파급 없음. ③ 라우트 `/indices/market`·컴포넌트명 `MarketCard`·Redis 키 `market:detail:*`는 **변경하지 않는다** — 표시명만 바뀌는 건이라 URL·스토어 스키마를 건드릴 이유가 없다.
+- **구현 계획 (파일 단위)**:
+  1. `components/indices/MarketCard.tsx` — 라벨 `BTC($)`→`BTC`, 카드 제목 `시장`→`글로벌 지표`, 헤더 주석에 §37 근거(WTI·GOLD와 동일하게 값 열은 숫자만) 반영.
+  2. `components/indices/MarketCard.module.css` — 머리말 주석의 카드명 갱신.
+  3. `app/indices/market/page.tsx` — `metadata.title` `시장 — jusik`→`글로벌 지표 — jusik`, `<h1>`·섹션 `aria-label` 갱신. 하단 각주(통화 단위 안내)는 그대로 유지.
+- **상태**: 구현 완료(2026-07-19) — 계획 1~3번 그대로 구현. lint·tsc·build 통과. research.md §1·§2·§4 갱신. 실제 화면 확인은 사용자 확인 대기.
+
 ---
 
 ## 7. PR 분리 권장 (선택)
