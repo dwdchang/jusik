@@ -67,9 +67,8 @@
 | `layout.tsx` | 루트 레이아웃. Geist 폰트, `tokens.css`+`globals.css` import, 테마 FOUC 방지 인라인 스크립트(`data-theme` 선결정) |
 | `page.tsx` | 홈 대시보드. 세션 검사 → 허용 외 이메일이면 access-denied 화면 → 카드 8종 데이터 병렬 조회(`Promise.all`) → `IndexDashboard` 렌더. staleness 배지 판정도 여기서 수행 |
 | `login/page.tsx` | Google 로그인 버튼 (Server Action으로 `signIn("google")`). 세션 있으면 `/` redirect, 인라인 `GoogleIcon` SVG 로컬 정의 |
-| `indices/kospi` `kosdaq` `usdkrw` `us10y` `oil` `gold/page.tsx` | 지표 상세 6종 — 전부 `ensureAllowedSession()` 후 `<IndexDetailScreen market=…>` 한 줄 위임. usdkrw만 children으로 `<DollarIndexSection>`(달러 인덱스, §28) 추가. gold는 §30 신설(LBMA 런던 금 현물) |
-| `indices/btc/page.tsx` | 비트코인 상세 (§30) — `getMarketDetails(["btcKrw","btcUsd"])` MGET 1회 → `BtcDetailSection`(원화↔달러 토글). 푸터에 업비트 출처·평일 장중 갱신·주말 시세 각주 |
-| `indices/market/page.tsx` | 시장 요약(금리·유가·금 미니 카드 3종 + 비트코인 커스텀 카드 — 원/달러는 §28에서 홈 카드로 분리, 수출입 카드는 §30에서 제거). `getMarketDetails` MGET 1회(5키). 비트코인 카드는 원화 대표값+달러 병기, `/indices/btc` 링크 |
+| `indices/kospi` `kosdaq` `usdkrw/page.tsx` | 지표 상세 3종 — 전부 `ensureAllowedSession()` 후 `<IndexDetailScreen market=…>` 한 줄 위임. usdkrw만 children으로 `<DollarIndexSection>`(달러 인덱스, §28) 추가. us10y·oil·gold·btc 개별 상세는 §31에서 제거(시장 카드 접힘 목록으로 대체) |
+| `indices/market/page.tsx` | 시장 요약(금리·유가·금 미니 카드 3종 + 비트코인 커스텀 카드 — 원/달러는 §28에서 홈 카드로 분리, 수출입 카드는 §30에서 제거). `getMarketDetails` MGET 1회(5키). 카드마다 "일별 기록" `<details>` 접힘 목록(§31 — KIS 3종은 `IndexDailyList` 재사용, 비트코인은 원화 목록 인라인)·개별 상세 링크 없음. 비트코인 카드는 원화 대표값+달러 병기 |
 | `indices/trade/[yyyymm]/page.tsx` | 수출입 상세(Phase 17-5) — 월 합계 3지표 + 품목별(국가 무관, HS 4단위 상위 15+기타) + 국가별(상위 8+기타, 클릭 시 품목 팝업). `getTradeDetailView` 1회. `/feeds` 수출입 탭의 월 링크로 진입 |
 | `indices/kospi-volatility/page.tsx` | 변동성 상세 — 월별 평균 막대 차트 + 당월 일별 기록 목록 |
 | `holdings/page.tsx` | 보유종목 목록·요약·연초 이후 추이·일별 기록(`DailyHistoryList` 접힘 목록, §29)·종목 추가 폼(`<details>` 토글, 종목명 검색 `<StockSearchInput>`) |
@@ -164,12 +163,11 @@
 | `indices/HotStocksCard` | Server | 핫종목 전용 카드 — 당일 등락률 TOP 3 리스트 (SummaryCard 미사용) |
 | `indices/WatchlistCard` | Server | 관심종목 전용 카드 (§24) — 수익률 상위 3종목 리스트, 행마다 등록 기준일 대비 수익률 + 괄호 전일 등락률. 골격·staleness 배지는 SummaryCard composes(`STALENESS_LABELS` export 재사용), 리스트 폼은 HotStocksCard와 동일 |
 | `indices/DividendCard` | Server | 배당 일정 전용 카드 (§25) — 다가오는 지급일 상위 3행(종목명·지급일 MM/DD·주당배당금), **보유종목 기준**. 골격·배지·리스트 폼은 WatchlistCard와 동일 관례, 카드 전체 `/dividends` 링크 |
-| `indices/IndexDetailScreen` | Server(async) | **지표 상세 5종 공용 화면** — `getIndexDetail`/`getOverseasDetail` 분기, 카드+차트+일별 리스트+푸터. `children` 슬롯(일별 시세와 푸터 사이 — usdkrw의 달러 인덱스 섹션용, §28) |
+| `indices/IndexDetailScreen` | Server(async) | **지표 상세 3종(코스피·코스닥·원달러) 공용 화면** — `getIndexDetail`/`getOverseasDetail` 분기, 카드+차트+일별 리스트+푸터. `children` 슬롯(일별 시세와 푸터 사이 — usdkrw의 달러 인덱스 섹션용, §28) |
 | `indices/DollarIndexSection` | Server(async) | 원/달러 상세 하단 달러 인덱스 섹션 (§28) — `getOverseasDetail("DXY")` → IndexCard+차트+근사치 각주. 첫 갱신 전엔 준비 중 문구 |
 | `indices/IndexCard` / `IndexDailyList` / `DataAsOfFooter` | Server | 상세 스냅샷 카드 / 일별 시세 리스트 / 홈 푸터 |
 | `indices/IndexChartClient` → `IndexLineChart` | Client | Recharts 래핑 패턴: Client 셸이 `dynamic(…, { ssr: false })` + 스켈레톤 → 실제 차트 |
-| `indices/BtcChartClient` → `BtcLineChart` | Client | 동일 패턴, 비트코인 전용 (§30) — `currency` prop으로 축·툴팁 포맷 분기(원화 M/B 축약, 달러 소수 2자리) |
-| `indices/BtcDetailSection` | Client | 비트코인 상세 본문 (§30) — 원화↔달러 토글(HoldingsChart 토글 패턴): 스냅샷 카드·차트·일별 목록이 선택 통화로 함께 전환. 데이터는 서버가 두 통화 전량 주입, 토글은 순수 UI 상태. 카드·목록 폼은 IndexCard/IndexDailyList 이식 |
+| `indices/BtcChartClient` → `BtcLineChart` | Client | 동일 패턴, 비트코인 전용 (§30) — `currency` prop으로 축·툴팁 포맷 분기(원화 M/B 축약, 달러 소수 2자리). 호출부는 시장 카드뿐(비트코인 개별 상세·`BtcDetailSection`은 §31에서 제거) |
 | `indices/VolatilityChartClient` → `VolatilityChart` | Client | 동일 패턴, BarChart |
 | `holdings/HoldingsChartClient` → `HoldingsChart` | Client | 동일 패턴, LineChart + 수익률%↔원단위 토글. **보유종목 홈/상세·관심종목 상세 3곳 공용** (관심종목에선 totalValue 자리에 종가를 넣어 재활용) |
 | `holdings/DailyHistoryList` | Client | 일별 기록 목록 (§29) — 접힘 기본 `<details>`(네이티브, JS 무관) + 월 단위 페이지네이션(`useState` 월 인덱스, 기록 있는 달만 이전/다음, 양 끝 disabled). 서버가 히스토리 전체를 props로 주입. 보유종목 홈/상세 2곳 공용 — 상세만 `close` 종가 열 추가. rise/fall 판정은 로컬 사본(`resolveDirection`을 클라이언트 번들에 안 넣기 위함) |
@@ -352,9 +350,8 @@ QStash 스케줄 (월 1회, 매월 5일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 5 *
   `IndexDashboard`.
 - **지표 상세**: `IndexDetailScreen` → `getIndexDetail`/`getOverseasDetail` → detail 1건.
   usdkrw는 children `DollarIndexSection`이 `market:detail:dxy` 1건 추가 조회 (§28).
-  비트코인(`/indices/btc`)만 커스텀 페이지 — `getMarketDetails(["btcKrw","btcUsd"])` MGET
-  1회 → `BtcDetailSection` 토글 (§30). 시장(`/indices/market`)은 금리·유가·금·비트코인
-  2키를 합쳐 MGET 1회(5키).
+  시장(`/indices/market`)은 금리·유가·금·비트코인 2키를 합쳐 MGET 1회(5키) — 카드별
+  일별 기록도 이 `dailyRows`를 그대로 접힘 목록으로 렌더(추가 페치 없음, §31).
 - **보유종목**: `getHoldings`(복호화) → `getPortfolioValuation`(`market:stock:*` MGET) +
   `getPortfolioHistory`. 상세는 + `getStockInfo`(스냅샷+정보 블록 조합) + `getStockHistory`.
   일별 기록 목록(`DailyHistoryList`)은 홈=`getPortfolioHistory`·상세=`getStockHistory`

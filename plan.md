@@ -2648,6 +2648,16 @@ interface WatchItem {
   15. `components/indices/IndexDashboard.tsx` — 홈 시장 카드 각주 "유가 포함" → "유가·금·비트코인 포함".
 - **상태**: 구현 완료(2026-07-19) — 계획 1~15번 그대로 구현. lint·tsc·프로덕션 빌드 통과(`/indices/gold`·`/indices/btc` 라우트 마운트 확인), 로컬 실측(tsx 단독 실행)으로 `market:detail:gold`(close 3,995.35·7행)·`btcKrw`(95,275,000원)·`btcUsd`(64,690.75) 저장 확인 — 첫 갱신 회차 전에도 화면 표시 가능. research.md §2·§3·§4·§5·§6·§9 갱신. 실제 화면 확인은 사용자 확인 대기.
 
+### Phase 31 — 시장: 카드별 일별 기록 접힘 목록 + 개별 상세 페이지 4종 제거 (2026-07-19)
+
+- **요청 근거**: 사용자 지시 — 시장(`/indices/market`) 카드의 "일별 시세 보기 →"가 개별 상세 화면으로 이동하는 대신, 보유종목 상세의 일별 기록(§29)처럼 카드 안에서 **펼치기/닫기**로 본다. 개별 상세 페이지 4종(`/indices/us10y`·`oil`·`gold`·`btc`)은 **제거**하고 시장 페이지 하나로 유지. 비트코인 원화↔달러 토글은 상세 화면 제거로 소멸(카드의 원화 대표값+달러 병기는 유지, 일별 목록은 원화) — 사용자 확인.
+- **조사 결과 (2026-07-19)**: ① 시장 페이지가 이미 `getMarketDetails` MGET(5키)으로 `dailyRows`(항목당 최근 7행)까지 받고 있어 **추가 페치 0건** — 접힘 UI만 붙이면 된다. ② 상세 4종으로의 링크는 시장 페이지에만 존재(전역 grep) — 삭제해도 다른 화면 영향 없음. `IndexDetailScreen`은 코스피·코스닥·원달러 3종이 계속 사용, `BtcChartClient`/`BtcLineChart`는 시장 카드 차트가 사용 — 유지. `BtcDetailSection`만 고아가 되어 함께 삭제. ③ 행이 7개뿐이라 §29의 월 페이지네이션·클라이언트 상태는 불필요 — 순수 `<details>`(JS 무관)로 충분, 페이지는 Server Component 유지.
+- **구현 계획 (파일 단위)**:
+  1. `app/indices/market/page.tsx` — ① `MARKET_ITEMS`에서 `href` 제거(키 배열화)·`Link` import 제거 ② 카드 제목 링크 → 평문 ③ "일별 시세 보기 →" 링크 → `<details>` 접힘(summary "일별 기록"+쉐브론, §29 토글 폼): KIS 3종은 `<IndexDailyList rows={stored.dailyRows}/>` 재사용, 비트코인은 원화 목록 인라인 렌더(`formatBtcValue`/`formatBtcChange`, BtcDetailSection 목록 폼 이식).
+  2. `app/indices/market/page.module.css` — 미사용이 되는 `.cardLink`/`.detailLink` 제거, `.dailyDetails`/`.dailyToggle`/`.chevron`(DailyHistoryList 토글 이식) + 비트코인용 `.dailyList` 계열(IndexDailyList 폼 이식) 추가.
+  3. **삭제** `app/indices/us10y/page.tsx`·`oil/page.tsx`·`gold/page.tsx`·`btc/page.tsx`(+`btc/page.module.css`), `components/indices/BtcDetailSection.tsx`(+module.css).
+- **상태**: 구현 완료(2026-07-19) — 계획 1~3번 그대로 구현. lint·tsc·프로덕션 빌드 통과(상세 라우트 4종 언마운트 확인). research.md §2 갱신. 실제 화면 확인은 사용자 확인 대기.
+
 ---
 
 ## 7. PR 분리 권장 (선택)
