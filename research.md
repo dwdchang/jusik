@@ -206,8 +206,10 @@
   페이지 제목은 전 화면 공통으로 `<h1 className={styles.title}>` +
   `--text-page-title`·`--weight-regular` (§36 — 각 `page.module.css`에 같은
   `.title` 블록이 복붙되어 있으니 제목 스타일 변경 시 14곳을 함께 고친다).
-  홈 카드 여백은 §35에서 한 칸씩 축소 — 카드 패딩 `--space-16`,
-  카드 간 gap `--space-8`. 단 **홈 컨테이너 패딩은 §38에서 `--space-16`으로
+  카드 도형(surface+border+radius) 내부 여백은 **`--card-padding`(=`--space-12`)
+  단일 토큰** — §39에서 홈·상세 39곳에 복붙돼 있던 `--space-16`을 한 칸 줄이며
+  토큰으로 통합했다(카드 여백 재조정은 `tokens.css` 한 줄만 고치면 된다).
+  카드 간 gap은 `--space-8`(§35). 단 **컨테이너 패딩은 §38에서 `--space-16`으로
   환원**(§35의 `--space-12`를 되돌림) — 홈 `.dashboard`와 상세 화면 13종의
   `.container`가 `padding: --space-16`·헤더 `margin-bottom: --space-16`으로
   동일해야 좌우 정렬선·제목 높이가 화면 간에 어긋나지 않는다.
