@@ -1,15 +1,18 @@
+/* 상세 화면 13종의 `.container`와 동일한 블록 (§38) —
+   홈만 패딩 12·헤더 아래 24를 쓰던 탓에 좌우 정렬선이 4px 어긋나 보였다.
+   값 변경 시 상세 화면 `.container`도 함께 맞춘다. */
 .dashboard {
   width: 100%;
   max-width: var(--layout-max-width);
   margin: 0 auto;
-  padding: var(--space-12);
+  padding: var(--space-16);
 }
 
 .header {
   display: flex;
   align-items: center;
   gap: var(--space-12);
-  margin-bottom: var(--space-24);
+  margin-bottom: var(--space-16);
 }
 
 /* 홈 페이지 제목 (§36) — 상세 화면과 동일한 홈 아이콘 + h1 배치 */
