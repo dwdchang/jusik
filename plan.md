@@ -2539,7 +2539,7 @@ interface WatchItem {
 - **구현**: ① `watchlist/summary.ts` — `WatchlistCardSummary`를 `{ count, top3: WatchlistCardEntry[] }`로 개편(`avgReturnRate`·`best` 제거 — 소비처는 홈 카드뿐). 항목별 `returnRate`(등록 기준일 종가 대비, `computeWatchReturnRate` 재사용)·`dailyChangeRate`(스냅샷 `changeRate` 그대로 — 추가 API 호출 없음)를 계산해 수익률 내림차순 상위 3개(null은 `-Infinity`로 뒤 순위) ② **신규** `components/indices/WatchlistCard`(.tsx+.module.css) — HotStocksCard 폼(3행 리스트)을 본떠 행마다 `종목명 +12.34% (+1.20%)`, 수익률·괄호 등락률 각각 등락 색상, 기준가 확정 전은 「-」(tertiary), staleness 배지는 SummaryCard와 동일 마크업(`STALENESS_LABELS`를 SummaryCard에서 export해 재사용, CSS는 composes). footnote "등록 기준일 대비 · 괄호는 전일 대비"(4종목 이상이면 "N종목 중 수익률 상위 3 ·" 접두). 관심종목 없음/조회 실패(summary null)는 같은 카드 안 placeholder "종목을 등록해보세요" ③ `IndexDashboard` — 관심종목 자리의 SummaryCard 분기를 `<WatchlistCard summary staleness>`로 교체.
 - **검증**: lint·tsc PASS. 실제 화면 시각 확인은 사용자 확인 대기.
 
-### Phase 25 — 홈 "배당 일정" 카드 + 상세 화면 + 지급일 당일 알림 (2026-07-19, 계획 확정 — 코드 미착수)
+### Phase 25 — 홈 "배당 일정" 카드 + 상세 화면 + 지급일 당일 알림 (2026-07-19, 구현 완료)
 
 - **요청 근거**: 사용자 지시 — 홈에 배당 정보 항목 신설(항목명 "배당 일정" 채택). 배당 지급일이 확정되면 상세 화면에 종목명·배당금액·지급일 등을 **한 줄씩** 추가하고, 지급일 당일 푸시 알림 발송. 대안으로 조사한 **폰 기본 캘린더 연동(webcal:// ICS 구독 피드)은 사용자가 포기 확정** — 재제안 금지.
 - **후속 수정 (2026-07-19 같은 날 확정)**: ① 홈 카드 요약은 건수형이 아니라 **다가오는 배당일 3행**(종목명 포함) ② 상세 화면에 **주당배당금·보유수량·예상 지급액(주당배당금 × 수량)** 표시 ③ **대상은 보유종목만 — 관심종목은 배당 일정 항목 전부(홈 카드·상세 목록·지급일 당일 알림)에서 제외**. 기존 공시 알림 8유형의 "배당" 카테고리(보유+관심 대상, Phase 10 3단계)는 별개 기능이라 무변경.
@@ -2556,8 +2556,15 @@ interface WatchItem {
   4. **신규** `app/dividends/page.tsx`(+`page.module.css`) — `ensureAllowedSession` + 한 줄씩(종목명·배당종류·기준일·지급일·**주당배당금·보유수량·예상 지급액**, 지급일 미정 행은 "미정" 표기) 목록. 각주 2건 필수: ① 예상 지급액은 **현재 보유수량 기준**(실제 수령 자격은 배당 기준일 시점 보유 여부로 결정 — 수량 변경 이력 미보관) ② **세전 금액**(배당소득세 15.4% 원천징수 전). `/feeds` 게시판 폼·페이지 골격 관례 참고.
   5. 홈 카드 — **3행 리스트 패턴**(HotStocksCard·WatchlistCard 폼)의 **신규** `components/indices/DividendCard`(가칭): **다가오는 배당일 상위 3행**(종목명+지급일+주당배당금), 3건 미만이면 있는 만큼·0건은 placeholder(기존 카드 관례). 카드 전체 `/dividends` 링크, staleness 배지는 SummaryCard 관례. `IndexDashboard`에 배치, 요약 조회는 홈 `Promise.all`에 `.catch(() => null)` 격리로 합류.
   6. 알림 — **피드 잡(`refreshFeeds`) 훅에 추가**(매일 08~22시 매시 실행 · KIS 시간창 무관 · 첫 회차 08시에 당일 발송): Redis `rounds`에서 `payDate === KST 오늘`인 종목을 **보유 사용자에게만**(관심종목 제외) `sendPushToEmail`. 중복 방지는 `alerts:dividend:sent:{code}:{payDate}` 마커(EX 2일, 평문 — 쿨다운 키 관례). `alerts:{email}:muted` 음소거 공유, 이메일 단위 실패 격리, 잡 `ok` 게이팅 제외(기존 알림 훅 관례).
-- **실측 필요(구현 시)**: ① `T_DT`를 미래로 지정하면 기준일이 미래인 예고 행도 오는지(오면 조회 종료일 연장 검토) ② `divi_pay_dt`가 지급일 대비 얼마나 미리 확정되는지(상세 화면 "다가오는 지급" 구간 설계 근거).
-- **상태**: 계획 승인(2026-07-19) — 구현 착수 전. 구현 완료 시 research.md §2·§4·§5(신규 파일·잡 훅·`rounds` 필드)와 본 절 갱신.
+- **실측 필요(운영 중 확인)**: ① `T_DT`를 미래로 지정하면 기준일이 미래인 예고 행도 오는지(오면 조회 종료일 연장 검토) ② `divi_pay_dt`가 지급일 대비 얼마나 미리 확정되는지(상세 화면 "다가오는 지급" 구간 설계 근거).
+- **구현 결과 (2026-07-19)**: 계획 1~6번 전부 계획대로 구현 —
+  1. `lib/market/store.ts`: `DividendRound` 타입 + `StoredStockInfoBlocks.dividend.rounds?`(optional — 구 스냅샷 호환) + `getStockInfoBlocksMap`(MGET 일괄 리더) 추가.
+  2. `lib/holdings/stockInfo.ts` `buildDividendBlock`: 확정 회차(주당배당금>0)를 `rounds`(기준일 오름차순)로 함께 저장. 기존 요약 필드 무변경.
+  3. **신규** `lib/dividends/summary.ts`: `getDividendSchedule`(상세 목록 — 보유종목만, 예상 지급액=주당배당금×보유수량 읽기 시 계산, 지급일 미정 먼저→내림차순) + `getDividendCardSummary`(지급일 ≥ KST 오늘 오름차순 상위 3, 실패 시 null).
+  4. **신규** `app/dividends/page.tsx`(+module.css): 한 줄씩 목록 + 각주 2건(현재 보유수량 기준 / 세전 15.4% 원천징수 전 / 지급일 미정 자동 채움 안내).
+  5. **신규** `components/indices/DividendCard`(+module.css): 다가오는 지급일 3행(종목명·MM/DD·주당배당금), SummaryCard composes·`STALENESS_LABELS` 재사용, `IndexDashboard`(관심종목 카드 다음)·홈 `Promise.all` 합류.
+  6. **신규** `lib/alerts/dividendAlerts.ts` `evaluateDividendAlerts` + `refreshFeeds` 스텝 6 훅 + `alerts/store.ts` 마커 3함수(`alerts:dividend:sent:{code}:{payDate}` EX 2일). 같은 지급일 여러 회차는 주당배당금 합산 1건 발송. 훅 실패는 로그만 — 잡 `ok` 게이팅 제외.
+- **상태**: 구현 완료(2026-07-19) — lint·tsc·프로덕션 빌드 통과, research.md §2·§4·§5·§9.5 갱신. `rounds` 데이터는 다음 확정 회차(15:40/18:15) 시세 잡부터 채워지므로 그 전까지 카드·상세는 빈 상태(placeholder)가 정상. 실제 화면·알림 확인은 사용자 확인 대기.
 
 ---
 
