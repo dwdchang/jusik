@@ -2708,6 +2708,17 @@ interface WatchItem {
 - **부수 효과 (사용자 고지)**: 각주 한 줄(≈15px) + 상하 패딩 8px로 카드당 높이가 20px 남짓 줄어, 4행 리스트 카드와 값 한 줄 카드 간 행별 높이 편차가 지금보다 도드라질 수 있다. 우선 적용 후 실제 화면을 보고 조정하기로 함.
 - **상태**: 구현 완료(2026-07-19) — 계획 1~6번 그대로 구현. lint·tsc 통과. research.md §4 갱신. 실제 화면 확인은 사용자 확인 대기.
 
+### Phase 36 — 페이지 제목 누락 보강 + 제목 굵기·크기 하향 (2026-07-19)
+
+- **요청 근거**: 사용자 지시 — ① 상세 화면 대부분에 `<h1>` 제목이 있는데 홈·코스피·코스닥에는 없다 ② 홈 제목은 영어 `Dashboard` ③ 모든 페이지 제목을 굵게(700) 대신 보통(400)으로 ④ 제목 글씨 크기도 2pt 축소. 원/달러 화면에도 제목을 추가할지 확인 후 "추가" 확정.
+- **조사 결과 (2026-07-19)**: 제목이 있는 화면 12곳은 전부 `<h1 className={styles.title}>` + 각 `page.module.css`에 동일한 `.title` 블록(`--text-title` 22px / `--weight-bold`)이 복붙되어 있다. 제목이 없는 화면은 두 곳뿐 — 코스피·코스닥·**원/달러**가 공유하는 `IndexDetailScreen.tsx`(한 곳 수정으로 3화면 동시 해결)와 홈의 `IndexDashboard.tsx`(제목은 Phase 26에서 의도적으로 제거했던 것을 이번에 영어 제목으로 복원). `--text-title`은 `.errorTitle`·`CountryTradeTable`·`IndexDetailScreen` 섹션 제목 등 h1이 아닌 곳도 쓰므로 토큰 값을 바꾸면 안 되고, 페이지 제목 전용 토큰을 새로 두는 편이 안전하다. 굵기 400 토큰(`--weight-regular`)도 기존 계단(500/600/700)에 없어 신설 필요.
+- **구현 계획 (파일 단위)**:
+  1. `styles/tokens.css` — `--text-page-title: 20px`(title 22px에서 2pt 축소, 페이지 h1 전용)·`--weight-regular: 400` 신설. 기존 `--text-title`·`--weight-bold`는 다른 용도가 있어 그대로 둔다.
+  2. `page.module.css` 12개(`hot-stocks`·`indices/market`·`indices/kospi-volatility`·`indices/trade/[yyyymm]`·`holdings`·`holdings/[symbolCode]`·`feeds`·`alerts`·`dividends`·`watchlist`·`watchlist/[symbolCode]`·`dlq`) — `.title`의 `font-size`→`--text-page-title`, `font-weight`→`--weight-regular`.
+  3. `components/indices/IndexDetailScreen.tsx`(+module.css) — 헤더에 `<h1 className={styles.title}>{data.snapshot.name}</h1>` 추가(코스피·코스닥·원/달러 3화면 동시 적용). `.header`를 `justify-content: space-between`에서 `gap: --space-12`로 바꾸고 `.lastRefresh`에 `margin-left: auto` — 다른 상세 화면(`hot-stocks`)과 동일한 배치 관례.
+  4. `components/indices/IndexDashboard.tsx`(+module.css) — 헤더에 `<h1 className={styles.title}>Dashboard</h1>` 추가. `.header`도 같은 방식으로 `gap` + `.headerActions { margin-left: auto }`로 전환해 좌(홈 아이콘)–제목–우(햄버거) 배치 유지.
+- **상태**: 구현 완료(2026-07-19) — 계획 1~4번 그대로 구현. lint·tsc 통과. research.md §2 갱신. 실제 화면 확인은 사용자 확인 대기.
+
 ---
 
 ## 7. PR 분리 권장 (선택)
