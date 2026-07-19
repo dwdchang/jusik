@@ -2585,6 +2585,31 @@ interface WatchItem {
   2. `app/indices/kospi-volatility/page.module.css` — `.sectionTitle`·`.dailyList`·`.dailyRow`·`.dailyDate`·`.dailyValue`를 보유종목 상세 CSS에서 이식(등락 색상 불필요 — 변동성은 방향성 없는 값이라 rise/fall 미적용).
 - **상태**: 구현 완료(2026-07-19) — 계획 1·2번 그대로 구현. lint·tsc 통과, research.md §2.3·§4.3 갱신. 실제 화면 확인은 사용자 확인 대기.
 
+### Phase 28 — 홈 원/달러 카드 분리 + 시장 카드 재편 + 달러 인덱스(DXY 근사) 추가 (2026-07-19)
+
+- **요청 근거**: 사용자 지시 — ① 시장 상세의 원/달러 환율 항목을 따로 떼어 **홈에 원/달러 카드 신설**(`/indices/usdkrw` 직결) ② **시장 항목에서 원/달러 제외** ③ `/indices/usdkrw` 상세에 **달러 인덱스 항목 추가** — KIS에 DXY 종목이 없어 "우회 1(환율 6종 계산)" 방식 승인.
+- **조사 결과 (2026-07-19 실측)**:
+  - KIS 해외지표 마스터(`frgn_code.mst`, §9.1과 동일 소스) 전수 확인 — **달러 인덱스(DXY/USDX) 종목 없음**(P/W 해외지수 · C 상품 · B 금리 · X 환율 전 카테고리). FHKST03030100 단일 조회 불가 확정.
+  - ICE DXY 공식의 6개 통화쌍은 전부 X 카테고리에 존재: `FX@EUR`(달러/유로) · `FX@JPY`(엔/달러) · `FX@GBP`(달러/파운드) · `FX@CAD`(캐나다달러/달러) · `FX@SEK`(크로나/달러) · `FX@CHF`(프랑/달러).
+  - **라이브 실측**(FHKST03030100, X 카테고리, 2026-07-19): 6종 모두 `rt_cd=0` · 일별 21행 · 호가 방향이 공식과 일치(EURUSD 1.14 · USDJPY 162.45 · GBPUSD 1.35 · USDCAD 1.40 · USDSEK 9.65 · USDCHF 0.81), 계산값 DXY(20260718) = **100.76** — 정상 범위. FX 일별 행은 토요일(KST) 포함·일요일 결측 — 지표별 기준일 교집합으로 계산하므로 무관.
+  - 공식: `DXY = 50.14348112 × EURUSD^−0.576 × USDJPY^0.136 × GBPUSD^−0.119 × USDCAD^0.091 × USDSEK^0.042 × USDCHF^0.036` — **ICE 공표값과 소수점 수준 오차가 있을 수 있는 근사치**(화면에 근사치 각주 표기).
+- **구현 계획 (파일 단위)**:
+  1. `types/indices.ts` — `IndicatorId`에 파생 지표 `"DXY"` 추가(`OverseasIndicator` 3종은 KIS 단일 조회 가능 지표로 유지), `INDICATOR_NAMES.DXY = "달러 인덱스"`.
+  2. `lib/api/kis/constants.ts` — `KIS_DXY_BASE`(50.14348112) + `KIS_DXY_COMPONENTS`(코드·지수 6쌍, 실측 주석).
+  3. `lib/api/kis/client.ts` — `fetchKisFxPairDaily(code)`(X 카테고리 기간별시세, 기존 `fetchKisOverseasDaily`와 동일 창).
+  4. **신규** `lib/indices/dxy.ts` — 순수 계산 `computeDxyDetail(rawByCode)`: 6종 일별 종가의 **기준일 교집합**에서 DXY 산출(소수 2자리 반올림) → snapshot(전일 대비 차분)·history(최근 7)·dailyRows(최신순 7, 인접 차분) — `StoredMarketDetail` 동일 폼.
+  5. `lib/market/store.ts` — `MarketDetailKey`에 `"dxy"` 추가, `INDICATOR_TO_DETAIL_KEY.DXY = "dxy"`.
+  6. `lib/jobs/refreshMarketData.ts` — `refreshDxy(fetchedAt)`: 통화쌍 6종 **순차** 조회(유량 배려) → 계산 → `market:detail:dxy` 저장. **파생 부수 지표라 잡 전체 `ok` 게이팅 제외**(dailyFluctuation 관례 — 실패 시 로그만, 다음 회차가 자연 재시도). 리포트에 `dxy` 필드 추가.
+  7. `lib/indices/getOverseasDetail.ts` — 파라미터를 `Exclude<IndicatorId, MarketIndex>`로 확장(DXY 읽기 허용).
+  8. `lib/indices/getDashboard.ts` — `fetchedAtByKey` 타입을 `Exclude<MarketDetailKey, "dxy">`로 한정(홈은 DXY 미사용 — 추가 페치 없음).
+  9. `components/indices/IndexDetailScreen.tsx` — `children` 슬롯(일별 시세 섹션과 푸터 사이 렌더).
+  10. **신규** `components/indices/DollarIndexSection.tsx`(+module.css) — `getOverseasDetail("DXY")` → `IndexCard` + `IndexChartClient` + 근사치 각주. 데이터 없으면(첫 갱신 전) 준비 중 문구.
+  11. `app/indices/usdkrw/page.tsx` — `IndexDetailScreen`에 `<DollarIndexSection />` children 전달, metadata에 달러 인덱스 반영.
+  12. `components/indices/IndexDashboard.tsx` — ① 원/달러 SummaryCard 신설(코스닥 다음, `indexSummaryProps(data.usdKrw, "/indices/usdkrw", staleness.usdkrw)`) ② 시장 카드 대표값을 **미국 10년물 금리**로 교체(각주 "미국 10년물 금리 대표 표시 · 유가 포함") ③ `DashboardStaleness`에 `usdkrw` 추가.
+  13. `app/page.tsx` — 시장 카드 staleness 기준을 **금리·유가 2종** 중 가장 오래된 fetchedAt으로 축소, `usdkrw` staleness 추가.
+  14. `app/indices/market/page.tsx` — 미니 카드에서 usdkrw 제거(금리·유가 2종 + 수출입), metadata·aria 문구 갱신.
+- **상태**: 구현 완료(2026-07-19) — 계획 1~14번 그대로 구현. lint·tsc·프로덕션 빌드 통과, `refreshDxy` 로컬 실측(tsx 단독 실행)으로 `market:detail:dxy` 저장 확인. research.md §2·§4·§5 갱신. 실제 화면 확인은 사용자 확인 대기.
+
 ---
 
 ## 7. PR 분리 권장 (선택)

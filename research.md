@@ -67,8 +67,8 @@
 | `layout.tsx` | 루트 레이아웃. Geist 폰트, `tokens.css`+`globals.css` import, 테마 FOUC 방지 인라인 스크립트(`data-theme` 선결정) |
 | `page.tsx` | 홈 대시보드. 세션 검사 → 허용 외 이메일이면 access-denied 화면 → 카드 8종 데이터 병렬 조회(`Promise.all`) → `IndexDashboard` 렌더. staleness 배지 판정도 여기서 수행 |
 | `login/page.tsx` | Google 로그인 버튼 (Server Action으로 `signIn("google")`). 세션 있으면 `/` redirect, 인라인 `GoogleIcon` SVG 로컬 정의 |
-| `indices/kospi` `kosdaq` `usdkrw` `us10y` `oil/page.tsx` | 지표 상세 5종 — 전부 `ensureAllowedSession()` 후 `<IndexDetailScreen market=…>` 한 줄 위임 |
-| `indices/market/page.tsx` | 시장 요약(환율·금리·유가 미니 카드 3종). `getMarketDetails` MGET 1회. + 수출입 미니 카드(Phase 17-4) — `getTradeStatsView`로 최신 확정월 수출/수입/무역수지+YoY, `/feeds` 링크 |
+| `indices/kospi` `kosdaq` `usdkrw` `us10y` `oil/page.tsx` | 지표 상세 5종 — 전부 `ensureAllowedSession()` 후 `<IndexDetailScreen market=…>` 한 줄 위임. usdkrw만 children으로 `<DollarIndexSection>`(달러 인덱스, §28) 추가 |
+| `indices/market/page.tsx` | 시장 요약(금리·유가 미니 카드 2종 — 원/달러는 §28에서 홈 카드로 분리). `getMarketDetails` MGET 1회. + 수출입 미니 카드(Phase 17-4) — `getTradeStatsView`로 최신 확정월 수출/수입/무역수지+YoY, `/feeds` 링크 |
 | `indices/trade/[yyyymm]/page.tsx` | 수출입 상세(Phase 17-5) — 월 합계 3지표 + 품목별(국가 무관, HS 4단위 상위 15+기타) + 국가별(상위 8+기타, 클릭 시 품목 팝업). `getTradeDetailView` 1회. `/feeds` 수출입 탭의 월 링크로 진입 |
 | `indices/kospi-volatility/page.tsx` | 변동성 상세 — 월별 평균 막대 차트 + 당월 일별 기록 목록 |
 | `holdings/page.tsx` | 보유종목 목록·요약·연초 이후 추이·종목 추가 폼(`<details>` 토글, 종목명 검색 `<StockSearchInput>`) |
@@ -99,7 +99,7 @@
 |---|---|
 | `api/kis/constants.ts` | KIS 베이스 URL·엔드포인트·TR_ID·조회 코드·상수 전부. 지표 코드 변경 시 이 파일만 수정 |
 | `api/kis/auth.ts` | KIS 토큰 발급·캐싱 — Redis 공유 캐시 + `SET NX PX` 분산 락 + 인스턴스 내 in-flight 합류 (§7.4) |
-| `api/kis/client.ts` | `fetchKisJson` 공통 래퍼(헤더·rt_cd 검증·15초 타임아웃) + 조회 함수 10종 (지수·해외·현재가·시총랭킹·등락률랭킹·배당·손익·재무비율·종목명·기간별시세 일/월) |
+| `api/kis/client.ts` | `fetchKisJson` 공통 래퍼(헤더·rt_cd 검증·15초 타임아웃) + 조회 함수 11종 (지수·해외·환율 통화쌍(`fetchKisFxPairDaily`, §28)·현재가·시총랭킹·등락률랭킹·배당·손익·재무비율·종목명·기간별시세 일/월) |
 | `api/kis/types.ts` | KIS 원본 응답 타입 (필드 전부 optional string, `[key: string]: unknown` 허용) |
 | `api/dart/client.ts` | DART OpenAPI 클라이언트 — `corpCode.xml` zip 파싱(fflate, 상장사만 매핑)·공시검색 `list.json`(status 013=빈 결과 정상 처리) |
 | `api/naver/client.ts` | 네이버 뉴스 검색 클라이언트 (Phase 17-3) — 종목명 키워드·`sort=date`, `<b>`/엔티티 제거, **제목+요약에 종목명 포함 기사만** 필터(저관련·오탐 제거), pubDate ms 파싱. 상위 10건 |
@@ -117,6 +117,7 @@
 | `format/*` | 표시 포맷 모음 (§6.2 카탈로그) |
 | `indices/kisMapper.ts` | 국내지수 응답→도메인 매핑 + **공용 유틸 `parseNum`/`applyKisSign`/`resolveDirection`/`formatBasDtLabel`** |
 | `indices/kisOverseasMapper.ts` | 해외(환율·금리·유가) 응답→도메인 매핑. 행별 전일 대비가 없어 인접 종가 차분으로 계산 |
+| `indices/dxy.ts` | 달러 인덱스 계산 (§28) — `computeDxyDetail`(순수): KIS에 DXY 종목이 없어 환율 6종(`KIS_DXY_COMPONENTS`)의 일별 종가를 ICE 공식(가중 기하평균)으로 합성. 통화쌍별 휴장일이 달라 기준일 교집합에서만 계산, `StoredMarketDetail` 동일 폼 반환 |
 | `indices/getDashboard.ts` | 홈 데이터 리더 — `market:detail:*` 5종 MGET. 필수 4종 없으면 throw(`MARKET_DATA_EMPTY_MESSAGE`), oil은 null 허용 |
 | `indices/getIndexDetail.ts` / `getOverseasDetail.ts` | 상세 리더 — `market:detail:{key}` 1건. **두 파일 내용이 사실상 동일** (§8) |
 | `indices/volatility.ts` | 변동성 기록 store+계산+카드 요약 (한 파일에 쓰기·읽기 혼재) |
@@ -134,7 +135,7 @@
 | `hotstocks/universe.ts` | KIS 종목 마스터 zip 다운로드·EUC-KR 고정폭 파싱 — ST(주권)만, 스팩 제외, 코드 오름차순. 핫종목 잡 + 종목명 검색(`market:stockMaster`) 공용 |
 | `hotstocks/summary.ts` | 월간 랭킹 갱신 지연 판정 `isHotStocksStale` (핫종목 페이지 월간 뷰용) |
 | `hotstocks/dailyCard.ts` | 홈 핫종목 카드 요약 `getDailyHotCardSummary` — `market:dailyFluctuation` 당일 등락률 상위 3 |
-| `jobs/refreshMarketData.ts` | **시세 갱신 잡 파이프라인 본체** (§4.1) — 지수·종목·포트폴리오 갱신에 더해 당일·주간 등락률 상위 30(`refreshDailyFluctuation`/`refreshWeeklyFluctuation`, 회차당 각 1콜)·종목 마스터(`refreshStockMaster`, 1일 1회) 저장. 셋 다 부수·실패 격리 |
+| `jobs/refreshMarketData.ts` | **시세 갱신 잡 파이프라인 본체** (§4.1) — 지수·종목·포트폴리오 갱신에 더해 달러 인덱스(`refreshDxy`, 환율 6종 순차 조회→계산, §28)·당일·주간 등락률 상위 30(`refreshDailyFluctuation`/`refreshWeeklyFluctuation`, 회차당 각 1콜)·종목 마스터(`refreshStockMaster`, 1일 1회) 저장. 넷 다 부수·실패 격리 |
 | `jobs/refreshHotStocks.ts` | **핫종목 갱신 잡 파이프라인 본체** (§4.2) |
 | `jobs/refreshFeeds.ts` | **피드(공시·뉴스·수출입) 갱신 잡 파이프라인 본체** (§4.5) — corpCode 매핑→종목별 공시(DART)+뉴스(네이버, 종목명 키워드) 조회·저장. 소스·종목별 실패 격리. + `refreshTradeStats`(17-4) — 종목 무관 월 1회성(스냅샷 최신월<직전 완결월일 때만), 12개월 한도 때문에 2회 호출(최근 12개월+전년동월)→13개월 연속 저장. 잡 `ok` 게이팅 제외(다음 회차 가드가 재시도). 알림 훅 2종: `evaluateFeedAlerts`(공시·시장경보) + `evaluateDividendAlerts`(배당 지급일 당일, §25) |
 | `jobs/collectTargets.ts` | 잡 공용 수집 대상 조회 — `collectHoldings`/`collectWatchlists`/`unionSymbolCodes`/`errorMessage` (시세·피드 잡 공유, Phase 17-1에서 refreshMarketData 로컬 함수를 추출) |
@@ -155,12 +156,13 @@
 
 | 컴포넌트 | 종류 | 역할 |
 |---|---|---|
-| `indices/IndexDashboard` | Server | 홈 카드 8종 조립 + 헤더(좌 `NavIconLink` 홈 아이콘 + 우 햄버거 `HeaderMenu` — 제목·설명 문구는 Phase 26에서 제거) |
+| `indices/IndexDashboard` | Server | 홈 카드 9종 조립(§28에서 원/달러 카드 분리 신설 — 시장 카드 대표값은 미국 10년물 금리로 교체) + 헤더(좌 `NavIconLink` 홈 아이콘 + 우 햄버거 `HeaderMenu` — 제목·설명 문구는 Phase 26에서 제거) |
 | `indices/SummaryCard` | Server | **홈 요약 카드 공용 프리미티브** — value/change/footnote/placeholder/staleness 배지. 카드 전체가 Link |
 | `indices/HotStocksCard` | Server | 핫종목 전용 카드 — 당일 등락률 TOP 3 리스트 (SummaryCard 미사용) |
 | `indices/WatchlistCard` | Server | 관심종목 전용 카드 (§24) — 수익률 상위 3종목 리스트, 행마다 등록 기준일 대비 수익률 + 괄호 전일 등락률. 골격·staleness 배지는 SummaryCard composes(`STALENESS_LABELS` export 재사용), 리스트 폼은 HotStocksCard와 동일 |
 | `indices/DividendCard` | Server | 배당 일정 전용 카드 (§25) — 다가오는 지급일 상위 3행(종목명·지급일 MM/DD·주당배당금), **보유종목 기준**. 골격·배지·리스트 폼은 WatchlistCard와 동일 관례, 카드 전체 `/dividends` 링크 |
-| `indices/IndexDetailScreen` | Server(async) | **지표 상세 5종 공용 화면** — `getIndexDetail`/`getOverseasDetail` 분기, 카드+차트+일별 리스트+푸터 |
+| `indices/IndexDetailScreen` | Server(async) | **지표 상세 5종 공용 화면** — `getIndexDetail`/`getOverseasDetail` 분기, 카드+차트+일별 리스트+푸터. `children` 슬롯(일별 시세와 푸터 사이 — usdkrw의 달러 인덱스 섹션용, §28) |
+| `indices/DollarIndexSection` | Server(async) | 원/달러 상세 하단 달러 인덱스 섹션 (§28) — `getOverseasDetail("DXY")` → IndexCard+차트+근사치 각주. 첫 갱신 전엔 준비 중 문구 |
 | `indices/IndexCard` / `IndexDailyList` / `DataAsOfFooter` | Server | 상세 스냅샷 카드 / 일별 시세 리스트 / 홈 푸터 |
 | `indices/IndexChartClient` → `IndexLineChart` | Client | Recharts 래핑 패턴: Client 셸이 `dynamic(…, { ssr: false })` + 스켈레톤 → 실제 차트 |
 | `indices/VolatilityChartClient` → `VolatilityChart` | Client | 동일 패턴, BarChart |
@@ -227,6 +229,8 @@ QStash 스케줄 4개 (평일 09:00~15:30 10분 간격 / 15:40 / 18:15 KST)
   → refreshMarketData(trigger)  [lib/jobs/refreshMarketData.ts]
       1. refreshIndices: KIS 5종 병렬(allSettled) → market:detail:{kospi|kosdaq|usdkrw|us10y|oil}
          (snapshot + history 7일 + dailyRows, 매퍼: kisMapper / kisOverseasMapper)
+      1a. refreshDxy: 환율 통화쌍 6콜 순차(FX@EUR·JPY·GBP·CAD·SEK·CHF) → computeDxyDetail
+           (ICE 공식 근사, 기준일 교집합) → market:detail:dxy — 파생 부수 지표, 잡 ok 게이팅 제외 (§28)
       1b. refreshDailyFluctuation: 등락률 순위(FHPST01700000) 1콜 → market:dailyFluctuation
            (basePrice=전일 종가: 현재가−prdy_vrss 부호 적용, §20)
       1b'. refreshWeeklyFluctuation: 동일 API fid_input_cnt_1="5" 1콜 →
@@ -339,6 +343,7 @@ QStash 스케줄 (월 1회, 매월 5일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 5 *
   변동성·핫종목·관심종목·배당) + `getLastRefreshRecord` 병렬 → staleness 배지 판정 →
   `IndexDashboard`.
 - **지표 상세**: `IndexDetailScreen` → `getIndexDetail`/`getOverseasDetail` → detail 1건.
+  usdkrw는 children `DollarIndexSection`이 `market:detail:dxy` 1건 추가 조회 (§28).
 - **보유종목**: `getHoldings`(복호화) → `getPortfolioValuation`(`market:stock:*` MGET) +
   `getPortfolioHistory`. 상세는 + `getStockInfo`(스냅샷+정보 블록 조합) + `getStockHistory`.
 - **관심종목**: `getWatchlist` + `getStockSnapshots` + `computeWatchReturnRate`.
@@ -375,7 +380,7 @@ QStash 스케줄 (월 1회, 매월 5일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 5 *
 
 | 키 | 값 | 암호화 | 쓰기 주체 | 읽기 주체 |
 |---|---|---|---|---|
-| `market:detail:{kospi\|kosdaq\|usdkrw\|us10y\|oil}` | `StoredMarketDetail` (snapshot+history+dailyRows+fetchedAt) | ✕ | 시세 잡 | 홈·지표 상세·시장 |
+| `market:detail:{kospi\|kosdaq\|usdkrw\|us10y\|oil\|dxy}` | `StoredMarketDetail` (snapshot+history+dailyRows+fetchedAt). dxy는 환율 6종 합성 파생 지표 (§28) | ✕ | 시세 잡 | 홈·지표 상세·시장 |
 | `market:stock:{code}` | `StoredStockSnapshot` (price·changeRate·marketName·raw 전체·fetchedAt) | ✕ | 시세 잡 | 평가·관심종목·상세 |
 | `market:stockInfo:{code}` | `StoredStockInfoBlocks` (순위·배당·실적 + 배당 확정 회차 `rounds` — optional, 구 스냅샷 호환, §25) | ✕ | 시세 잡(확정 회차/신규) | `getStockInfo`·배당 일정 리더·배당 알림 훅 |
 | `market:lastRefreshAt` | `LastRefreshRecord` (at·trigger·ok) | ✕ | 시세 잡(전부 성공 시) | 홈 배지·각 페이지 「마지막 갱신」 |
@@ -449,7 +454,8 @@ QStash 스케줄 (월 1회, 매월 5일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 5 *
 
 ### 6.3 타입
 
-- `types/indices.ts` — `IndicatorId`(=`MarketIndex`|`OverseasIndicator`),
+- `types/indices.ts` — `IndicatorId`(=`MarketIndex`|`OverseasIndicator`|`"DXY"` —
+  DXY는 환율 6종 합성 파생 지표, §28),
   `IndexSnapshot`/`IndexSeries`/`IndexDailyRow`/`IndexDetailData`/`IndexDashboardData`,
   `PriceDirection`, 변동성 3종, `KIS_DATA_NOTICE`, `INDICATOR_NAMES`.
 - `types/holdings.ts` — `Holding`(totalCost 모델), `PortfolioDailyRecord`,
