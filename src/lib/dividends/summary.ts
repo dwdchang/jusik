@@ -41,7 +41,7 @@ export interface DividendCardEntry {
 }
 
 export interface DividendCardSummary {
-  /** 지급일이 오늘 이후인 행 오름차순 상위 3 — 없으면 빈 배열 (placeholder) */
+  /** 지급일이 오늘 이후인 행 오름차순 상위 4 — 없으면 빈 배열 (placeholder) */
   upcoming: DividendCardEntry[];
 }
 
@@ -90,8 +90,8 @@ export async function getDividendSchedule(
 }
 
 /**
- * 홈 "배당 일정" 카드 요약 — 지급일이 오늘(KST) 이후인 행 오름차순 상위 3.
- * 실패 시 null — 홈 전체를 막지 않는다 (카드 요약 격리 관례).
+ * 홈 "배당 일정" 카드 요약 — 지급일이 오늘(KST) 이후인 행 오름차순 상위 4
+ * (§33에서 4행 통일). 실패 시 null — 홈 전체를 막지 않는다 (카드 요약 격리 관례).
  */
 export async function getDividendCardSummary(
   email: string
@@ -106,7 +106,7 @@ export async function getDividendCardSummary(
           row.payDate !== null && row.payDate >= today
       )
       .sort((a, b) => a.payDate.localeCompare(b.payDate))
-      .slice(0, 3)
+      .slice(0, 4)
       .map((row) => ({
         symbolCode: row.symbolCode,
         name: row.name,

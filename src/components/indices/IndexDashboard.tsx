@@ -3,7 +3,6 @@ import { NavIconLink } from "@/components/nav/NavIconLink";
 import type { DividendCardSummary } from "@/lib/dividends/summary";
 import type { TodayFeedCounts } from "@/lib/feeds/homeFeed";
 import { formatBasDtDisplay } from "@/lib/format/basDt";
-import { formatBtcValue } from "@/lib/format/btc";
 import {
   formatChange,
   formatChangeRate,
@@ -25,6 +24,7 @@ import { DividendCard } from "./DividendCard";
 import { FeedSummaryCard } from "./FeedSummaryCard";
 import { HotStocksCard } from "./HotStocksCard";
 import styles from "./IndexDashboard.module.css";
+import { MarketCard } from "./MarketCard";
 import { SummaryCard } from "./SummaryCard";
 import { WatchlistCard } from "./WatchlistCard";
 
@@ -107,47 +107,12 @@ export function IndexDashboard({
             staleness.usdkrw
           )}
         />
-        <SummaryCard
-          title="시장"
-          href="/indices/market"
+        <MarketCard
+          usTreasury10y={data.usTreasury10y}
+          oil={data.oil}
+          gold={data.gold}
+          btcUsd={data.btcUsd}
           staleness={staleness.market}
-          value={formatIndex(data.usTreasury10y.close)}
-          change={{
-            text: formatChange(
-              data.usTreasury10y.changeAmount,
-              data.usTreasury10y.changeRate
-            ),
-            direction: data.usTreasury10y.direction,
-          }}
-          subItems={[
-            ...(data.gold !== null
-              ? [
-                {
-                  label: "금",
-                  value: formatIndex(data.gold.close),
-                  change: {
-                    text: formatChangeRate(data.gold.changeRate),
-                    direction: data.gold.direction,
-                  },
-                },
-              ]
-              : []),
-            ...(data.btcKrw !== null
-              ? [
-                {
-                  label: "비트코인",
-                  value: formatBtcValue(data.btcKrw.close, "KRW"),
-                  change: {
-                    text: formatChangeRate(data.btcKrw.changeRate),
-                    direction: data.btcKrw.direction,
-                  },
-                },
-              ]
-              : []),
-          ]}
-          footnote={`미국 10년물 금리 대표 표시 · 유가 포함 — 기준일 ${formatBasDtDisplay(
-            data.usTreasury10y.basDt
-          )}`}
         />
         {holdingsSummary !== null ? (
           <SummaryCard

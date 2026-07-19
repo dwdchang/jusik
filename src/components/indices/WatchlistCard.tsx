@@ -7,7 +7,7 @@ import { STALENESS_LABELS } from "./SummaryCard";
 import styles from "./WatchlistCard.module.css";
 
 /**
- * 홈 "관심종목" 카드 — 수익률 상위 3종목 개별 표시 (§24).
+ * 홈 "관심종목" 카드 — 수익률 상위 4종목 개별 표시 (§24, §33에서 4행 통일).
  * 행마다 등록 기준일 대비 수익률을 메인으로, 괄호에 전일 대비 등락률을
  * 함께 표시한다. 기준가 확정 전 종목은 수익률 자리에 「-」.
  * staleness 배지는 SummaryCard와 동일 정책(§11.10-B2) — 홈에서 판정값을 받는다.
@@ -34,10 +34,10 @@ export function WatchlistCard({
         </span>
       ) : null}
       <h2 className={styles.title}>관심종목</h2>
-      {summary !== null && summary.top3.length > 0 ? (
+      {summary !== null && summary.top4.length > 0 ? (
         <>
           <ol className={styles.list}>
-            {summary.top3.map((entry) => (
+            {summary.top4.map((entry) => (
               <li key={entry.symbolCode} className={styles.row}>
                 <span className={styles.name}>{entry.name}</span>
                 <span
@@ -64,8 +64,8 @@ export function WatchlistCard({
             ))}
           </ol>
           <p className={styles.footnote}>
-            {summary.count > 3
-              ? `${summary.count}종목 중 수익률 상위 3 · 등록 기준일 대비 · 괄호는 전일 대비`
+            {summary.count > 4
+              ? `${summary.count}종목 중 수익률 상위 4 · 등록 기준일 대비 · 괄호는 전일 대비`
               : "등록 기준일 대비 · 괄호는 전일 대비"}
           </p>
         </>

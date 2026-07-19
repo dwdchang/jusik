@@ -85,28 +85,6 @@
   color: var(--color-flat);
 }
 
-/* 보조 시세 목록 — 시장 카드의 금·비트코인 (§32) */
-.subItems {
-  list-style: none;
-  margin: 0 0 var(--space-12);
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.subItem {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-8);
-  font-size: var(--text-caption);
-  color: var(--color-text-primary);
-}
-
-.subLabel {
-  color: var(--color-text-secondary);
-}
-
 .footnote {
   font-size: var(--text-micro);
   color: var(--color-text-tertiary);

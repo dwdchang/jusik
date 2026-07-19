@@ -8,20 +8,20 @@ import { KIS_DATA_NOTICE, type IndexDashboardData } from "@/types/indices";
 /**
  * 홈 대시보드 데이터 — QStash 갱신 잡이 저장한 `market:detail:*`를 읽는다.
  * KIS 직접 호출 없음 (Phase 11 §11.6). 빈 Redis(최초 배포)면 안내 메시지로 throw.
- * oil(Phase 15)·gold·btcKrw(Phase 30, §32에서 홈 합류)는 나중에 추가된 키 —
+ * oil(Phase 15)·gold·btcUsd(Phase 30, §32~§33에서 홈 합류)는 나중에 추가된 키 —
  * 배포 직후 첫 갱신 회차 전에는 없을 수 있어 필수 4종과 달리 null을 허용한다
- * (시장 카드에서 해당 줄 생략 처리).
+ * (시장 카드에서 해당 행 생략 처리).
  */
 
 const REQUIRED_KEYS: MarketDetailKey[] = ["kospi", "kosdaq", "usdkrw", "us10y"];
-const OPTIONAL_KEYS: MarketDetailKey[] = ["oil", "gold", "btcKrw"];
+const OPTIONAL_KEYS: MarketDetailKey[] = ["oil", "gold", "btcUsd"];
 
 export const MARKET_DATA_EMPTY_MESSAGE =
   "아직 수집된 시세 데이터가 없습니다. 평일 09:00~15:30(KST) 갱신 회차 이후 표시됩니다.";
 
 export interface DashboardData extends IndexDashboardData {
   /** 카드 배지 판정용 — 지표별 잡 수집 시각 (§11.10-B2). oil·gold는 수집 전 null.
-   * dxy(§28)·btcUsd는 홈 카드가 없어 제외, btcKrw는 홈에 표시하지만(§32)
+   * dxy(§28)·btcKrw는 홈 미사용이라 제외, btcUsd는 홈에 표시하지만(§33)
    * 잡 `ok` 게이팅 밖의 외부 지표(§30 dxy 관례)라 배지 판정에서 제외 */
   fetchedAtByKey: Record<
     Exclude<MarketDetailKey, "dxy" | "btcKrw" | "btcUsd">,
@@ -38,10 +38,10 @@ export async function getDashboardData(): Promise<DashboardData> {
   }
 
   const [kospi, kosdaq, usdkrw, us10y] = rows as StoredMarketDetail[];
-  const [oil, gold, btcKrw] = rows.slice(REQUIRED_KEYS.length);
+  const [oil, gold, btcUsd] = rows.slice(REQUIRED_KEYS.length);
 
   // 화면의 asOf는 가장 오래된 수집 시각 — staleness를 낙관 표시하지 않는다
-  const asOf = [kospi, kosdaq, usdkrw, us10y, oil, gold, btcKrw]
+  const asOf = [kospi, kosdaq, usdkrw, us10y, oil, gold, btcUsd]
     .filter((row): row is StoredMarketDetail => row !== null)
     .map((row) => row.fetchedAt)
     .sort()[0];
@@ -57,7 +57,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     usTreasury10y: us10y.snapshot,
     oil: oil?.snapshot ?? null,
     gold: gold?.snapshot ?? null,
-    btcKrw: btcKrw?.snapshot ?? null,
+    btcUsd: btcUsd?.snapshot ?? null,
     fetchedAtByKey: {
       kospi: kospi.fetchedAt,
       kosdaq: kosdaq.fetchedAt,

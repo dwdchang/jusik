@@ -8,13 +8,6 @@ export interface SummaryCardChange {
   direction: PriceDirection;
 }
 
-/** 대표값 아래 보조 시세 한 줄 — 홈 시장 카드의 금·비트코인 (§32) */
-export interface SummaryCardSubItem {
-  label: string;
-  value: string;
-  change?: SummaryCardChange;
-}
-
 export const STALENESS_LABELS: Record<StalenessLevel, string> = {
   warn: "갱신 지연 — 20분 이상 경과",
   critical: "갱신 중단 — 1시간 이상 경과",
@@ -31,7 +24,6 @@ export function SummaryCard({
   value,
   valueDirection,
   change,
-  subItems,
   footnote,
   placeholder = "데이터 준비 중",
   staleness = null,
@@ -42,7 +34,6 @@ export function SummaryCard({
   /** 지정 시 value에 등락 색상 적용 (보유종목 수익률 등) */
   valueDirection?: PriceDirection;
   change?: SummaryCardChange;
-  subItems?: SummaryCardSubItem[];
   footnote?: string;
   placeholder?: string;
   staleness?: StalenessLevel | null;
@@ -77,23 +68,6 @@ export function SummaryCard({
             >
               {change.text}
             </p>
-          ) : null}
-          {subItems !== undefined && subItems.length > 0 ? (
-            <ul className={styles.subItems}>
-              {subItems.map((item) => (
-                <li key={item.label} className={styles.subItem}>
-                  <span className={styles.subLabel}>{item.label}</span>
-                  <span className="numeric">{item.value}</span>
-                  {item.change !== undefined ? (
-                    <span
-                      className={`numeric ${styles[item.change.direction]}`}
-                    >
-                      {item.change.text}
-                    </span>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
           ) : null}
           {footnote !== undefined ? (
             <p className={styles.footnote}>{footnote}</p>

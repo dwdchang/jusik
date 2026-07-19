@@ -33,11 +33,11 @@ export interface WatchlistCardEntry {
   dailyChangeRate: number | null;
 }
 
-/** 홈 화면 관심종목 카드 요약 — 수익률 상위 3종목 개별 표시 (§24) */
+/** 홈 화면 관심종목 카드 요약 — 수익률 상위 4종목 개별 표시 (§24, §33에서 4행 통일) */
 export interface WatchlistCardSummary {
   count: number;
-  /** 수익률 내림차순 상위 3개 — 기준가 확정 전 항목은 뒤 순위 */
-  top3: WatchlistCardEntry[];
+  /** 수익률 내림차순 상위 4개 — 기준가 확정 전 항목은 뒤 순위 */
+  top4: WatchlistCardEntry[];
 }
 
 /**
@@ -73,7 +73,7 @@ export async function getWatchlistCardSummary(
         (a.returnRate ?? Number.NEGATIVE_INFINITY)
     );
 
-    return { count: items.length, top3: entries.slice(0, 3) };
+    return { count: items.length, top4: entries.slice(0, 4) };
   } catch (error) {
     console.error("[getWatchlistCardSummary] failed:", error);
     return null;
