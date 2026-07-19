@@ -26,7 +26,6 @@ export function FeedSummaryCard({ counts }: { counts: TodayFeedCounts }) {
           </li>
         ))}
       </ul>
-      <p className={styles.footnote}>오늘 업로드 · 보유·관심종목 기준</p>
     </Link>
   );
 }

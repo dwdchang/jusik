@@ -33,6 +33,8 @@
   --text-title: 22px;
   --text-price: 28px;
   --text-caption: 13px;
+  /* caption보다 1pt 작은 보조 수치용 (§35 시장 카드 등락률) */
+  --text-caption-sm: 12px;
   --text-micro: 11px;
   --weight-medium: 500;
   --weight-semibold: 600;

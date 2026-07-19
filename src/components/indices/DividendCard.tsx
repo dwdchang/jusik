@@ -56,9 +56,6 @@ export function DividendCard({
               </li>
             ))}
           </ol>
-          <p className={styles.footnote}>
-            다가오는 지급일 순 · 주당배당금 · 보유종목 기준
-          </p>
         </>
       ) : (
         <p className={styles.placeholder}>예정된 배당 지급일이 없습니다</p>

@@ -2,7 +2,6 @@ import { HeaderMenu } from "@/components/nav/HeaderMenu";
 import { NavIconLink } from "@/components/nav/NavIconLink";
 import type { DividendCardSummary } from "@/lib/dividends/summary";
 import type { TodayFeedCounts } from "@/lib/feeds/homeFeed";
-import { formatBasDtDisplay } from "@/lib/format/basDt";
 import {
   formatChange,
   formatChangeRate,
@@ -56,7 +55,6 @@ function indexSummaryProps(
       text: formatChange(snapshot.changeAmount, snapshot.changeRate),
       direction: snapshot.direction,
     },
-    footnote: `기준일 ${formatBasDtDisplay(snapshot.basDt)}`,
     staleness,
   };
 }
@@ -133,7 +131,6 @@ export function IndexDashboard({
                 }
                 : undefined
             }
-            footnote="총 수익률 · 현재가 기준"
           />
         ) : (
           <SummaryCard
@@ -160,7 +157,6 @@ export function IndexDashboard({
                 }
                 : undefined
             }
-            footnote="당월 평균 · 일중 (고가−저가)/저가"
           />
         ) : (
           <SummaryCard

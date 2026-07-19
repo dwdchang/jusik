@@ -19,10 +19,6 @@
   composes: title from "./SummaryCard.module.css";
 }
 
-.footnote {
-  composes: footnote from "./SummaryCard.module.css";
-}
-
 .placeholder {
   composes: placeholder from "./SummaryCard.module.css";
 }
@@ -33,6 +29,11 @@
   gap: var(--space-8);
   margin-bottom: var(--space-12);
   list-style: none;
+}
+
+/* 각주 제거 후 리스트가 마지막이면 아래 여백 없음 (§35) */
+.list:last-child {
+  margin-bottom: 0;
 }
 
 .row {
@@ -58,7 +59,7 @@
   font-weight: var(--weight-semibold);
 }
 
-/* 괄호 안 전일 대비 등락률 — 메인 수익률보다 한 단계 작게 */
+/* 전일 대비 등락률 — 메인 수익률보다 한 단계 작게 (§35에서 괄호 제거) */
 .daily {
   flex-shrink: 0;
   font-size: var(--text-micro);

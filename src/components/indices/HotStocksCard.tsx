@@ -40,7 +40,6 @@ export function HotStocksCard({
           {stale !== null ? (
             <p className={styles.staleNotice}>갱신 지연 — 마지막 갱신 기준</p>
           ) : null}
-          <p className={styles.footnote}>당일 등락률 TOP 4 · 전일 종가 대비</p>
         </>
       ) : (
         <p className={styles.placeholder}>장중 갱신 회차에 채워집니다</p>

@@ -8,8 +8,9 @@ import styles from "./WatchlistCard.module.css";
 
 /**
  * 홈 "관심종목" 카드 — 수익률 상위 4종목 개별 표시 (§24, §33에서 4행 통일).
- * 행마다 등록 기준일 대비 수익률을 메인으로, 괄호에 전일 대비 등락률을
- * 함께 표시한다. 기준가 확정 전 종목은 수익률 자리에 「-」.
+ * 행마다 등록 기준일 대비 수익률을 메인으로, 그 뒤에 전일 대비 등락률을
+ * 한 단계 작은 글자로 함께 표시한다(§35에서 괄호 제거).
+ * 기준가 확정 전 종목은 수익률 자리에 「-」.
  * staleness 배지는 SummaryCard와 동일 정책(§11.10-B2) — 홈에서 판정값을 받는다.
  */
 export function WatchlistCard({
@@ -57,17 +58,12 @@ export function WatchlistCard({
                       styles[resolveDirection(entry.dailyChangeRate)]
                     }`}
                   >
-                    ({formatChangeRate(entry.dailyChangeRate)})
+                    {formatChangeRate(entry.dailyChangeRate)}
                   </span>
                 ) : null}
               </li>
             ))}
           </ol>
-          <p className={styles.footnote}>
-            {summary.count > 4
-              ? `${summary.count}종목 중 수익률 상위 4 · 등록 기준일 대비 · 괄호는 전일 대비`
-              : "등록 기준일 대비 · 괄호는 전일 대비"}
-          </p>
         </>
       ) : (
         <p className={styles.placeholder}>종목을 등록해보세요</p>

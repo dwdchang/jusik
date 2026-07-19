@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { formatBasDtDisplay } from "@/lib/format/basDt";
 import { formatBtcValue } from "@/lib/format/btc";
 import { formatChangeRate } from "@/lib/format/change";
 import { formatIndex } from "@/lib/format/index";
@@ -96,9 +95,6 @@ export function MarketCard({
           </li>
         ))}
       </ul>
-      <p className={styles.footnote}>
-        기준일 {formatBasDtDisplay(usTreasury10y.basDt)}
-      </p>
     </Link>
   );
 }

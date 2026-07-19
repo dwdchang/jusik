@@ -2,7 +2,7 @@
   position: relative;
   display: block;
   min-width: 0;
-  padding: var(--space-20);
+  padding: var(--space-16);
   background-color: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -65,6 +65,11 @@
   margin-bottom: var(--space-12);
 }
 
+/* 각주 제거 후 등락률이 마지막이면 아래 여백 없음 (§35) */
+.change:last-child {
+  margin-bottom: 0;
+}
+
 .value.rise {
   color: var(--color-rise);
 }
@@ -83,11 +88,6 @@
 
 .flat {
   color: var(--color-flat);
-}
-
-.footnote {
-  font-size: var(--text-micro);
-  color: var(--color-text-tertiary);
 }
 
 .placeholder {

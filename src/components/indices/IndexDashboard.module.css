@@ -2,7 +2,7 @@
   width: 100%;
   max-width: var(--layout-max-width);
   margin: 0 auto;
-  padding: var(--space-16);
+  padding: var(--space-12);
 }
 
 .header {
@@ -22,7 +22,7 @@
 .cards {
   display: grid;
   grid-template-columns: 1fr;
-  gap: var(--space-12);
+  gap: var(--space-8);
   margin-bottom: var(--space-24);
 }
 

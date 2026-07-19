@@ -24,7 +24,6 @@ export function SummaryCard({
   value,
   valueDirection,
   change,
-  footnote,
   placeholder = "데이터 준비 중",
   staleness = null,
 }: {
@@ -34,7 +33,6 @@ export function SummaryCard({
   /** 지정 시 value에 등락 색상 적용 (보유종목 수익률 등) */
   valueDirection?: PriceDirection;
   change?: SummaryCardChange;
-  footnote?: string;
   placeholder?: string;
   staleness?: StalenessLevel | null;
 }) {
@@ -68,9 +66,6 @@ export function SummaryCard({
             >
               {change.text}
             </p>
-          ) : null}
-          {footnote !== undefined ? (
-            <p className={styles.footnote}>{footnote}</p>
           ) : null}
         </>
       ) : (
