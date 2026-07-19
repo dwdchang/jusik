@@ -3,6 +3,7 @@ import { NavIconLink } from "@/components/nav/NavIconLink";
 import type { DividendCardSummary } from "@/lib/dividends/summary";
 import type { TodayFeedCounts } from "@/lib/feeds/homeFeed";
 import { formatBasDtDisplay } from "@/lib/format/basDt";
+import { formatBtcValue } from "@/lib/format/btc";
 import {
   formatChange,
   formatChangeRate,
@@ -28,7 +29,8 @@ import { SummaryCard } from "./SummaryCard";
 import { WatchlistCard } from "./WatchlistCard";
 
 /** 카드 배지 판정 결과 — 장중(09:00~18:20 KST)에만 non-null (§11.10-B).
- * market은 금리·유가 2종 중 가장 오래된 수집 시각 기준 (§15.2, §28에서 원/달러 분리) */
+ * market은 금리·유가·금 3종 중 가장 오래된 수집 시각 기준
+ * (§15.2, §28에서 원/달러 분리, §32에서 금 합류) */
 export type DashboardStaleness = Record<
   | "kospi"
   | "kosdaq"
@@ -117,7 +119,33 @@ export function IndexDashboard({
             ),
             direction: data.usTreasury10y.direction,
           }}
-          footnote={`미국 10년물 금리 대표 표시 · 유가·금·비트코인 포함 — 기준일 ${formatBasDtDisplay(
+          subItems={[
+            ...(data.gold !== null
+              ? [
+                {
+                  label: "금",
+                  value: formatIndex(data.gold.close),
+                  change: {
+                    text: formatChangeRate(data.gold.changeRate),
+                    direction: data.gold.direction,
+                  },
+                },
+              ]
+              : []),
+            ...(data.btcKrw !== null
+              ? [
+                {
+                  label: "비트코인",
+                  value: formatBtcValue(data.btcKrw.close, "KRW"),
+                  change: {
+                    text: formatChangeRate(data.btcKrw.changeRate),
+                    direction: data.btcKrw.direction,
+                  },
+                },
+              ]
+              : []),
+          ]}
+          footnote={`미국 10년물 금리 대표 표시 · 유가 포함 — 기준일 ${formatBasDtDisplay(
             data.usTreasury10y.basDt
           )}`}
         />

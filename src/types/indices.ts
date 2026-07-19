@@ -67,6 +67,10 @@ export interface IndexDashboardData {
   usTreasury10y: IndexSnapshot;
   /** 국제유가 WTI — Phase 15 추가 키라 첫 갱신 회차 전에는 null */
   oil: IndexSnapshot | null;
+  /** 금 현물 — Phase 30 추가 키라 첫 갱신 회차 전에는 null (§32 홈 시장 카드 보조 줄) */
+  gold: IndexSnapshot | null;
+  /** 비트코인 원화 — Phase 30 추가 키라 첫 갱신 회차 전에는 null (§32 홈 시장 카드 보조 줄) */
+  btcKrw: IndexSnapshot | null;
 }
 
 /** 상세 페이지 일별 시세 리스트 행 */
