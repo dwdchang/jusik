@@ -26,7 +26,9 @@ export default function manifest(): MetadataRoute.Manifest {
         type: "image/png",
       },
       {
-        src: "/icons/icon-512.png",
+        // maskable은 OS가 원형·스퀘어클 등으로 잘라내므로
+        // 그래프가 중앙 안전영역 안에 들어간 전용 이미지를 쓴다.
+        src: "/icons/icon-512-maskable.png",
         sizes: "512x512",
         type: "image/png",
         purpose: "maskable",
