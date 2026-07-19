@@ -18,7 +18,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 ## 2. API 및 보안 (한국투자증권 KIS OpenAPI)
 
 - `KIS_APP_KEY`/`KIS_APP_SECRET`·`HOLDINGS_ENCRYPTION_KEY`·`CRON_SECRET` 등 모든 키는 서버 전용 · `NEXT_PUBLIC_` 금지
-- QStash 갱신 잡 라우트는 4종(`/api/jobs/refresh-market-data`, `/api/jobs/refresh-hot-stocks`, `/api/jobs/refresh-feeds`, `/api/jobs/refresh-trade-detail`)이며, KIS 호출은 이 중 KIS 담당 잡(`refresh-market-data`, `refresh-hot-stocks`) 경유만 허용 — 화면(Server Component)·Server Action은 KIS를 직접 호출하지 않고 Redis 스냅샷만 읽는다
+- QStash 갱신 잡 라우트는 5종(`/api/jobs/refresh-market-data`, `/api/jobs/refresh-hot-stocks`, `/api/jobs/refresh-dividend-ranking`, `/api/jobs/refresh-feeds`, `/api/jobs/refresh-trade-detail`)이며, KIS 호출은 이 중 KIS 담당 잡(`refresh-market-data`, `refresh-hot-stocks`, `refresh-dividend-ranking`) 경유만 허용 — 화면(Server Component)·Server Action은 KIS를 직접 호출하지 않고 Redis 스냅샷만 읽는다
 - KIS 응답의 문자열 숫자·부호 코드는 항상 `parseNum`/`applyKisSign`(`lib/indices/kisMapper.ts`) 경유
 
 ## 3. 컴포넌트 · React 19
@@ -29,7 +29,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 - 구현 전 `research.md` + `plan.md` 필독 · 승인된 Phase만 진행 · 파일 단위로 작성·검토
 - plan.md — Phase 단위 작업 이력. research.md — 현재 코드 구조 스냅샷(§1~10, 시간 무관, 항상 최신 유지).
-- 구현 완료(코드·문서 수정 후 lint·typecheck 통과) 시마다 `pending-commits.md`(git 미추적 로컬 대기 목록)의 "대기 중" 섹션에 항목을 등록한다 — 양식·완료 처리 규칙은 그 파일 머리말을 따른다
+- 작업이 생길 때마다 `pending-commits.md`(git 미추적 로컬 대기 목록)의 "대기 중" 섹션에 등록하고, **구현·커밋·푸시 3단계 진척**(`구현 ✅ · 커밋 ⬜ · 푸시 ⬜`)을 단계가 바뀔 때마다 갱신한다 — 계획만 세운 단계에서도 등록하며(구현 ⬜), **3단계가 모두 완료된 항목만** "완료" 섹션으로 옮긴다. 유형 태그(`[코드]`/`[문서]`/`[확인]`)·양식·해당 없는 단계(`—`) 표기는 그 파일 머리말을 따른다
 
 ## 5. Push 전 검증 워크플로우
 
@@ -40,7 +40,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 3. 커밋될 변경사항에 API 키, 토큰, 비밀번호 등 민감정보가 포함되어 있는지 확인 (`git diff --staged` 검토)
 4. `npm audit` 실행 — high 이상 심각도의 알려진 취약점이 있으면 사용자에게 알리고 진행 여부 확인
 5. 문제없으면 의미 단위로 커밋 메시지를 나누어 커밋 후 push
-6. push 완료 후 처리한 대기 항목을 한 줄로 요약해 커밋 해시와 함께 `pending-commits.md`의 "완료" 섹션으로 이동
+6. push 완료 후 해당 항목의 진척을 `구현 ✅ · 커밋 ✅ · 푸시 ✅`로 갱신하고, 3단계가 모두 완료됐으므로 한 줄로 요약해 커밋 해시와 함께 `pending-commits.md`의 "완료" 섹션으로 이동
 
 ## 6. 보안 코드 리뷰 (요청 시 수행)
 
