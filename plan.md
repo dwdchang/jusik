@@ -2899,6 +2899,36 @@ interface WatchItem {
 
 ---
 
+### Phase 46 — 배당률 순위 「일반종목 / 배당상품」 2탭 + 유니버스 확장(ETF·리츠·인프라펀드) (2026-07-20, 계획)
+
+- **요청 근거**: 사용자 요청 — 배당률 순위 목록에 탭을 추가해 **일반종목**과 **배당상품**(ETF·리츠·인프라펀드 등)을 나눠 보고 싶다. 사용자가 예로 든 `ACE 리츠부동산인프라액티브 월배당`처럼 **월배당 가능 종목 + 같은 유형**을 함께 확인하려는 의도. 탭 구성은 조사 후 **일반종목 / 배당상품 2탭**(배당상품 = 지급주기 무관 전부 포함)으로 확정.
+- **조사 결과 (2026-07-20, 라이브 실측 — Redis 읽기 + KIS/마스터 조회)**:
+  1. **`ACE 리츠부동산인프라액티브`(단축코드 `0153P0`)는 증권그룹코드 `EF`(ETF)** — 현재 유니버스 `fetchHotStockUniverse`가 `groupCode === "ST"`(주권)만 남기므로(`lib/hotstocks/universe.ts`) **처음부터 스캔 대상이 아니다.** 현재 순위에 없는 게 구조상 확정.
+  2. **현재 TOP 100에 `payoutCycle === "월"` 종목이 0개** (Redis `market:dividendRanking` 실측, computedFor 2026-07-20, universeCount 2646). → **기존 데이터를 필터만 하는 안(A안)은 지금 빈 탭이 된다** → 유니버스 확장이 필수.
+  3. **현재 유니버스는 배당상품을 전부 누락** — 실측 그룹코드: 롯데리츠(330590)·신한알파리츠(293940)·제이알글로벌리츠(348950) = **`RT`(리츠)**, 맥쿼리인프라(088980) = **`IF`(인프라펀드)**, ETF 전부 = **`EF`**. 즉 리츠·인프라펀드·ETF가 모두 ST가 아니라 현재 순위에서 빠져 있다(현 순위는 순수 보통주/우선주뿐).
+  4. **예탁원 배당일정 API(`ksdinfo/dividend`, HHKDB669102C0)가 ETF·펀드 분배금을 주식과 동일 스키마로 반환** (실측: `0153P0` 5건·매월 말 record_date·주당 54원, `329200` TIGER 리츠부동산인프라 30건·매월 33원). 필드(`record_date`·`per_sto_divi_amt`·`face_val`·`stk_kind` 등)가 주식과 동일해 **기존 `fetchKisDividends` + `buildEntry` + `derivePayoutCycle` 로직을 그대로 재사용 가능**(새 API·데이터 소스 불필요). ETF는 `divi_kind`가 비어 오지만 주기 판정은 이미 기준일 간격 기반이라 자동으로 "월" 처리된다.
+  5. **그룹코드 분포 실측** (마스터 zip): ST 2719 · EF 1147 · RT 23 · IF 2 · EN 386(ETN) · 기타. **배당상품 후보 = EF+RT+IF ≈ 1,172종.** ETN(`EN`)은 채무증권 성격이라 이번 범위에서 제외.
+- **확정 결정 (사용자)**: **일반종목 / 배당상품 2탭.** 배당상품 = `EF`+`RT`+`IF` 그룹, **지급주기 무관 전부**(월배당뿐 아니라 분기·반기 리츠·인프라펀드 포함 — "같은 유형" 요구 충족).
+- **설계 쟁점 (구현 시 반드시 처리)**:
+  1. **⚠️ 유니버스 함수 공유** — `fetchHotStockUniverse`는 배당률 잡뿐 아니라 **핫종목 잡 + 종목명 검색(`market:stockMaster`, `refreshStockMaster`)** 3곳이 공유한다. 여기서 `"ST"` 필터를 바꾸면 핫종목·검색까지 ETF로 오염된다. → **기존 함수는 불변으로 두고**, 배당률 잡 전용 유니버스(그룹코드 파라미터화 `fetchUniverse(groups[])` 또는 신규 `fetchDividendUniverse`)를 추가한다. 구현 중 어느 형태로 갈지 확정.
+  2. **카테고리별 독립 TOP N** — 현재 TOP 100 단일 버퍼. 2탭이면 배당상품이 일반종목에 묻히지 않게 **카테고리별 독립 버퍼·finalize·TOP 100**(일반 100 + 배당상품 100)으로 나눈다. `DividendRankingEntry`에 유형 구분 필드(`instrumentType: "stock" | "fund"` 또는 그룹코드) 추가. `StoredDividendRanking`도 두 목록을 담도록 확장(구 스키마 하위호환 고려).
+  3. **주식 전용 로직의 배당상품 예외**:
+     - **액면분할 보정**(`SPLIT_CHECK_YIELD` 12%, Phase 44)은 ETF/펀드에 부적절(액면분할 개념이 주식과 다름) → 배당상품엔 스킵하거나 별도 처리.
+     - **폭배(surge)·우선주(preferred) 비고**는 펀드에 무의미 → 배당상품 탭 비고 컬럼 의미 재정의(또는 비움).
+     - **"시가배당률"** 명칭 — ETF는 사실상 "분배율" → 배당상품 탭 각주 문구 조정.
+  4. **콜 예산** — +1,172종 → 가격 선확보 +~40콜(멀티시세 30/콜), 배당 스캔 +~78초(15콜/초). 기존 250초 시간 예산 + `progress` 이어받기 설계로 흡수되나 실측 튜닝 필요. QStash 스케줄·잡 라우트 구조는 불변(같은 `refresh-dividend-ranking` 잡이 두 카테고리를 함께 계산).
+  5. **화면** — `app/dividends/page.tsx`에 서버 모드 탭 추가(핫종목 `?mode=` 서버 탭 패턴 재사용), 배당률 순위표를 2탭으로. 기존 8열 폼(Phase 45 통일)은 일반종목 탭에 그대로 유지.
+- **구현 결정 (2026-07-20 반영)**:
+  1. **유니버스 확장 방식** — 그룹코드 파라미터화. `parseMasterRecords(records, market, allowedGroups)` + 내부 `fetchUniverse(groups)`로 리팩터링하고, 공개 함수 2종만 노출: `fetchHotStockUniverse`(ST-only, 불변) · **신규 `fetchDividendRankingUniverse`**(ST+EF+RT+IF를 **한 번의 다운로드로** 받아 코드 오름차순). `UniverseStock`에 `group: UniverseGroup`(`"ST"|"EF"|"RT"|"IF"`) 추가, 배당상품 그룹은 `DIVIDEND_PRODUCT_GROUPS`(EF/RT/IF) 상수로. 마스터 다운로드는 한 번만.
+  2. **카테고리별 독립 TOP N** — 잡이 `isFundStock(stock)`(group∈EF/RT/IF)으로 `entries`(일반)·`productEntries`(배당상품) 두 버퍼에 분기 offer, 각각 독립 finalize·TOP 100. `DividendRankingEntry`에 `instrumentType: "stock"|"fund"` 추가. `StoredDividendRanking`은 `entries`/`universeCount`(일반, 하위호환) + `productEntries?`/`productUniverseCount?`(배당상품, 구 스키마 `?? []`·`?? 0` 폴백). `DividendRankingProgress`는 `productEntries` 추가 — 구 progress(필드 없음)는 이어받기 무효 처리 후 처음부터.
+  3. **주식 전용 로직의 배당상품 예외** — 배당상품은 `buildEntry`에서 `preferred`·`stockDividendRate`·`surgeCandidate`를 강제 비활성(`fund ? … : …`), `finalizeEntries(entries, computedFor, isFund)`에서 `isFund=true`면 액면분할 보정①·폭배 DART③을 스킵(정렬②·순위④만). → 배당상품 탭 비고는 자연히 항상 "—".
+  4. **화면** — `app/dividends/page.tsx`에 `?mode=`(stock/product) 서버 탭(`RANK_MODES`) 추가, 핫종목 탭 CSS(`.tabs/.tab/.tabActive`)를 `dividends/page.module.css`에 이식. 기존 8열 폼 그대로 두 탭 공용, 대상 수 문구·빈 안내만 탭별로.
+- **검증**: tsc·lint·`npm run build` 통과. QStash 스케줄·잡 라우트 구조 불변(같은 `refresh-dividend-ranking` 잡이 두 카테고리 동시 산출).
+- **범위 밖**: 배당상품 **유형별 세부 그룹핑**(리츠/인프라/월배당 하위 분류) — ETF 종목명에 깔끔한 유형 코드가 없어 이름 휴리스틱이 필요하다. 이번엔 단일 "배당상품" 탭으로 통합하고, 세분화는 후속 과제로 남긴다. ETN(`EN`) 포함도 범위 밖. "시가배당률" 명칭은 이번엔 공용 각주 유지(배당상품 전용 "분배율" 문구는 후속).
+- **상태**: 구현 완료(tsc·lint·build 통과), 커밋·푸시 대기.
+
+---
+
 ## 7. PR 분리 권장 (선택)
 
 | PR | Phase | 리뷰 포인트 |

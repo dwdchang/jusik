@@ -79,7 +79,7 @@
 | `watchlist/actions.ts` | Server Actions: add/update(기준일 변경 시 기준가 null 리셋)/delete. update/delete 오류 redirect는 `/watchlist?edit=1`로 편집 모드 유지(`fail()`이 `?`/`&` 분기 결합) |
 | `hot-stocks/page.tsx` | 핫종목 — 서버 모드 탭 `[당일 등락률(기본) \| 주간 등락률 \| 월간 핫종목]`(`?mode=weekly\|monthly`). 당일/주간: `market:dailyFluctuation`/`market:weeklyFluctuation` 상위 30을 월간과 동일한 6열 폼(순위/종목명+ᴷ·ᴰ 위첨자/종목코드 열/등락률/기준 종가/현재가, §20)으로 표시+`resolveStaleness` 배지 — 공용 `FluctuationView`(variant별 데이터 소스·문구만 교체). 위첨자는 `market:stockMaster`를 읽어 코드→시장 매핑(`loadMarketByCode`, 실패·미등재 시 생략), 기준 종가 없는 구 스냅샷은 "—". 기준 문구는 전 탭 월간 형식: "… 상위 30종목 · 기준: {전일\|5거래일 전} 종가 · 대상 전체시장 · 갱신: …". 월간: 구간 수익률 TOP 100(`?period=1m\|3m\|6m\|12m`, 구간 링크는 `?mode=monthly&period=…` — mode 유지, §20 회귀 수정). 뷰는 async 서버 서브컴포넌트(`FluctuationView`/`MonthlyView`) |
 | `feeds/page.tsx` | 뉴스·공시 상세 (Phase 17-2b) — `ensureAllowedSession` + `getDisclosureBoard`·`getNewsBoard`·`getTradeStatsView`(17-4) + `FeedTabsClient`(뉴스/공시/수출입 탭+게시판+아코디언). 홈 "뉴스·공시" 요약 카드에서 이동 |
-| `dividends/page.tsx` | 배당 상세 (Phase 25·43·44·45) — ① **보유종목 확정 배당** 목록: `getDividendSchedule`(**보유종목만**) 한 줄씩(종목명·배당종류·기준일·지급일(미정 표기)·주당배당금×보유수량·예상 지급액). ② **배당률 순위** 표(Phase 43): `getDividendRankingView` 시가배당률 TOP 100, 8열(순위·종목명·현재가·배당률·주당배당금·지급주기·연속배당·비고). 순위·종목명 2열 sticky 가로 스크롤. 비고 = 우/현+주N%/폭배(DART 딥링크)·배당률 `*`=액면분할 보정(Phase 44). **폼은 핫종목 표 스타일과 통일**(Phase 45): 헤더 가운데 정렬·micro 톤, 값은 숫자 열 우측(`.numCell`)·종목명 좌측, 종목명 뒤 ᴷ/ᴰ 시장 위첨자(`entry.market` 직접 사용 — stockMaster 재조회 없음)·링크 없음(순수 텍스트). 각주 5건: 예상액=현재 보유수량/세전(15.4%), 시가배당률 정의·`+` 연수, 비고 우·현+주·폭배·`*` 분할 보정 설명. 홈 "배당" 카드에서 이동 |
+| `dividends/page.tsx` | 배당 상세 (Phase 25·43·44·45) — ① **보유종목 확정 배당** 목록: `getDividendSchedule`(**보유종목만**) 한 줄씩(종목명·배당종류·기준일·지급일(미정 표기)·주당배당금×보유수량·예상 지급액). ② **배당률 순위** 표(Phase 43): **일반종목/배당상품 2탭**(Phase 46, `?mode=stock|product` 서버 탭 `RANK_MODES`) — `getDividendRankingView(category)`로 탭별 목록·대상 수 로드. 시가배당률 TOP 100, 8열(순위·종목명·현재가·배당률·주당배당금·지급주기·연속배당·비고) 두 탭 공용. 배당상품(ETF·리츠·인프라펀드) 탭은 우선주·폭배·주식배당·액면분할 보정이 없어 비고가 항상 "—". 순위·종목명 2열 sticky 가로 스크롤. 비고 = 우/현+주N%/폭배(DART 딥링크)·배당률 `*`=액면분할 보정(Phase 44). **폼은 핫종목 표 스타일과 통일**(Phase 45): 헤더 가운데 정렬·micro 톤, 값은 숫자 열 우측(`.numCell`)·종목명 좌측, 종목명 뒤 ᴷ/ᴰ 시장 위첨자(`entry.market` 직접 사용 — stockMaster 재조회 없음)·링크 없음(순수 텍스트). 각주 5건: 예상액=현재 보유수량/세전(15.4%), 시가배당률 정의·`+` 연수, 비고 우·현+주·폭배·`*` 분할 보정 설명. 홈 "배당" 카드에서 이동 |
 | `dlq/page.tsx` | QStash DLQ 읽기 전용 목록 (Phase 18) — `ensureAllowedSession` + `listDlqMessages(cursor)` 직접 호출(Redis 아닌 QStash API — §4.3 예외), `?cursor=` 페이지네이션. 햄버거 사이드바 "DLQ 확인"에서 진입, 재발송·삭제 없음 |
 | `alerts/page.tsx` | 알림 설정 (Phase 10) — `ensureAllowedSession` + `VAPID_PUBLIC_KEY`를 `PushSubscriptionManager`에 prop 전달 + 보유·관심종목별 알림 on/off(`StockAlertToggles`, 3단계에서 관심종목까지 확장) + 등록 기기 수 표시. 햄버거 사이드바 "알림 설정"에서 진입 |
 | `alerts/actions.ts` | Server Actions: 푸시 구독 등록/해지(입력 형식 검증 — endpoint https·keys 필수)·테스트 발송·종목별 알림 on/off(`setStockAlertEnabledAction` — 보유·관심종목만 허용, `alerts:{email}:muted` 갱신) |
@@ -152,7 +152,7 @@
 | `holdings/stockInfo.ts` | 정보 블록 4종 — 쓰기(잡 전용 `fetchStockInfoBlocks`: 배당·손익·재무비율 병렬)와 읽기(`getStockInfo`: Redis 조합만) 경로가 한 파일에 명시 구분. 배당 블록에 확정 회차별 행 `rounds`(기준일·종류·주당배당금·지급일, §25)도 저장 — 기존 요약 필드는 무변경 |
 | `hotstocks/store.ts` | 핫종목 store — `market:hotStocks` + `:progress` 커서, 구간 4종 정의·라벨 |
 | `hotstocks/months.ts` | 월 문자열("YYYY-MM") 계산 — `baseMonthKst`(전월)/`addMonths`/월초·월말/표시 포맷 |
-| `hotstocks/universe.ts` | KIS 종목 마스터 zip 다운로드·EUC-KR 고정폭 파싱 — ST(주권)만, 스팩 제외, 코드 오름차순. 핫종목 잡 + 종목명 검색(`market:stockMaster`) 공용 |
+| `hotstocks/universe.ts` | KIS 종목 마스터 zip 다운로드·EUC-KR 고정폭 파싱 — 스팩 제외·코드 오름차순. 내부 `fetchUniverse(groups)`(그룹 파라미터화)를 공개 2종이 감싼다: **`fetchHotStockUniverse`(ST-only, 불변)** — 핫종목 잡 + 종목명 검색(`market:stockMaster`) 공용이라 ST 필터를 바꾸면 두 곳이 오염됨 · **`fetchDividendRankingUniverse`(ST+EF+RT+IF, Phase 46)** — 배당률 순위 잡 전용, 한 번의 다운로드로 일반종목+배당상품을 함께 받아 레코드 `group`으로 분류. `UniverseStock.group`(`ST/EF/RT/IF`)·`DIVIDEND_PRODUCT_GROUPS`(EF/RT/IF) 노출. ETN(`EN`)은 채무증권이라 제외(2026-07-20 실측: 롯데리츠=`RT`, 맥쿼리인프라=`IF`, ACE 리츠부동산인프라액티브(0153P0)=`EF`) |
 | `hotstocks/summary.ts` | 월간 랭킹 갱신 지연 판정 `isHotStocksStale` (핫종목 페이지 월간 뷰용) |
 | `hotstocks/dailyCard.ts` | 홈 핫종목 카드 요약 `getDailyHotCardSummary` — `market:dailyFluctuation` 당일 등락률 상위 4 (§33에서 4행 통일) |
 | `jobs/refreshMarketData.ts` | **시세 갱신 잡 파이프라인 본체** (§4.1) — 지수·종목·포트폴리오 갱신에 더해 달러 인덱스(`refreshDxy`, 환율 6종 순차 조회→계산, §28)·비트코인(`refreshBtc`, 업비트 2마켓 순차, §30)·당일·주간 등락률 상위 30(`refreshDailyFluctuation`/`refreshWeeklyFluctuation`, 회차당 각 1콜)·종목 마스터(`refreshStockMaster`, 1일 1회) 저장. 다섯 다 부수·실패 격리 |
@@ -319,20 +319,26 @@ QStash 스케줄 (월 1회 권장) → POST /api/jobs/refresh-dividend-ranking
   (인증·시간창 가드는 핫종목 잡과 동일)
   → refreshDividendRanking(trigger)  [lib/jobs/refreshDividendRanking.ts]
       완료 가드: market:dividendRanking.computedFor == KST 오늘이면 no-op
-      → fetchHotStockUniverse 재사용 (~2,650종목, KIS 호출 0건)
-      → 전 종목 현재가 선확보: 멀티시세 FHKST11300006 30종목/콜 = 89콜
+      → fetchDividendRankingUniverse: 일반종목(ST)+배당상품(EF/RT/IF)을 한 번의
+         마스터 다운로드로 받아 코드 오름차순 (Phase 46, KIS 호출 0건). 레코드의
+         group으로 이후 두 순위로 분류 — isFundStock(EF/RT/IF)=배당상품
+      → 전 종목 현재가 선확보: 멀티시세 FHKST11300006 30종목/콜
          (배당률 = 배당금 ÷ 현재가라 상위 선택 시점에 가격이 있어야 한다)
-      → market:dividendRanking:progress 있으면 커서 + 가격 스냅샷 이어받기
+      → market:dividendRanking:progress 있으면 커서 + 두 버퍼 + 가격 스냅샷 이어받기
+         (Phase 46: productEntries 없는 구 progress는 무효 → 처음부터)
       → 종목별 buildEntry: 예탁원 배당일정 1콜(최근 10년) → 최근 1년 주당배당금 합으로
          시가배당률 + 연속 배당 연수 + 지급 주기(기준일 평균 간격 → 월/분기/반기/연)
          + 우선주(stk_kind=="우선") + 주식배당률(stk_divi_rate) + 폭배 후보(전년 대비
-         급증) + 배당당시 액면가(face_val) 산출 → 상위 500 버퍼에 온라인 선택
+         급증) + 배당당시 액면가(face_val) 산출. 배당상품은 우선주·주식배당·폭배를
+         강제 비활성. instrumentType(stock/fund)에 따라 일반/배당상품 버퍼(각 상위 500)에
+         온라인 선택
       → 시간 예산 250초 소진 시 progress 저장 후 종료
-      → 완주 시 finalizeEntries: ① 배당률>12% 이상치만 현재 액면가(CTPF1002R papr)
-         조회 → 배당당시÷현재 액면가 비율로 주당배당금 환산(액면분할/병합 보정) →
-         ② 재정렬·TOP 100 절단 → ③ 폭배 종목만 DART 현금·현물배당결정 공시 조회로
-         수치·접수번호 채움(corpCodeMap 1회) → ④ 순위 부여
-      → market:dividendRanking 저장 + progress 삭제
+      → 완주 시 finalizeEntries를 두 버퍼에 각각(isFund 플래그): 일반종목은
+         ① 배당률>12% 이상치만 현재 액면가(CTPF1002R papr) 조회 → 배당당시÷현재
+         액면가 비율로 주당배당금 환산(액면분할/병합 보정) → ② 재정렬·TOP 100 절단 →
+         ③ 폭배 종목만 DART 현금·현물배당결정 공시 조회(corpCodeMap 1회) → ④ 순위.
+         배당상품은 ①③을 스킵하고 ②④만
+      → market:dividendRanking 저장(entries+productEntries) + progress 삭제
 ```
 
 **KIS `ranking/dividend-rate`(HHKDB13470100)는 미사용** — 응답 `divi_rate`가 액면가배당률이라
@@ -468,8 +474,8 @@ QStash 스케줄 (월 1회, 매월 5일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 5 *
 | `market:dailyFluctuation` | `StoredDailyFluctuation` (당일 등락률 상위 30+basePrice(전일 종가, §20)+fetchedAt) | ✕ | 시세 잡 | 핫종목 페이지(기본 탭)·홈 핫종목 카드 |
 | `market:weeklyFluctuation` | `StoredWeeklyFluctuation` (주간=5거래일 전 대비 등락률 상위 30+basePrice(역산, §20)+fetchedAt) | ✕ | 시세 잡 | 핫종목 페이지 주간 탭 |
 | `market:stockMaster` | `StoredStockMaster` (코드↔종목명 ~2,650+fetchedAt) | ✕ | 시세 잡 (1일 1회) | 종목명 검색 `searchStocks` |
-| `market:dividendRanking` | `StoredDividendRanking` (시가배당률 TOP 100+universeCount+fetchedAt) | ✕ | 배당률 순위 잡 | 배당 페이지 순위 섹션 |
-| `market:dividendRanking:progress` | `DividendRankingProgress` (커서+상위 500 버퍼+가격 스냅샷) | ✕ | 배당률 순위 잡 (완료 시 삭제) | 배당률 순위 잡 |
+| `market:dividendRanking` | `StoredDividendRanking` — 일반종목 `entries`/`universeCount` + 배당상품 `productEntries?`/`productUniverseCount?`(Phase 46, 구 스키마 폴백) 시가배당률 각 TOP 100+fetchedAt | ✕ | 배당률 순위 잡 | 배당 페이지 순위 섹션(일반종목/배당상품 2탭) |
+| `market:dividendRanking:progress` | `DividendRankingProgress` (커서+일반/배당상품 두 버퍼+가격 스냅샷) | ✕ | 배당률 순위 잡 (완료 시 삭제) | 배당률 순위 잡 |
 | `holdings:{email}` | `Holding[]` | **○** | Server Action + 잡(종목명 채움) | 보유종목 화면·잡 |
 | `holdings:{email}:history` | `PortfolioDailyRecord[]` | **○** | 시세 잡 | 보유종목 화면 |
 | `watchlist:{email}` | `WatchItem[]` | **○** | Server Action + 잡(종목명·기준가) | 관심종목 화면·잡 |
