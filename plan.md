@@ -2884,6 +2884,19 @@ interface WatchItem {
 - **아키텍처 메모**: 원래 KIS 담당인 `refresh-dividend-ranking` 잡의 finalize 단계에서 **폭배 한정 DART 호출**이 섞인다(소수라 비용 작음). 헌법 §2 "KIS 호출은 잡 경유" 원칙은 유지되며, DART는 원래 무제약(feeds와 동일).
 - **상태**: 구현 완료.
 
+### Phase 45 — 배당률 순위 표를 핫종목 순위 폼과 통일 (스타일 통일·종목명 링크 제거·시장 위첨자) (2026-07-20)
+
+- **요청 근거**: 배당 화면 "배당률 순위" 표의 시각 폼을 핫종목 순위 표와 통일하고 싶다는 사용자 요청. 확인 결과 배당 고유 8열(순위·종목명·현재가·배당률·주당배당금·지급주기·연속배당·비고)은 유지하고 **스타일만** 핫종목과 맞추는 방향(옵션 1)으로 확정. 6열 완전 동일화(옵션 2)는 배당 고유 정보를 버려야 해 기각.
+- **확정 결정 (사용자)**:
+  - **① 스타일만 통일, 열 구성 유지** — 헤더 가운데 정렬·`--text-micro`/medium/tertiary 톤, 값 기본 가운데+숫자 열만 우측(`.numCell`)·종목명/비고 좌측 등 핫종목 `page.module.css` 관례를 배당 표에 이식. 8열이라 sticky(순위·종목명) 가로 스크롤 폼은 그대로 유지(핫종목 6열 `table-layout: fixed`는 미적용 — 열 수가 달라 그대로 못 옮김).
+  - **② 종목명 링크 제거** — 기존 `/watchlist/[code]` 링크가 관심종목으로 이동해 맥락상 의미 없다는 판단. 핫종목처럼 순수 텍스트로 변경(`.rankName` 제거).
+  - **③ 시장 위첨자 추가** — 핫종목 목록처럼 종목명 뒤 ᴷ(코스피)/ᴰ(코스닥) 위첨자. **`DividendRankingEntry.market`(`"KOSPI"|"KOSDAQ"`)이 이미 저장돼 있어** 핫종목 당일/주간 뷰의 `loadMarketByCode`(stockMaster 재조회) 없이 `entry.market` 직접 사용 — 핫종목 월간 뷰와 동일한 상황.
+- **구현 계획 (파일 단위)**:
+  1. `app/dividends/page.tsx` — 핫종목과 동형의 `MARKET_SUP` 상수 도입. 종목명 셀에서 `<Link>` 제거 → `.nameText`(ellipsis, `title`) + `.marketSup`(ᴷ/ᴰ) + `.srOnly`(스크린리더용). 숫자 열(현재가·배당률·주당배당금·연속배당)에 `.numCell` 부여.
+  2. `app/dividends/page.module.css` — `.rankTable` 헤더/값 정렬·톤을 핫종목 관례로 재정비, `.numCell`·`.nameText`·`.marketSup`·`.srOnly` 추가, 미사용된 `.rankName` 제거. `.tableScroll`·sticky·`.rankYield`·`.adjMark`·`.remarkCell`·`.dartLink`는 유지.
+- **범위 밖**: 종목코드 별도 열(핫종목엔 있으나 배당 8열엔 없음 — 추가 안 함), 핫종목 `table-layout: fixed` 열 폭 고정(열 수가 달라 미적용), 배당률 방향 색상(배당률은 항상 양수라 무의미).
+- **상태**: 구현 완료.
+
 ---
 
 ## 7. PR 분리 권장 (선택)
