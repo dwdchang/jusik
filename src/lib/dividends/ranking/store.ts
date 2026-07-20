@@ -22,11 +22,19 @@ export interface DividendSurgeDart {
   recordDate: string | null;
 }
 
+/** 종목 유형 — 일반종목(주권) / 배당상품(ETF·리츠·인프라펀드) (Phase 46) */
+export type DividendInstrumentType = "stock" | "fund";
+
 export interface DividendRankingEntry {
   rank: number;
   code: string;
   name: string;
   market: UniverseMarket;
+  /**
+   * 종목 유형 — "stock"=일반종목(ST), "fund"=배당상품(ETF/리츠/인프라펀드) (Phase 46).
+   * 구 스키마 엔트리에는 없어 리더에서 탭 분류 시 목록 소속으로 판단한다.
+   */
+  instrumentType: DividendInstrumentType;
   /** 산출 시점 현재가(원) — 배당률의 분모, 순위와 한 세트로 고정 */
   price: number;
   /** 시가배당률(%) = 최근 1년 주당배당금 합 ÷ 현재가 × 100, 소수 둘째 자리 */
@@ -62,9 +70,20 @@ export interface DividendRankingEntry {
 export interface StoredDividendRanking {
   /** 산출 기준일 "YYYY-MM-DD" (KST) — 완료 가드의 키 */
   computedFor: string;
+  /** 일반종목(ST) 스캔 대상 수 */
   universeCount: number;
-  /** 시가배당률 내림차순 (동률 시 코드 오름차순) */
+  /** 일반종목(ST) — 시가배당률 내림차순 (동률 시 코드 오름차순) */
   entries: DividendRankingEntry[];
+  /**
+   * 배당상품(ETF/리츠/인프라펀드) 스캔 대상 수 (Phase 46).
+   * 구 스키마에는 없어 리더에서 `?? 0`으로 폴백한다.
+   */
+  productUniverseCount?: number;
+  /**
+   * 배당상품(ETF/리츠/인프라펀드) 시가배당률 내림차순 (Phase 46).
+   * 구 스키마에는 없어 리더에서 `?? []`로 폴백한다.
+   */
+  productEntries?: DividendRankingEntry[];
   fetchedAt: string;
 }
 
@@ -77,7 +96,10 @@ export interface DividendRankingProgress {
   /** 유니버스(코드 오름차순) 다음 처리 인덱스 */
   cursor: number;
   universeCount: number;
+  /** 일반종목(ST) 상위 버퍼 */
   entries: DividendRankingEntry[];
+  /** 배당상품(EF/RT/IF) 상위 버퍼 (Phase 46) */
+  productEntries: DividendRankingEntry[];
   /**
    * 종목코드 → 현재가(원) 스냅샷. 분할 실행이 같은 가격 기준을 쓰도록 첫 실행에서
    * 한 번만 받아 물려준다 — 이어받기마다 새로 받으면 앞뒤 회차의 배당률 기준이

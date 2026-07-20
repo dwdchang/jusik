@@ -25,7 +25,8 @@ import {
   type StoredDividendRanking,
 } from "@/lib/dividends/ranking/store";
 import {
-  fetchHotStockUniverse,
+  DIVIDEND_PRODUCT_GROUPS,
+  fetchDividendRankingUniverse,
   type UniverseStock,
 } from "@/lib/hotstocks/universe";
 import { parseNum } from "@/lib/indices/kisMapper";
@@ -225,12 +226,18 @@ function countConsecutiveYears(
  * 종목 1건 처리 — 배당 1콜로 시가배당률·지급 주기·연속 배당 연수를 함께 만든다.
  * 최근 1년 확정 주당배당금이 0이면 순위 대상이 아니다(무배당·미확정만 있는 종목).
  */
+/** 배당상품(ETF·리츠·인프라펀드) 여부 — 우선주·폭배·액면분할 판정을 건너뛴다 (Phase 46) */
+function isFundStock(stock: UniverseStock): boolean {
+  return DIVIDEND_PRODUCT_GROUPS.has(stock.group);
+}
+
 function buildEntry(
   stock: UniverseStock,
   rows: KisDividendRow[],
   price: number,
   computedFor: string
 ): DividendRankingEntry | null {
+  const fund = isFundStock(stock);
   const baseYear = Number(computedFor.slice(0, 4));
   const earliestQueryYear = baseYear - DIVIDEND_RANKING_LOOKBACK_YEARS + 1;
   // 같은 월·일의 1년 전 — 기존 stockInfo의 최근 1년 집계와 같은 기준
@@ -303,6 +310,7 @@ function buildEntry(
     code: stock.code,
     name: stock.name,
     market: stock.market,
+    instrumentType: fund ? "fund" : "stock",
     price,
     dividendYield: Math.round((annualDividendPerShare / price) * 10000) / 100,
     annualDividendPerShare,
@@ -310,10 +318,11 @@ function buildEntry(
     payoutCycle: derivePayoutCycle(recentCycleDates, true),
     consecutiveYears,
     yearsCapped,
-    preferred: detectPreferred(rows),
-    stockDividendRate,
+    // 배당상품은 우선주·주식배당·폭배(DART 배당결정) 개념이 없어 판정을 건너뛴다
+    preferred: fund ? false : detectPreferred(rows),
+    stockDividendRate: fund ? null : stockDividendRate,
     splitAdjusted: false,
-    surgeCandidate: isSurge(annualDividendPerShare, priorYearDps),
+    surgeCandidate: fund ? false : isSurge(annualDividendPerShare, priorYearDps),
     surge: null,
     dividendFaceValue,
   };
@@ -362,13 +371,17 @@ async function fetchAllPrices(
  * 완료 시 마무리 — Phase 44. ① 배당률 이상치(>SPLIT_CHECK_YIELD)만 현재 액면가를
  * 조회해 액면분할 보정 → ② 보정 후 재정렬·TOP N 절단 → ③ 폭배 종목만 DART
  * 배당결정 공시 조회로 수치·링크 채움 → ④ 순위 부여. 이상치·폭배가 소수라 콜이 적다.
+ *
+ * 배당상품(isFund=true, Phase 46)은 ①③을 건너뛴다 — ETF/리츠/인프라펀드는
+ * 액면가·주식배당 개념이 없고(분배금은 NAV 기준) DART 배당결정 공시 대상도 아니다.
  */
 async function finalizeEntries(
   entries: DividendRankingEntry[],
-  computedFor: string
+  computedFor: string,
+  isFund: boolean
 ): Promise<void> {
   // ① 액면분할 보정 — 배당 당시 액면가 ÷ 현재 액면가 = 분할비율로 주당배당금 환산
-  for (const entry of entries) {
+  for (const entry of isFund ? [] : entries) {
     if (entry.dividendYield <= SPLIT_CHECK_YIELD || entry.dividendFaceValue <= 0) {
       continue;
     }
@@ -404,7 +417,7 @@ async function finalizeEntries(
     entries.length = DIVIDEND_RANKING_SIZE;
   }
 
-  // ③ 폭배 DART enrichment — 최종 TOP N 중 폭배 후보만
+  // ③ 폭배 DART enrichment — 최종 TOP N 중 폭배 후보만 (배당상품은 후보가 없어 빈 배열)
   const surged = entries.filter((entry) => entry.surgeCandidate);
   if (surged.length > 0) {
     let corpMap: Record<string, string> | null = null;
@@ -488,14 +501,23 @@ export async function refreshDividendRanking(
     };
   }
 
-  // 유니버스는 실행마다 새로 받는다(코드 오름차순 — 커서 결정성, §14.1-3)
-  const universe = await fetchHotStockUniverse();
+  // 유니버스는 실행마다 새로 받는다(코드 오름차순 — 커서 결정성, §14.1-3).
+  // 일반종목(ST)과 배당상품(EF/RT/IF)을 한 번에 받아 group으로 분류한다 (Phase 46).
+  const universe = await fetchDividendRankingUniverse();
+  const productUniverseCount = universe.filter(isFundStock).length;
+  const stockUniverseCount = universe.length - productUniverseCount;
 
   // 이어받기 — 같은 기준일의 progress만 유효. 가격 스냅샷도 함께 물려받아
-  // 분할 실행 사이에 배당률 기준이 흔들리지 않게 한다.
+  // 분할 실행 사이에 배당률 기준이 흔들리지 않게 한다. Phase 46에서 두 버퍼
+  // 구조로 바뀌었으므로 productEntries가 없는 구 progress는 무효로 보고 처음부터.
   const progress = await getDividendRankingProgress();
-  const resumed = progress?.computedFor === computedFor;
+  const resumed =
+    progress?.computedFor === computedFor &&
+    Array.isArray(progress.productEntries);
   const entries: DividendRankingEntry[] = resumed ? progress!.entries : [];
+  const productEntries: DividendRankingEntry[] = resumed
+    ? progress!.productEntries
+    : [];
   let cursor = resumed ? progress!.cursor : 0;
   const prices = resumed ? progress!.prices : await fetchAllPrices(universe);
   const pricedCount = Object.keys(prices).length;
@@ -516,12 +538,13 @@ export async function refreshDividendRanking(
         cursor,
         universeCount: universe.length,
         entries,
+        productEntries,
         prices,
       });
       return {
         ...base,
         finishedAt: new Date().toISOString(),
-        universeCount: universe.length,
+        universeCount: stockUniverseCount,
         pricedCount,
         processed,
         cursor,
@@ -556,7 +579,8 @@ export async function refreshDividendRanking(
 
       const entry = buildEntry(stock, rows, price, computedFor);
       if (entry !== null) {
-        offerEntry(entries, entry);
+        // 일반종목/배당상품 각각 독립 TOP N 버퍼로 분류 (Phase 46)
+        offerEntry(isFundStock(stock) ? productEntries : entries, entry);
       }
       consecutiveFailures = 0;
     } catch (error) {
@@ -572,6 +596,7 @@ export async function refreshDividendRanking(
           cursor: cursor - (CONSECUTIVE_FAILURE_LIMIT - 1),
           universeCount: universe.length,
           entries,
+          productEntries,
           prices,
         });
         throw new Error(
@@ -589,12 +614,16 @@ export async function refreshDividendRanking(
     }
   }
 
-  await finalizeEntries(entries, computedFor);
+  // 두 순위를 각각 마무리 — 배당상품은 액면분할·폭배 단계를 건너뛴다 (Phase 46)
+  await finalizeEntries(entries, computedFor, false);
+  await finalizeEntries(productEntries, computedFor, true);
 
   const result: StoredDividendRanking = {
     computedFor,
-    universeCount: universe.length,
+    universeCount: stockUniverseCount,
     entries,
+    productUniverseCount,
+    productEntries,
     fetchedAt: new Date().toISOString(),
   };
 
@@ -604,7 +633,7 @@ export async function refreshDividendRanking(
   return {
     ...base,
     finishedAt: new Date().toISOString(),
-    universeCount: universe.length,
+    universeCount: stockUniverseCount,
     pricedCount,
     processed,
     cursor,

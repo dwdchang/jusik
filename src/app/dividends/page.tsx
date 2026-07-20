@@ -8,6 +8,7 @@ import { ensureAllowedSession } from "@/lib/auth/ensureAllowedSession";
 import type { DividendRankingEntry } from "@/lib/dividends/ranking/store";
 import {
   dartDisclosureUrl,
+  type DividendRankingCategory,
   formatConsecutiveYears,
   formatPayoutCycle,
   formatStockDividend,
@@ -39,6 +40,36 @@ const MARKET_SUP = {
   KOSPI: { mark: "ᴷ", title: "코스피", srText: "코스피 종목" },
   KOSDAQ: { mark: "ᴰ", title: "코스닥", srText: "코스닥 종목" },
 } as const;
+
+/**
+ * 배당률 순위 탭 — 일반종목(주권)/배당상품(ETF·리츠·인프라펀드) (Phase 46).
+ * 종목 유형별로 독립 순위를 보여준다. 배당상품은 지급 주기 무관 전부 대상.
+ */
+const RANK_MODES: ReadonlyArray<{
+  key: DividendRankingCategory;
+  label: string;
+  href: string;
+  /** 대상 종목 수 문구 — "전 N개 대상" 앞 수식어 */
+  universeLabel: string;
+  emptyNotice: string;
+}> = [
+  {
+    key: "stock",
+    label: "일반종목",
+    href: "/dividends",
+    universeLabel: "전 종목",
+    emptyNotice:
+      "아직 산출된 배당률 순위가 없습니다. 전 종목 스캔이 다음 갱신 회차에 완료되면 여기에 표시됩니다.",
+  },
+  {
+    key: "product",
+    label: "배당상품",
+    href: "/dividends?mode=product",
+    universeLabel: "전 배당상품",
+    emptyNotice:
+      "아직 산출된 배당상품 순위가 없습니다. ETF·리츠·인프라펀드 스캔이 다음 갱신 회차에 완료되면 여기에 표시됩니다.",
+  },
+];
 
 /**
  * 배당률 순위 "비고" 셀 — 특이사항만 `·`로 이어 붙인다 (Phase 44).
@@ -92,7 +123,11 @@ function renderRemarks(entry: DividendRankingEntry): ReactNode {
  * 보유종목만 대상(관심종목 제외 — 사용자 확정). 시세 잡이 저장한 확정 배당
  * 회차를 한 줄씩 나열하며, 예상 지급액은 현재 보유수량 기준·세전 금액이다.
  */
-export default async function DividendsPage() {
+export default async function DividendsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ mode?: string }>;
+}) {
   const session = await ensureAllowedSession();
   const email = session.user?.email;
 
@@ -100,13 +135,18 @@ export default async function DividendsPage() {
     redirect("/login");
   }
 
+  const { mode } = await searchParams;
+  const activeCategory: DividendRankingCategory =
+    mode === "product" ? "product" : "stock";
+  const activeMode = RANK_MODES.find((m) => m.key === activeCategory)!;
+
   const [rows, ranking, lastRefresh] = await Promise.all([
     getDividendSchedule(email).catch((err): [] => {
       console.error("[DividendsPage] getDividendSchedule failed:", err);
       return [];
     }),
     // 순위는 잡이 아직 안 돌았으면 null — 일정 섹션까지 막지 않는다
-    getDividendRankingView().catch((err) => {
+    getDividendRankingView(activeCategory).catch((err) => {
       console.error("[DividendsPage] getDividendRankingView failed:", err);
       return null;
     }),
@@ -179,14 +219,29 @@ export default async function DividendsPage() {
           <h2 className={styles.sectionTitle}>
             배당률 순위
             {ranking !== null
-              ? ` TOP ${ranking.entries.length} (전 종목 ${ranking.universeCount.toLocaleString("ko-KR")}개 대상)`
+              ? ` TOP ${ranking.entries.length} (${activeMode.universeLabel} ${ranking.universeCount.toLocaleString("ko-KR")}개 대상)`
               : ""}
           </h2>
+
+          <nav className={styles.tabs} aria-label="순위 유형 선택">
+            {RANK_MODES.map((m) => (
+              <Link
+                key={m.key}
+                href={m.href}
+                className={
+                  m.key === activeCategory
+                    ? `${styles.tab} ${styles.tabActive}`
+                    : styles.tab
+                }
+                aria-current={m.key === activeCategory ? "page" : undefined}
+              >
+                {m.label}
+              </Link>
+            ))}
+          </nav>
+
           {ranking === null ? (
-            <p className={styles.emptyNotice}>
-              아직 산출된 배당률 순위가 없습니다. 전 종목 스캔이 다음 갱신
-              회차에 완료되면 여기에 표시됩니다.
-            </p>
+            <p className={styles.emptyNotice}>{activeMode.emptyNotice}</p>
           ) : (
             <div className={styles.tableScroll}>
               <table className={styles.rankTable}>

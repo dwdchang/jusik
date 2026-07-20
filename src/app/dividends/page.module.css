@@ -139,6 +139,37 @@
   line-height: 1.5;
 }
 
+/* 배당률 순위 탭 — 일반종목/배당상품 (Phase 46, 핫종목 .tabs와 동형) */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8);
+  margin-bottom: var(--space-12);
+}
+
+.tab {
+  padding: var(--space-8) var(--space-12);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  transition: border-color 0.15s ease;
+}
+
+.tab:hover,
+.tab:focus-visible {
+  border-color: var(--color-primary);
+}
+
+.tabActive {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  font-weight: var(--weight-semibold);
+}
+
 /* 배당률 순위 표 — Phase 43.
    컬럼 8개라 모바일 한 줄에 안 들어가므로 가로 스크롤(사용자 확정).
    순위·종목명 2열은 sticky로 고정해 오른쪽 끝을 볼 때도 행 식별이 유지된다. */
