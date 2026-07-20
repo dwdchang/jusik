@@ -312,7 +312,7 @@ QStash 스케줄 (매월 1~7일 10:35 KST) → POST /api/jobs/refresh-hot-stocks
       → 완주 시 market:hotStocks 저장 + progress 삭제
 ```
 
-### 4.3 배당률 순위 갱신 잡 — Phase 43
+### 4.3 배당률 순위 갱신 잡 — Phase 43·44
 
 ```
 QStash 스케줄 (월 1회 권장) → POST /api/jobs/refresh-dividend-ranking
@@ -323,15 +323,28 @@ QStash 스케줄 (월 1회 권장) → POST /api/jobs/refresh-dividend-ranking
       → 전 종목 현재가 선확보: 멀티시세 FHKST11300006 30종목/콜 = 89콜
          (배당률 = 배당금 ÷ 현재가라 상위 선택 시점에 가격이 있어야 한다)
       → market:dividendRanking:progress 있으면 커서 + 가격 스냅샷 이어받기
-      → 종목별: 예탁원 배당일정 1콜(최근 10년) → 최근 1년 주당배당금 합으로
-         시가배당률 계산 + 연속 배당 연수 산출 → 상위 100 온라인 선택
+      → 종목별 buildEntry: 예탁원 배당일정 1콜(최근 10년) → 최근 1년 주당배당금 합으로
+         시가배당률 + 연속 배당 연수 + 지급 주기(기준일 평균 간격 → 월/분기/반기/연)
+         + 우선주(stk_kind=="우선") + 주식배당률(stk_divi_rate) + 폭배 후보(전년 대비
+         급증) + 배당당시 액면가(face_val) 산출 → 상위 500 버퍼에 온라인 선택
       → 시간 예산 250초 소진 시 progress 저장 후 종료
-      → 완주 시 market:dividendRanking 저장 + progress 삭제
+      → 완주 시 finalizeEntries: ① 배당률>12% 이상치만 현재 액면가(CTPF1002R papr)
+         조회 → 배당당시÷현재 액면가 비율로 주당배당금 환산(액면분할/병합 보정) →
+         ② 재정렬·TOP 100 절단 → ③ 폭배 종목만 DART 현금·현물배당결정 공시 조회로
+         수치·접수번호 채움(corpCodeMap 1회) → ④ 순위 부여
+      → market:dividendRanking 저장 + progress 삭제
 ```
 
 **KIS `ranking/dividend-rate`(HHKDB13470100)는 미사용** — 응답 `divi_rate`가 액면가배당률이라
 정렬 기준이 다르고(같은 예탁원 계열인 `ksdinfo/dividend`의 실측 주석과 동일 필드명),
 `UPJONG` 필수 파라미터·30건 상한 전례로 전 종목 커버리지도 보장되지 않는다 (plan.md §43).
+
+**Phase 44 실측 정정** — `stk_kind`는 배당 형태가 아니라 주식 종류(보통/우선). 현금/주식
+병행은 `stk_divi_rate`(>0), 배당 주기는 `divi_kind`가 아니라 배당 기준일 간격으로 판정.
+액면분할은 배당락 이후 발생 시 배당 이력 `face_val`엔 안 잡히고 현재가만 반영돼 시가배당률이
+부풀려지므로(실측: INVENI 38.74%→7.75%, 5:1 분할) 현재 액면가와 대조해 보정. 폭배(비경상
+급증)는 KIS가 특별배당을 구분 안 해(divi_kind=분기/결산/반기뿐) 감지만 하고 DART 공시로 넘김.
+`finalizeEntries`의 DART 호출은 원래 KIS 담당인 이 잡에 폭배 한정으로 섞이는 유일한 예외.
 
 ### 4.5 피드(공시) 갱신 잡 — Phase 17-1
 
@@ -456,7 +469,7 @@ QStash 스케줄 (월 1회, 매월 5일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 5 *
 | `market:weeklyFluctuation` | `StoredWeeklyFluctuation` (주간=5거래일 전 대비 등락률 상위 30+basePrice(역산, §20)+fetchedAt) | ✕ | 시세 잡 | 핫종목 페이지 주간 탭 |
 | `market:stockMaster` | `StoredStockMaster` (코드↔종목명 ~2,650+fetchedAt) | ✕ | 시세 잡 (1일 1회) | 종목명 검색 `searchStocks` |
 | `market:dividendRanking` | `StoredDividendRanking` (시가배당률 TOP 100+universeCount+fetchedAt) | ✕ | 배당률 순위 잡 | 배당 페이지 순위 섹션 |
-| `market:dividendRanking:progress` | `DividendRankingProgress` (커서+상위 100+가격 스냅샷) | ✕ | 배당률 순위 잡 (완료 시 삭제) | 배당률 순위 잡 |
+| `market:dividendRanking:progress` | `DividendRankingProgress` (커서+상위 500 버퍼+가격 스냅샷) | ✕ | 배당률 순위 잡 (완료 시 삭제) | 배당률 순위 잡 |
 | `holdings:{email}` | `Holding[]` | **○** | Server Action + 잡(종목명 채움) | 보유종목 화면·잡 |
 | `holdings:{email}:history` | `PortfolioDailyRecord[]` | **○** | 시세 잡 | 보유종목 화면 |
 | `watchlist:{email}` | `WatchItem[]` | **○** | Server Action + 잡(종목명·기준가) | 관심종목 화면·잡 |
