@@ -157,18 +157,20 @@
   white-space: nowrap;
 }
 
+/* 헤더·값 기본 가운데 정렬 — 숫자 열(.numCell)만 우측, 종목명·비고는 좌측.
+   핫종목 표(hot-stocks/page.module.css)와 폼 통일 (Phase 45) */
 .rankTable th,
 .rankTable td {
   padding: var(--space-8) var(--space-12);
-  text-align: right;
+  text-align: center;
   font-weight: var(--weight-regular);
   color: var(--color-text-primary);
 }
 
 .rankTable thead th {
-  font-size: var(--text-caption-sm);
-  font-weight: var(--weight-semibold);
-  color: var(--color-text-secondary);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-tertiary);
   border-bottom: 1px solid var(--color-border);
 }
 
@@ -177,7 +179,9 @@
   border-top: 1px solid var(--color-border);
 }
 
-/* sticky 셀은 배경이 없으면 스크롤 시 뒤 열이 비쳐 보인다 */
+/* sticky 위치·배경 — 스크롤 시 뒤 열 비침 방지. 정렬·색·굵기는 아래 scoped 규칙에서
+   (셀 단위 override는 .rankTable th/td(0,1,1)를 이기려면 .rankTable로 스코프해야 한다 —
+   핫종목 .table .foo 관례와 동일) */
 .stickyRank,
 .stickyName {
   position: sticky;
@@ -186,27 +190,60 @@
 
 .stickyRank {
   left: 0;
-  text-align: right;
-  color: var(--color-text-tertiary);
 }
 
 .stickyName {
   left: 52px;
-  text-align: left;
   border-right: 1px solid var(--color-border);
 }
 
-.rankName {
-  color: var(--color-text-primary);
+/* 숫자 값(현재가·배당률·주당배당금·연속배당) — 자릿수 비교 위해 우측 정렬 */
+.rankTable .numCell {
+  text-align: right;
+}
+
+/* 순위 — 살짝 옅은 색·가운데(기본) */
+.rankTable .stickyRank {
+  color: var(--color-text-secondary);
+}
+
+/* 종목명 — 좌측·medium (핫종목 .nameCell과 동일 관례) */
+.rankTable .stickyName {
+  text-align: left;
   font-weight: var(--weight-medium);
-  text-decoration: none;
 }
 
-.rankName:hover {
-  text-decoration: underline;
+/* 종목명 텍스트 — 초과분 ellipsis(전체 이름은 셀 title), 위첨자 ᴷ/ᴰ가 함께
+   잘리지 않도록 이름 텍스트에만 적용 (핫종목 .nameText와 동일 관례) */
+.nameText {
+  display: inline-block;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
 }
 
-.rankYield {
+/* 시장 구분 위첨자 (ᴷ/ᴰ) — 종목명 가독성을 해치지 않는 약한 색·작은 크기 */
+.marketSup {
+  margin-left: 1px;
+  font-size: var(--text-micro);
+  font-weight: 400;
+  color: var(--color-text-tertiary);
+}
+
+/* 스크린리더 전용 텍스트 — 위첨자 기호만으로는 의미 전달 불가 */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* 배당률 — 핵심 지표라 primary 색·semibold 강조 (.rankTable로 스코프해 기본 td 규칙을 이김) */
+.rankTable .rankYield {
   font-weight: var(--weight-semibold);
   color: var(--color-primary);
 }
@@ -217,8 +254,8 @@
   color: var(--color-text-tertiary);
 }
 
-/* 비고 셀 — 특이사항만 좌측 정렬로 표기 (Phase 44) */
-.remarkCell {
+/* 비고 셀 — 특이사항만 좌측 정렬로 표기 (Phase 44, .rankTable로 스코프해 기본 td 규칙을 이김) */
+.rankTable .remarkCell {
   text-align: left;
   color: var(--color-text-secondary);
 }

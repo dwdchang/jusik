@@ -31,6 +31,16 @@ function displayDate(isoDate: string): string {
 }
 
 /**
+ * 시장 구분 위첨자 — ᴷ/ᴰ는 자체 위첨자 문자라 <sup> 없이 span으로 표기.
+ * 핫종목 표(hot-stocks/page.tsx)와 동형 (Phase 45). 배당률 순위는 엔트리에
+ * `market`이 이미 있어 stockMaster 재조회 없이 `entry.market`을 바로 넘긴다.
+ */
+const MARKET_SUP = {
+  KOSPI: { mark: "ᴷ", title: "코스피", srText: "코스피 종목" },
+  KOSDAQ: { mark: "ᴰ", title: "코스닥", srText: "코스닥 종목" },
+} as const;
+
+/**
  * 배당률 순위 "비고" 셀 — 특이사항만 `·`로 이어 붙인다 (Phase 44).
  * 우선주("우") · 주식배당 병행("현+주N%") · 폭배(비경상 급증, DART 원문 링크).
  * 평범하면 "—". 폭배는 DART 배당결정 공시가 조회됐으면 링크·툴팁을 단다.
@@ -202,17 +212,28 @@ export default async function DividendsPage() {
                       <td className={`${styles.stickyRank} numeric`}>
                         {entry.rank}
                       </td>
-                      <th className={styles.stickyName} scope="row">
-                        <Link
-                          href={`/watchlist/${entry.code}`}
-                          className={styles.rankName}
+                      <th
+                        className={styles.stickyName}
+                        scope="row"
+                        title={entry.name}
+                      >
+                        <span className={styles.nameText}>{entry.name}</span>
+                        <span
+                          className={styles.marketSup}
+                          title={MARKET_SUP[entry.market].title}
+                          aria-hidden="true"
                         >
-                          {entry.name}
-                        </Link>
+                          {MARKET_SUP[entry.market].mark}
+                        </span>
+                        <span className={styles.srOnly}>
+                          {MARKET_SUP[entry.market].srText}
+                        </span>
                       </th>
-                      <td className="numeric">{formatKrw(entry.price)}</td>
+                      <td className={`${styles.numCell} numeric`}>
+                        {formatKrw(entry.price)}
+                      </td>
                       <td
-                        className={`${styles.rankYield} numeric`}
+                        className={`${styles.rankYield} ${styles.numCell} numeric`}
                         title={
                           entry.splitAdjusted
                             ? "액면분할 보정됨 — 배당 당시 액면가와 현재 액면가가 달라 주당배당금을 신주 기준으로 환산"
@@ -224,11 +245,11 @@ export default async function DividendsPage() {
                           <span className={styles.adjMark}>*</span>
                         ) : null}
                       </td>
-                      <td className="numeric">
+                      <td className={`${styles.numCell} numeric`}>
                         {formatKrw(entry.annualDividendPerShare)}
                       </td>
                       <td>{formatPayoutCycle(entry)}</td>
-                      <td className="numeric">
+                      <td className={`${styles.numCell} numeric`}>
                         {formatConsecutiveYears(entry)}
                       </td>
                       <td className={styles.remarkCell}>
