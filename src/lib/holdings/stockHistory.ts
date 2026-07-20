@@ -24,7 +24,8 @@ export interface StockDailyPrice {
 /** 백필 페이징 안전 상한 — 2년 ≈ 490거래일 / 100건 ≈ 5회 + 여유 */
 const MAX_BACKFILL_CALLS = 8;
 
-function stockHistoryKey(symbolCode: string): string {
+/** stock:{code}:history 키 조립 — 고아 키 정리 잡(Phase 49)이 동반 삭제에 공유한다 */
+export function stockHistoryKey(symbolCode: string): string {
   return `stock:${symbolCode}:history`;
 }
 

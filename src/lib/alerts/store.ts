@@ -143,7 +143,8 @@ export async function setCooldown(
  */
 const DIVIDEND_SENT_TTL_SECONDS = 2 * 24 * 60 * 60;
 
-function disclosureCursorKey(symbolCode: string): string {
+/** alerts:disclosure:last:{code} 키 조립 — 고아 키 정리 잡(Phase 49)이 동반 삭제에 공유한다 */
+export function disclosureCursorKey(symbolCode: string): string {
   return `alerts:disclosure:last:${symbolCode}`;
 }
 
@@ -151,7 +152,8 @@ function dividendSentKey(symbolCode: string, payDate: string): string {
   return `alerts:dividend:sent:${symbolCode}:${payDate}`;
 }
 
-function marketWarnKey(symbolCode: string): string {
+/** alerts:marketwarn:last:{code} 키 조립 — 고아 키 정리 잡(Phase 49)이 동반 삭제에 공유한다 */
+export function marketWarnKey(symbolCode: string): string {
   return `alerts:marketwarn:last:${symbolCode}`;
 }
 

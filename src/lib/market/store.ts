@@ -162,13 +162,18 @@ function detailKey(key: MarketDetailKey): string {
   return `market:detail:${key}`;
 }
 
-function stockKey(symbolCode: string): string {
+/** market:stock:{code} 키 조립 — 고아 키 정리 잡(Phase 49)이 접두사 SCAN·삭제에 공유한다 */
+export function stockKey(symbolCode: string): string {
   return `market:stock:${symbolCode}`;
 }
 
-function stockInfoKey(symbolCode: string): string {
+/** market:stockInfo:{code} 키 조립 — 고아 키 정리 잡(Phase 49)이 동반 삭제에 공유한다 */
+export function stockInfoKey(symbolCode: string): string {
   return `market:stockInfo:${symbolCode}`;
 }
+
+/** market:stock 키 접두사 — 고아 정리 잡의 SCAN MATCH·코드 추출 기준 (Phase 49) */
+export const STOCK_KEY_PREFIX = "market:stock:";
 
 const LAST_REFRESH_KEY = "market:lastRefreshAt";
 const DAILY_FLUCTUATION_KEY = "market:dailyFluctuation";
