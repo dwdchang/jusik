@@ -94,9 +94,15 @@ function toNumber(value: string | undefined): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-/** "YYYYMMDD" → "YYYY-MM-DD", 형식이 다르면 null */
-function toIsoDate(digits: string | undefined): string | null {
-  if (!digits || !/^\d{8}$/.test(digits)) {
+/**
+ * KIS 날짜 → "YYYY-MM-DD". 예탁원 배당일정은 같은 응답 안에서도 필드마다 포맷이
+ * 달라(`record_date`="20260331" vs `divi_pay_dt`="2026/05/29", 2026-07-20 실측)
+ * 구분자를 걷어낸 뒤 8자리 숫자로 판정한다 — 옛 8자리·슬래시 포맷 둘 다 처리.
+ * 슬래시 포맷을 놓치면 확정된 지급일까지 전부 "미정"으로 떨어지는 버그가 있었다.
+ */
+function toIsoDate(raw: string | undefined): string | null {
+  const digits = raw?.replace(/\D/g, "") ?? "";
+  if (!/^\d{8}$/.test(digits)) {
     return null;
   }
   return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
@@ -132,11 +138,13 @@ function buildDividendBlock(
     (b.record_date ?? "").localeCompare(a.record_date ?? "")
   )[0];
 
-  const lastPayDate = confirmed
-    .map((row) => row.divi_pay_dt ?? "")
-    .filter((date) => /^\d{8}$/.test(date))
-    .sort()
-    .at(-1);
+  // 지급일도 toIsoDate로 정규화(슬래시 포맷 포함) 후 ISO 문자열 사전순=시간순 정렬
+  const lastPayDate =
+    confirmed
+      .map((row) => toIsoDate(row.divi_pay_dt))
+      .filter((iso): iso is string => iso !== null)
+      .sort()
+      .at(-1) ?? null;
 
   // 확정 회차 원본 행 — 배당 일정 화면·지급일 알림이 읽는다 (Phase 25).
   // 지급일 미정(빈 문자열)은 null로 저장했다가 예탁원 데이터가 공시를 반영하면
@@ -154,7 +162,7 @@ function buildDividendBlock(
   return {
     kindLabel: latest?.divi_kind?.trim() || null,
     annualDividendPerShare,
-    lastPayDate: toIsoDate(lastPayDate),
+    lastPayDate,
     rounds,
   };
 }
