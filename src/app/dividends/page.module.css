@@ -85,19 +85,15 @@
   margin-bottom: var(--space-8);
 }
 
+/* 종목명 — 링크 아님(Phase 47, 오터치 방지로 링크 제거). 순수 텍스트 */
 .itemName {
   min-width: 0;
   font-size: var(--text-caption);
   font-weight: var(--weight-semibold);
   color: var(--color-text-primary);
-  text-decoration: none;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.itemName:hover {
-  color: var(--color-primary);
 }
 
 .itemCode {
@@ -139,7 +135,7 @@
   line-height: 1.5;
 }
 
-/* 배당률 순위 탭 — 일반종목/배당상품 (Phase 46, 핫종목 .tabs와 동형) */
+/* 배당 페이지 탭 — 일반종목/배당상품/내 배당 (Phase 47, 핫종목 .tabs와 동형) */
 .tabs {
   display: flex;
   flex-wrap: wrap;

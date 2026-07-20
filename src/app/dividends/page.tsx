@@ -41,35 +41,40 @@ const MARKET_SUP = {
   KOSDAQ: { mark: "ᴰ", title: "코스닥", srText: "코스닥 종목" },
 } as const;
 
+/** 배당 페이지 탭 키 — 순위 2종(일반종목/배당상품) + 개인 일정 1종(내 배당) */
+type DividendTab = DividendRankingCategory | "schedule";
+
 /**
- * 배당률 순위 탭 — 일반종목(주권)/배당상품(ETF·리츠·인프라펀드) (Phase 46).
- * 종목 유형별로 독립 순위를 보여준다. 배당상품은 지급 주기 무관 전부 대상.
+ * 배당 페이지 탭 — 일반종목/배당상품(전체 배당률 순위) + 내 배당(보유종목 확정
+ * 배당 일정) (Phase 47). 앞 두 탭은 공개 데이터 탐색, "내 배당"은 개인 보유 기준.
+ * 순위표와 확정 배당 목록이 따로 스크롤돼 불편하다는 요청으로 한 탭 바에 통합.
  */
-const RANK_MODES: ReadonlyArray<{
-  key: DividendRankingCategory;
+const DIVIDEND_TABS: ReadonlyArray<{
+  key: DividendTab;
   label: string;
   href: string;
-  /** 대상 종목 수 문구 — "전 N개 대상" 앞 수식어 */
-  universeLabel: string;
-  emptyNotice: string;
 }> = [
-  {
-    key: "stock",
-    label: "일반종목",
-    href: "/dividends",
+  { key: "stock", label: "일반종목", href: "/dividends" },
+  { key: "product", label: "배당상품", href: "/dividends?mode=product" },
+  { key: "schedule", label: "내 배당", href: "/dividends?mode=schedule" },
+];
+
+/** 순위 탭별 메타 — 대상 수 수식어·빈 안내 (내 배당 탭은 순위가 아니라 제외) */
+const RANK_META: Record<
+  DividendRankingCategory,
+  { universeLabel: string; emptyNotice: string }
+> = {
+  stock: {
     universeLabel: "전 종목",
     emptyNotice:
       "아직 산출된 배당률 순위가 없습니다. 전 종목 스캔이 다음 갱신 회차에 완료되면 여기에 표시됩니다.",
   },
-  {
-    key: "product",
-    label: "배당상품",
-    href: "/dividends?mode=product",
+  product: {
     universeLabel: "전 배당상품",
     emptyNotice:
       "아직 산출된 배당상품 순위가 없습니다. ETF·리츠·인프라펀드 스캔이 다음 갱신 회차에 완료되면 여기에 표시됩니다.",
   },
-];
+};
 
 /**
  * 배당률 순위 "비고" 셀 — 특이사항만 `·`로 이어 붙인다 (Phase 44).
@@ -136,22 +141,29 @@ export default async function DividendsPage({
   }
 
   const { mode } = await searchParams;
-  const activeCategory: DividendRankingCategory =
-    mode === "product" ? "product" : "stock";
-  const activeMode = RANK_MODES.find((m) => m.key === activeCategory)!;
+  const activeTab: DividendTab =
+    mode === "product" ? "product" : mode === "schedule" ? "schedule" : "stock";
+  const isRankingTab = activeTab === "stock" || activeTab === "product";
 
+  // 활성 탭에 필요한 데이터만 로드 — 순위 탭은 순위, 내 배당 탭은 확정 일정
   const [rows, ranking, lastRefresh] = await Promise.all([
-    getDividendSchedule(email).catch((err): [] => {
-      console.error("[DividendsPage] getDividendSchedule failed:", err);
-      return [];
-    }),
-    // 순위는 잡이 아직 안 돌았으면 null — 일정 섹션까지 막지 않는다
-    getDividendRankingView(activeCategory).catch((err) => {
-      console.error("[DividendsPage] getDividendRankingView failed:", err);
-      return null;
-    }),
+    activeTab === "schedule"
+      ? getDividendSchedule(email).catch((err): [] => {
+          console.error("[DividendsPage] getDividendSchedule failed:", err);
+          return [];
+        })
+      : Promise.resolve([]),
+    // 순위는 잡이 아직 안 돌았으면 null — 탭 자체는 막지 않는다
+    isRankingTab
+      ? getDividendRankingView(activeTab).catch((err) => {
+          console.error("[DividendsPage] getDividendRankingView failed:", err);
+          return null;
+        })
+      : Promise.resolve(null),
     getLastRefreshRecord().catch(() => null),
   ]);
+
+  const rankMeta = isRankingTab ? RANK_META[activeTab] : null;
 
   return (
     <main className={styles.page}>
@@ -166,184 +178,189 @@ export default async function DividendsPage({
           ) : null}
         </header>
 
-        <section className={styles.section} aria-label="배당 일정 목록">
-          <h2 className={styles.sectionTitle}>
-            보유종목 확정 배당 ({rows.length})
-          </h2>
-          {rows.length === 0 ? (
-            <p className={styles.emptyNotice}>
-              표시할 배당 일정이 없습니다. 보유종목의 확정 배당(최근 1년)이
-              다음 갱신 회차에 수집되면 여기에 표시됩니다.{" "}
-              <Link href="/holdings" className={styles.emptyLink}>
-                보유종목 관리 →
-              </Link>
-            </p>
-          ) : (
-            <ul className={styles.itemList}>
-              {rows.map((row) => (
-                <li
-                  key={`${row.symbolCode}-${row.recordDate}`}
-                  className={styles.item}
-                >
-                  <div className={styles.itemHead}>
-                    <Link
-                      href={`/holdings/${row.symbolCode}`}
-                      className={styles.itemName}
-                    >
-                      {row.name}
-                      <span className={`${styles.itemCode} numeric`}>
-                        {row.symbolCode}
+        <nav className={styles.tabs} aria-label="배당 유형 선택">
+          {DIVIDEND_TABS.map((tab) => (
+            <Link
+              key={tab.key}
+              href={tab.href}
+              className={
+                tab.key === activeTab
+                  ? `${styles.tab} ${styles.tabActive}`
+                  : styles.tab
+              }
+              aria-current={tab.key === activeTab ? "page" : undefined}
+            >
+              {tab.label}
+            </Link>
+          ))}
+        </nav>
+
+        {activeTab === "schedule" ? (
+          <section className={styles.section} aria-label="보유종목 확정 배당">
+            <h2 className={styles.sectionTitle}>
+              보유종목 확정 배당 ({rows.length})
+            </h2>
+            {rows.length === 0 ? (
+              <p className={styles.emptyNotice}>
+                표시할 배당 일정이 없습니다. 보유종목의 확정 배당(최근 1년)이
+                다음 갱신 회차에 수집되면 여기에 표시됩니다.{" "}
+                <Link href="/holdings" className={styles.emptyLink}>
+                  보유종목 관리 →
+                </Link>
+              </p>
+            ) : (
+              <ul className={styles.itemList}>
+                {rows.map((row) => (
+                  <li
+                    key={`${row.symbolCode}-${row.recordDate}`}
+                    className={styles.item}
+                  >
+                    <div className={styles.itemHead}>
+                      {/* 종목명 링크 제거 (Phase 47) — 목록 터치 시 원치 않는 이동 방지 */}
+                      <span className={styles.itemName}>
+                        {row.name}
+                        <span className={`${styles.itemCode} numeric`}>
+                          {row.symbolCode}
+                        </span>
                       </span>
-                    </Link>
-                    <span className={`${styles.itemAmount} numeric`}>
-                      예상 {formatKrw(row.expectedAmount)}
-                    </span>
-                  </div>
-                  <p className={`${styles.itemMeta} numeric`}>
-                    {row.kind !== null ? `${row.kind} · ` : ""}기준일{" "}
-                    {displayDate(row.recordDate)} · 지급일{" "}
-                    {row.payDate !== null ? (
-                      displayDate(row.payDate)
-                    ) : (
-                      <span className={styles.payPending}>미정</span>
-                    )}{" "}
-                    · 주당 {formatKrw(row.amountPerShare)} × {row.quantity}주
-                  </p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+                      <span className={`${styles.itemAmount} numeric`}>
+                        예상 {formatKrw(row.expectedAmount)}
+                      </span>
+                    </div>
+                    <p className={`${styles.itemMeta} numeric`}>
+                      {row.kind !== null ? `${row.kind} · ` : ""}기준일{" "}
+                      {displayDate(row.recordDate)} · 지급일{" "}
+                      {row.payDate !== null ? (
+                        displayDate(row.payDate)
+                      ) : (
+                        <span className={styles.payPending}>미정</span>
+                      )}{" "}
+                      · 주당 {formatKrw(row.amountPerShare)} × {row.quantity}주
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        ) : (
+          <section className={styles.section} aria-label="배당률 순위">
+            <h2 className={styles.sectionTitle}>
+              배당률 순위
+              {ranking !== null && rankMeta !== null
+                ? ` TOP ${ranking.entries.length} (${rankMeta.universeLabel} ${ranking.universeCount.toLocaleString("ko-KR")}개 대상)`
+                : ""}
+            </h2>
 
-        <section className={styles.section} aria-label="배당률 순위">
-          <h2 className={styles.sectionTitle}>
-            배당률 순위
-            {ranking !== null
-              ? ` TOP ${ranking.entries.length} (${activeMode.universeLabel} ${ranking.universeCount.toLocaleString("ko-KR")}개 대상)`
-              : ""}
-          </h2>
-
-          <nav className={styles.tabs} aria-label="순위 유형 선택">
-            {RANK_MODES.map((m) => (
-              <Link
-                key={m.key}
-                href={m.href}
-                className={
-                  m.key === activeCategory
-                    ? `${styles.tab} ${styles.tabActive}`
-                    : styles.tab
-                }
-                aria-current={m.key === activeCategory ? "page" : undefined}
-              >
-                {m.label}
-              </Link>
-            ))}
-          </nav>
-
-          {ranking === null ? (
-            <p className={styles.emptyNotice}>{activeMode.emptyNotice}</p>
-          ) : (
-            <div className={styles.tableScroll}>
-              <table className={styles.rankTable}>
-                <thead>
-                  <tr>
-                    <th className={styles.stickyRank} scope="col">
-                      순위
-                    </th>
-                    <th className={styles.stickyName} scope="col">
-                      종목명
-                    </th>
-                    <th scope="col">현재가</th>
-                    <th scope="col">배당률</th>
-                    <th scope="col">주당배당금</th>
-                    <th scope="col">지급 주기</th>
-                    <th scope="col">연속 배당</th>
-                    <th scope="col">비고</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ranking.entries.map((entry) => (
-                    <tr key={entry.code}>
-                      <td className={`${styles.stickyRank} numeric`}>
-                        {entry.rank}
-                      </td>
-                      <th
-                        className={styles.stickyName}
-                        scope="row"
-                        title={entry.name}
-                      >
-                        <span className={styles.nameText}>{entry.name}</span>
-                        <span
-                          className={styles.marketSup}
-                          title={MARKET_SUP[entry.market].title}
-                          aria-hidden="true"
-                        >
-                          {MARKET_SUP[entry.market].mark}
-                        </span>
-                        <span className={styles.srOnly}>
-                          {MARKET_SUP[entry.market].srText}
-                        </span>
+            {ranking === null ? (
+              <p className={styles.emptyNotice}>{rankMeta?.emptyNotice}</p>
+            ) : (
+              <div className={styles.tableScroll}>
+                <table className={styles.rankTable}>
+                  <thead>
+                    <tr>
+                      <th className={styles.stickyRank} scope="col">
+                        순위
                       </th>
-                      <td className={`${styles.numCell} numeric`}>
-                        {formatKrw(entry.price)}
-                      </td>
-                      <td
-                        className={`${styles.rankYield} ${styles.numCell} numeric`}
-                        title={
-                          entry.splitAdjusted
-                            ? "액면분할 보정됨 — 배당 당시 액면가와 현재 액면가가 달라 주당배당금을 신주 기준으로 환산"
-                            : undefined
-                        }
-                      >
-                        {entry.dividendYield.toFixed(2)}%
-                        {entry.splitAdjusted ? (
-                          <span className={styles.adjMark}>*</span>
-                        ) : null}
-                      </td>
-                      <td className={`${styles.numCell} numeric`}>
-                        {formatKrw(entry.annualDividendPerShare)}
-                      </td>
-                      <td>{formatPayoutCycle(entry)}</td>
-                      <td className={`${styles.numCell} numeric`}>
-                        {formatConsecutiveYears(entry)}
-                      </td>
-                      <td className={styles.remarkCell}>
-                        {renderRemarks(entry)}
-                      </td>
+                      <th className={styles.stickyName} scope="col">
+                        종목명
+                      </th>
+                      <th scope="col">현재가</th>
+                      <th scope="col">배당률</th>
+                      <th scope="col">주당배당금</th>
+                      <th scope="col">지급 주기</th>
+                      <th scope="col">연속 배당</th>
+                      <th scope="col">비고</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+                  </thead>
+                  <tbody>
+                    {ranking.entries.map((entry) => (
+                      <tr key={entry.code}>
+                        <td className={`${styles.stickyRank} numeric`}>
+                          {entry.rank}
+                        </td>
+                        <th
+                          className={styles.stickyName}
+                          scope="row"
+                          title={entry.name}
+                        >
+                          <span className={styles.nameText}>{entry.name}</span>
+                          <span
+                            className={styles.marketSup}
+                            title={MARKET_SUP[entry.market].title}
+                            aria-hidden="true"
+                          >
+                            {MARKET_SUP[entry.market].mark}
+                          </span>
+                          <span className={styles.srOnly}>
+                            {MARKET_SUP[entry.market].srText}
+                          </span>
+                        </th>
+                        <td className={`${styles.numCell} numeric`}>
+                          {formatKrw(entry.price)}
+                        </td>
+                        <td
+                          className={`${styles.rankYield} ${styles.numCell} numeric`}
+                          title={
+                            entry.splitAdjusted
+                              ? "액면분할 보정됨 — 배당 당시 액면가와 현재 액면가가 달라 주당배당금을 신주 기준으로 환산"
+                              : undefined
+                          }
+                        >
+                          {entry.dividendYield.toFixed(2)}%
+                          {entry.splitAdjusted ? (
+                            <span className={styles.adjMark}>*</span>
+                          ) : null}
+                        </td>
+                        <td className={`${styles.numCell} numeric`}>
+                          {formatKrw(entry.annualDividendPerShare)}
+                        </td>
+                        <td>{formatPayoutCycle(entry)}</td>
+                        <td className={`${styles.numCell} numeric`}>
+                          {formatConsecutiveYears(entry)}
+                        </td>
+                        <td className={styles.remarkCell}>
+                          {renderRemarks(entry)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        )}
 
         <footer className={styles.footer}>
-          <p className={styles.notice}>
-            예상 지급액은 <strong>현재 보유수량 기준</strong>입니다 — 실제 수령
-            자격은 배당 기준일 시점 보유 여부로 결정되며, 수량 변경 이력은
-            반영되지 않습니다. 금액은 <strong>세전</strong>(배당소득세 15.4%
-            원천징수 전) 기준입니다. 지급일이 미정인 회차는 공시로 확정되면
-            자동으로 채워집니다.
-          </p>
-          <p className={styles.notice}>
-            배당률은 <strong>시가배당률</strong>(최근 1년 확정 주당배당금 합 ÷
-            산출 시점 현재가)이며, 액면가배당률이 아닙니다. 현재가·배당률·순위는
-            산출 시점 기준으로 함께 고정되므로 장중 시세와는 차이가 있습니다.
-            연속 배당 연수의 <strong>+</strong> 표기는 조회 범위(최근{" "}
-            {DIVIDEND_RANKING_LOOKBACK_YEARS}년) 끝까지 배당이 이어져 실제로는
-            더 길 수 있다는 뜻입니다.
-          </p>
-          <p className={styles.notice}>
-            비고의 <strong>우</strong>는 우선주, <strong>현+주N%</strong>는
-            현금과 함께 주식배당(주식배당률 N%)을 병행한 종목입니다.{" "}
-            <strong>폭배</strong>는 최근 1년 배당이 예년보다 비경상적으로 급증한
-            종목으로, 특별배당·결산기 변경 등 일회성일 수 있어 지속 배당률로
-            보기 어렵습니다 — 링크로 DART 배당결정 공시 원문을 확인할 수 있습니다.
-            배당률 옆 <strong>*</strong>는 액면분할/병합이 반영돼 배당 당시
-            액면가와 현재 액면가가 달라, 주당배당금을 현재 주식 수 기준으로
-            환산해 보정한 값입니다.
-          </p>
+          {activeTab === "schedule" ? (
+            <p className={styles.notice}>
+              예상 지급액은 <strong>현재 보유수량 기준</strong>입니다 — 실제
+              수령 자격은 배당 기준일 시점 보유 여부로 결정되며, 수량 변경
+              이력은 반영되지 않습니다. 금액은 <strong>세전</strong>(배당소득세
+              15.4% 원천징수 전) 기준입니다. 지급일이 미정인 회차는 공시로
+              확정되면 자동으로 채워집니다.
+            </p>
+          ) : (
+            <>
+              <p className={styles.notice}>
+                배당률은 <strong>시가배당률</strong>(최근 1년 확정 주당배당금 합
+                ÷ 산출 시점 현재가)이며, 액면가배당률이 아닙니다.
+                현재가·배당률·순위는 산출 시점 기준으로 함께 고정되므로 장중
+                시세와는 차이가 있습니다. 연속 배당 연수의 <strong>+</strong>{" "}
+                표기는 조회 범위(최근 {DIVIDEND_RANKING_LOOKBACK_YEARS}년) 끝까지
+                배당이 이어져 실제로는 더 길 수 있다는 뜻입니다.
+              </p>
+              <p className={styles.notice}>
+                비고의 <strong>우</strong>는 우선주, <strong>현+주N%</strong>는
+                현금과 함께 주식배당(주식배당률 N%)을 병행한 종목입니다.{" "}
+                <strong>폭배</strong>는 최근 1년 배당이 예년보다 비경상적으로
+                급증한 종목으로, 특별배당·결산기 변경 등 일회성일 수 있어 지속
+                배당률로 보기 어렵습니다 — 링크로 DART 배당결정 공시 원문을
+                확인할 수 있습니다. 배당률 옆 <strong>*</strong>는
+                액면분할/병합이 반영돼 배당 당시 액면가와 현재 액면가가 달라,
+                주당배당금을 현재 주식 수 기준으로 환산해 보정한 값입니다.
+              </p>
+            </>
+          )}
         </footer>
       </div>
     </main>
