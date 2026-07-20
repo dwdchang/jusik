@@ -18,7 +18,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 ## 2. API 및 보안 (한국투자증권 KIS OpenAPI)
 
 - `KIS_APP_KEY`/`KIS_APP_SECRET`·`HOLDINGS_ENCRYPTION_KEY`·`CRON_SECRET` 등 모든 키는 서버 전용 · `NEXT_PUBLIC_` 금지
-- QStash 갱신 잡 라우트는 5종(`/api/jobs/refresh-market-data`, `/api/jobs/refresh-hot-stocks`, `/api/jobs/refresh-dividend-ranking`, `/api/jobs/refresh-feeds`, `/api/jobs/refresh-trade-detail`)이며, KIS 호출은 이 중 KIS 담당 잡(`refresh-market-data`, `refresh-hot-stocks`, `refresh-dividend-ranking`) 경유만 허용 — 화면(Server Component)·Server Action은 KIS를 직접 호출하지 않고 Redis 스냅샷만 읽는다
+- QStash 갱신 잡 라우트는 6종(`/api/jobs/refresh-market-data`, `/api/jobs/refresh-hot-stocks`, `/api/jobs/refresh-dividend-ranking`, `/api/jobs/refresh-feeds`, `/api/jobs/refresh-trade-detail`, `/api/jobs/cleanup-orphan-stocks`)이며, KIS 호출은 이 중 KIS 담당 잡(`refresh-market-data`, `refresh-hot-stocks`, `refresh-dividend-ranking`) 경유만 허용 — 화면(Server Component)·Server Action은 KIS를 직접 호출하지 않고 Redis 스냅샷만 읽는다. `cleanup-orphan-stocks`(매일 03:00 KST)는 KIS를 호출하지 않고 어떤 사용자도 보유·관심하지 않게 된 종목의 per-종목 Redis 키를 수거하는 정리 잡이다
 - KIS 응답의 문자열 숫자·부호 코드는 항상 `parseNum`/`applyKisSign`(`lib/indices/kisMapper.ts`) 경유
 
 ## 3. 컴포넌트 · React 19

@@ -92,6 +92,7 @@
 | `api/jobs/refresh-dividend-ranking/route.ts` | 배당률 순위 갱신 잡 엔드포인트 (POST, §4.3, Phase 43) |
 | `api/jobs/refresh-feeds/route.ts` | 피드(공시) 갱신 잡 엔드포인트 (POST, §4.5) — KIS가 아니라 **시간창 가드 없음** |
 | `api/jobs/refresh-trade-detail/route.ts` | 수출입 상세 갱신 잡 엔드포인트 (POST, §4.6, Phase 17-5) — 월 1회·시간창 가드 없음 |
+| `api/jobs/cleanup-orphan-stocks/route.ts` | 고아 종목 키 정리 잡 엔드포인트 (POST, §4.7, Phase 49) — 매일 03:00 KST·KIS 미호출·시간창 가드 없음 |
 
 라우트별 `page.module.css` 동반. 오류 UI는 별도 error.tsx 없이 각 page의 try/catch 인라인 처리.
 
@@ -159,6 +160,7 @@
 | `jobs/refreshHotStocks.ts` | **핫종목 갱신 잡 파이프라인 본체** (§4.2) |
 | `jobs/refreshFeeds.ts` | **피드(공시·뉴스·수출입) 갱신 잡 파이프라인 본체** (§4.5) — corpCode 매핑→종목별 공시(DART)+뉴스(네이버, 종목명 키워드) 조회·저장. 소스·종목별 실패 격리. + `refreshTradeStats`(17-4) — 종목 무관 월 1회성(스냅샷 최신월<직전 완결월일 때만), 12개월 한도 때문에 2회 호출(최근 12개월+전년동월)→13개월 연속 저장. 잡 `ok` 게이팅 제외(다음 회차 가드가 재시도). 알림 훅 2종: `evaluateFeedAlerts`(공시·시장경보) + `evaluateDividendAlerts`(배당 지급일 당일, §25) |
 | `jobs/collectTargets.ts` | 잡 공용 수집 대상 조회 — `collectHoldings`/`collectWatchlists`/`unionSymbolCodes`/`errorMessage` (시세·피드 잡 공유, Phase 17-1에서 refreshMarketData 로컬 함수를 추출) |
+| `jobs/cleanupOrphanStocks.ts` | **고아 종목 키 정리 잡 본체** (§4.7, Phase 49) — `collectTargets`로 살아있는 집합 계산 → 대량 삭제 방어 가드(읽기 실패·허용 이메일 0이면 skip) → `market:stock:*` SCAN → 고아 종목의 per-종목 키 7종 일괄 `del`. 각 키 빌더는 소유 store에서 export해 재사용 |
 | `jobs/verifyJobRequest.ts` | 잡 공용 인증 — QStash 서명 → CRON_SECRET Bearer 폴백(timingSafeEqual) |
 | `qstash/dlq.ts` | QStash DLQ 읽기 전용 조회(Phase 18) — `QSTASH_TOKEN`(서버 전용)으로 `Client.dlq.listMessages` 호출, 화면용 뷰 모델(`DlqMessageView`) 매핑. `/dlq` 페이지 전용 |
 | `alerts/store.ts` | 알림 store (Phase 10 2·3단계, §25) — 개인: `alerts:{email}:peaks`(신고가, 암호화)·`:muted`(음소거 종목, 암호화)·`:cooldown:{code}`(EX 7200 평문). 전역(공개 데이터 파생, 평문): `alerts:disclosure:last:{code}`(마지막 통지 접수번호)·`alerts:marketwarn:last:{code}`(시장경보 상태 6필드)·`alerts:dividend:sent:{code}:{payDate}`(배당 지급일 알림 발송 마커, EX 2일) |
@@ -414,6 +416,31 @@ QStash 스케줄 (월 1회, 매월 5일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 5 *
 - **합계는 품목별 통계 자체 집계** — 수출입총괄과 0.03% 차이(202606 실측 1021.3 vs
   1021.7억). 98·99류는 빈 응답이라 더 돌아도 안 메워진다. 출처를 섞으면 "기타"가
   틀어지므로 자체 정합을 지키고 차이는 화면 각주로 밝힌다.
+
+### 4.7 고아 종목 키 정리 잡 — Phase 49
+
+```
+QStash 스케줄 (매일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 * * *) → POST /api/jobs/cleanup-orphan-stocks
+    verifyJobRequest만 — 시간창 가드 없음 (KIS 미호출, Redis만 읽고 지움)
+  → cleanupOrphanStocks(trigger)  [lib/jobs/cleanupOrphanStocks.ts]
+      1. 살아있는 집합 = unionSymbolCodes(collectHoldings, collectWatchlists)
+      2. 대량 삭제 방어: 허용 이메일 0 / watchlist results.ok=false 있음 /
+         holdings 읽힌 수≠허용 수 → 이번 회차 삭제 skip (ok:true, skipped)
+      3. market:stock:* SCAN (cursor, match, count=500) → 존재 종목코드 수집 (중복 제거)
+      4. 고아 = 존재 − 살아있는 집합
+      5. 고아 종목마다 per-종목 키 7종 del(...): market:stock·market:stockInfo·
+         stock:{code}:history·market:disclosures·market:news·
+         alerts:disclosure:last·alerts:marketwarn:last
+  → 응답: report(live/scanned/orphan/deletedKeys) — 실패 시 500 → QStash 재시도(멱등)
+```
+
+- **고아 판정 근거**: per-종목 키는 전부 "전 사용자 보유+관심 합집합"으로만 생성된다
+  (refreshMarketData/refreshFeeds). 어떤 사용자도 안 갖는 종목은 갱신 잡이 다시 쓰지
+  않아 고아로 남는다. 소비처(보유·관심·피드 알림 warnCodes)도 전부 같은 합집합.
+- **제외 키**: `alerts:dividend:sent:{code}:{payDate}`는 payDate 복합 키 + 자체 TTL(2일)로
+  자동 정리되므로 대상 아님. `market:stock:*` MATCH는 `market:stockInfo:*`와 겹치지 않는다.
+- **경합**: 정리 직후 재추가되면 다음 거래일 시세 잡이 스냅샷 복구(그 사이 "데이터 없음").
+- **운영**: QStash 스케줄 등록은 사용자 수작업(다른 잡과 동일). 미등록이면 잡은 안 돈다.
 
 ### 4.3 화면 읽기 경로 (전부 Redis만)
 

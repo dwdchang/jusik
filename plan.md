@@ -2955,6 +2955,28 @@ interface WatchItem {
 
 ---
 
+### Phase 49 — 고아 종목 키 정리 잡 (매일 03:00 KST GC) (2026-07-20)
+
+- **요청 근거**: Phase 17-2 백로그. `market:stock:{code}` 계열 per-종목 키는 "전 사용자 보유+관심 합집합"으로만 생성되는데(refreshMarketData/refreshFeeds), 어떤 사용자도 더 이상 갖지 않게 된 종목의 키는 갱신 잡이 다시 쓰지 않아 **고아로 남아 누적**된다. 안전하게 수거하는 GC 잡을 도입.
+- **조사 결과 (2026-07-20)**:
+  1. **고아 판정이 정확히 가능** — `market:stock:*` 유니버스는 코드상 정확히 `unionSymbolCodes(collectHoldings, collectWatchlists)` 하나이고, 소비처 3곳(보유·관심·피드 알림 warnCodes)도 전부 같은 합집합. 숨은 소비처 없음.
+  2. **전 사용자 열거가 쉬움** — 사용자 목록은 `getAllowedEmails()`(ALLOWED_EMAILS)로 고정된 소수 allowlist. 기존 `collectHoldings/collectWatchlists/unionSymbolCodes` 재사용.
+  3. **기존 키 나열 가능** — Upstash `@upstash/redis` v1.38 `redis.scan(cursor, {match, count})` 지원(`market:stock:*`는 `market:stockInfo:*`와 안 겹침). `del(...keys)` 다중 키 지원.
+  4. **새벽 3시 스케줄 가능** — QStash `CRON_TZ=Asia/Seoul` cron. KIS 미호출이라 시세 호출창(09:00~18:40) 가드 무관.
+- **결정 (사용자 승인 2026-07-20)**:
+  - **동반 키 일괄 삭제**: 고아 종목의 per-종목 키 7종을 함께 삭제 — `market:stock`·`market:stockInfo`·`stock:{code}:history`·`market:disclosures`·`market:news`·`alerts:disclosure:last`·`alerts:marketwarn:last`. 각 키 빌더를 소유 store에서 export해 재사용(포맷 드리프트 방지). **제외**: `alerts:dividend:sent:{code}:{payDate}`는 payDate 복합 키 + 자체 TTL(2일)로 자동 정리되므로 대상 아님.
+  - **대량 삭제 방어**: 허용 이메일 전체의 보유·관심 읽기가 하나라도 실패하거나(watchlist는 results.ok, holdings는 읽힌 수≠허용 수로 판정) 허용 이메일이 0이면 이번 회차 삭제 통째 skip(`ok:true, skipped`). 일시 장애로 "살아있는 집합"이 비어 전 종목을 지우는 참사 방지.
+  - **경합 허용**: 정리 직후 재추가되면 다음 거래일 시세 잡이 스냅샷 복구. 그 사이 "데이터 없음" 표시일 뿐 오작동 아님.
+- **구현**:
+  1. `lib/market/store.ts`·`lib/holdings/stockHistory.ts`·`lib/alerts/store.ts` — 종목별 키 빌더 export(+`STOCK_KEY_PREFIX`).
+  2. `lib/jobs/cleanupOrphanStocks.ts`(신규) — 살아있는 집합 계산 → 방어 가드 → `market:stock:*` SCAN → 고아 산출 → 패밀리 `del`. 리포트(live/scanned/orphan/deletedKeys).
+  3. `app/api/jobs/cleanup-orphan-stocks/route.ts`(신규) — `verifyJobRequest` 인증, KIS 시간창 가드 없음, `ok?200:500`.
+  4. `AGENTS.md` §2 — 잡 라우트 5종 → **6종** 개정(cleanup-orphan-stocks는 KIS 미호출 정리 잡 명기).
+- **검증**: lint·tsc·build 통과, 새 라우트 등록 확인.
+- **운영 남은 일**: QStash에 `0 3 * * *`(`CRON_TZ=Asia/Seoul`) 스케줄을 `/api/jobs/cleanup-orphan-stocks`로 사용자 등록 필요(다른 잡과 동일 방식).
+
+---
+
 ## 7. PR 분리 권장 (선택)
 
 | PR | Phase | 리뷰 포인트 |
