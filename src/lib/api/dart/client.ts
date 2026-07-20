@@ -136,3 +136,105 @@ export async function fetchDartDisclosures(
 
   return data.list ?? [];
 }
+
+/** 배당결정 공시에서 추출한 정형 수치 — Phase 44 폭배 enrichment */
+export interface DartDividendDecision {
+  /** 접수번호 — 원문 딥링크 (`dart.fss.or.kr/dsaf001/main.do?rcpNo=`) */
+  rceptNo: string;
+  /** 1주당 배당금(원, 보통주) */
+  perShare: number | null;
+  /** 시가배당율(%, 보통주) — DART 공식(KRX 기준가), 앱 산출값과 분모가 다름 */
+  officialYield: number | null;
+  /** 배당기준일 "YYYY-MM-DD" */
+  recordDate: string | null;
+}
+
+/** 공시 원문(document.xml, zip) → 태그 제거 평문. 서식 XML/HTML 혼재라 태그만 걷어낸다. */
+async function fetchDartDocumentText(rceptNo: string): Promise<string> {
+  const url = `${DART_BASE_URL}/document.xml?crtfc_key=${getDartApiKey()}&rcept_no=${rceptNo}`;
+  const response = await fetch(url, {
+    cache: "no-store",
+    signal: AbortSignal.timeout(DART_FETCH_TIMEOUT_MS),
+  });
+
+  if (!response.ok) {
+    throw new Error(`DART document HTTP ${response.status}`);
+  }
+
+  const body = new Uint8Array(await response.arrayBuffer());
+  // 키 오류 등은 zip이 아닌 XML 에러 본문으로 온다 (PK 매직넘버 확인)
+  if (body.length < 2 || body[0] !== 0x50 || body[1] !== 0x4b) {
+    throw new Error("DART document not a zip");
+  }
+
+  const unzipped = unzipSync(body);
+  const entryName = Object.keys(unzipped).find((name) =>
+    name.toLowerCase().endsWith(".xml")
+  );
+  if (!entryName) {
+    throw new Error("DART document zip has no .xml entry");
+  }
+
+  return new TextDecoder("utf-8")
+    .decode(unzipped[entryName])
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&[a-z]+;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * 현금·현물배당결정 공시를 찾아 정형 수치를 파싱한다 — Phase 44 폭배 enrichment.
+ * 자회사(주요경영사항) 건은 제외하고 본사 결정을 우선한다. 못 찾거나 파싱 실패면 null.
+ * 표준 서식이라 태그 제거 후 라벨 인접 값으로 추출한다(실측: rcpt 20260220900866).
+ */
+export async function fetchDartDividendDecision(
+  corpCode: string,
+  options: { bgnDe: string; endDe: string }
+): Promise<DartDividendDecision | null> {
+  const list = await fetchDartDisclosures(corpCode, {
+    bgnDe: options.bgnDe,
+    endDe: options.endDe,
+    pageCount: 100,
+  });
+
+  const hit = list.find((row) => {
+    const nm = row.report_nm ?? "";
+    return (
+      nm.includes("현금") && nm.includes("배당결정") && !nm.includes("자회사")
+    );
+  });
+
+  if (!hit?.rcept_no) {
+    return null;
+  }
+
+  const rceptNo = hit.rcept_no;
+  let text: string;
+  try {
+    text = await fetchDartDocumentText(rceptNo);
+  } catch {
+    // 링크만이라도 유효하게 — 수치 없이 접수번호만 반환
+    return { rceptNo, perShare: null, officialYield: null, recordDate: null };
+  }
+
+  const perShareRaw = text.match(
+    /1주당 배당금\(원\)\s*보통주식\s*([\d,]+)/
+  )?.[1];
+  const yieldRaw = text.match(/시가배당율?\(%\)\s*보통주식\s*([\d.]+)/)?.[1];
+  const recordDate = text.match(/배당기준일\s*(\d{4}-\d{2}-\d{2})/)?.[1] ?? null;
+
+  const perShare =
+    perShareRaw !== undefined ? Number(perShareRaw.replace(/,/g, "")) : null;
+  const officialYield = yieldRaw !== undefined ? Number(yieldRaw) : null;
+
+  return {
+    rceptNo,
+    perShare: perShare !== null && Number.isFinite(perShare) ? perShare : null,
+    officialYield:
+      officialYield !== null && Number.isFinite(officialYield)
+        ? officialYield
+        : null,
+    recordDate,
+  };
+}

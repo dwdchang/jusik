@@ -1,4 +1,5 @@
 import type { MarketIndex, OverseasIndicator } from "@/types/indices";
+import { parseNum } from "@/lib/indices/kisMapper";
 import { getKisAccessToken } from "./auth";
 import {
   KIS_BASE_URL,
@@ -370,6 +371,27 @@ export async function fetchKisStockName(symbolCode: string): Promise<string> {
   }
 
   return name;
+}
+
+/**
+ * 주식기본조회 (CTPF1002R) → 현재 액면가(원). Phase 44 액면분할 보정용.
+ * 예탁원 배당일정의 `face_val`은 배당락 시점 값이라, 이후 액면분할이 있으면
+ * 현재가(분할 반영)와 기준이 어긋나 시가배당률이 부풀려진다. 두 값의 비율로 보정한다.
+ * 액면가를 못 얻으면 0을 반환(호출부에서 보정 생략).
+ */
+export async function fetchKisStockFaceValue(symbolCode: string): Promise<number> {
+  const data = await fetchKisJson<KisStockBasicInfoResponse>(
+    "stock face value",
+    KIS_ENDPOINTS.STOCK_BASIC_INFO,
+    KIS_TR_ID.STOCK_BASIC_INFO,
+    {
+      PRDT_TYPE_CD: KIS_STOCK_PRDT_TYPE_CD,
+      PDNO: symbolCode,
+    }
+  );
+
+  const papr = parseNum(data.output?.papr);
+  return papr > 0 ? papr : 0;
 }
 
 /**

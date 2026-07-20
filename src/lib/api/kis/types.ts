@@ -190,12 +190,17 @@ export interface KisDividendRow {
   isin_name?: string;
   /** 배당종류 — "분기", "결산", "중간" 등 */
   divi_kind?: string;
+  /** 액면가(원) — 배당락 시점 값 (Phase 44 액면분할 보정 대조용) */
+  face_val?: string;
   /** 주당배당금(원) — 미확정 회차는 0 */
   per_sto_divi_amt?: string;
   /** 액면가배당률(%) — 시가배당률 아님 */
   divi_rate?: string;
+  /** 주식배당률(%) — >0이면 주식배당 병행 (Phase 44 실측) */
+  stk_divi_rate?: string;
   /** 현금배당 지급일 (YYYYMMDD, 미정이면 빈 문자열) */
   divi_pay_dt?: string;
+  /** 주식 종류 — "보통"/"우선" (배당 형태 아님, Phase 44 실측 정정) */
   stk_kind?: string;
   [key: string]: unknown;
 }
@@ -300,6 +305,8 @@ export interface KisStockBasicInfoResponse {
     prdt_abrv_name?: string;
     /** 상품명 — 예: "삼성전자보통주" */
     prdt_name?: string;
+    /** 액면가(원) — 액면분할 감지용 (Phase 44 실측: 015360 분할 후 "1000") */
+    papr?: string;
     [key: string]: unknown;
   };
 }

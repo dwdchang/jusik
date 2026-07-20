@@ -7,8 +7,20 @@ import type { UniverseMarket } from "@/lib/hotstocks/universe";
  * 공개 시세·공시 기반 랭킹이라 암호화하지 않는다(핫종목과 동일 정책).
  */
 
-/** 배당 지급 형태 — 예탁원 `stk_kind` 매핑 */
-export type DividendPayoutForm = "cash" | "stock" | "unknown";
+/** 지급 주기 — 배당 기준일 평균 간격 기반 (Phase 44). `divi_kind`로는 불가(실측) */
+export type PayoutCycle = "월" | "분기" | "반기" | "연" | null;
+
+/** 폭배(비경상 급증) DART 배당결정 공시 수치 — Phase 44 (B안 enrichment) */
+export interface DividendSurgeDart {
+  /** DART 접수번호 — 원문 딥링크용 */
+  rceptNo: string;
+  /** 1주당 배당금(원, 보통주) */
+  perShare: number | null;
+  /** DART 공식 시가배당율(%) — KRX 기준가 기반, 앱 배당률과 분모가 다름 */
+  officialYield: number | null;
+  /** 배당기준일 "YYYY-MM-DD" */
+  recordDate: string | null;
+}
 
 export interface DividendRankingEntry {
   rank: number;
@@ -19,14 +31,12 @@ export interface DividendRankingEntry {
   price: number;
   /** 시가배당률(%) = 최근 1년 주당배당금 합 ÷ 현재가 × 100, 소수 둘째 자리 */
   dividendYield: number;
-  /** 최근 1년 주당배당금 합계(원) */
+  /** 최근 1년 주당배당금 합계(원) — 분할 보정 시 신주 기준으로 조정됨 */
   annualDividendPerShare: number;
-  /** 최근 1년 배당 회차 수 — 지급 주기 표기의 근거 */
+  /** 최근 1년 배당 회차 수 */
   roundsPerYear: number;
-  /** 지급 주기 라벨 — `divi_kind` 최빈값(예: "분기"·"결산"), 없으면 null */
-  payoutCycle: string | null;
-  /** 현금/주식 배당 구분 */
-  payoutForm: DividendPayoutForm;
+  /** 지급 주기 — 배당 기준일 평균 간격 기반 (월/분기/반기/연) */
+  payoutCycle: PayoutCycle;
   /** 연속 배당 연수 — 기준 연도부터 끊김 없이 배당한 햇수 */
   consecutiveYears: number;
   /**
@@ -34,6 +44,18 @@ export interface DividendRankingEntry {
    * 화면에서 "N년"이 아닌 "N년+"로 표기한다 (§43 미확정 항목의 방어 처리).
    */
   yearsCapped: boolean;
+  /** 우선주 여부 — 예탁원 `stk_kind === "우선"` (비고 "우") */
+  preferred: boolean;
+  /** 최근 1년 주식배당률(%) — >0이면 현금+주식 병행(비고 "현+주N%"), 없으면 null */
+  stockDividendRate: number | null;
+  /** 액면분할 보정 적용 여부 — 배당 당시 액면가≠현재 액면가라 주당배당금을 조정함 */
+  splitAdjusted: boolean;
+  /** 폭배(비경상 급증) 후보 — 전년 대비 급증 감지 (DART 조회 실패해도 "폭배" 표기) */
+  surgeCandidate: boolean;
+  /** 폭배 DART 배당결정 수치 — 최종 TOP N 폭배 종목만 채워짐, 아니면 null */
+  surge: DividendSurgeDart | null;
+  /** [스캔 전용] 최근 1년 배당 회차의 액면가(원) — 분할 보정 대조용(화면 미사용) */
+  dividendFaceValue: number;
 }
 
 /** market:dividendRanking — 화면이 그대로 읽는 시가배당률 TOP N */
