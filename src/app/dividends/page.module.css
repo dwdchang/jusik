@@ -210,3 +210,30 @@
   font-weight: var(--weight-semibold);
   color: var(--color-primary);
 }
+
+/* 액면분할 보정 표시 별표 — Phase 44 */
+.adjMark {
+  margin-left: 2px;
+  color: var(--color-text-tertiary);
+}
+
+/* 비고 셀 — 특이사항만 좌측 정렬로 표기 (Phase 44) */
+.remarkCell {
+  text-align: left;
+  color: var(--color-text-secondary);
+}
+
+.remarkEmpty {
+  color: var(--color-text-tertiary);
+}
+
+/* 폭배 → DART 공시 원문 링크 */
+.dartLink {
+  color: var(--color-primary);
+  text-decoration: none;
+  font-weight: var(--weight-medium);
+}
+
+.dartLink:hover {
+  text-decoration: underline;
+}

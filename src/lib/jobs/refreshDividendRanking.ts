@@ -1,4 +1,12 @@
-import { fetchKisDividends, fetchKisMultiPrice } from "@/lib/api/kis/client";
+import {
+  fetchKisDividends,
+  fetchKisMultiPrice,
+  fetchKisStockFaceValue,
+} from "@/lib/api/kis/client";
+import {
+  fetchDartCorpCodeMap,
+  fetchDartDividendDecision,
+} from "@/lib/api/dart/client";
 import {
   DIVIDEND_RANKING_LOOKBACK_YEARS,
   DIVIDEND_RANKING_SIZE,
@@ -12,8 +20,8 @@ import {
   getDividendRankingProgress,
   setDividendRanking,
   setDividendRankingProgress,
-  type DividendPayoutForm,
   type DividendRankingEntry,
+  type PayoutCycle,
   type StoredDividendRanking,
 } from "@/lib/dividends/ranking/store";
 import {
@@ -42,6 +50,19 @@ const TIME_BUDGET_MS = 250_000;
 
 /** 연속 실패가 이 횟수에 달하면 종목 문제가 아닌 장애로 보고 중단한다 */
 const CONSECUTIVE_FAILURE_LIMIT = 10;
+
+/**
+ * 온라인 선택 버퍼 — 최종 TOP N보다 넉넉히 들고 있다가 액면분할 보정으로 상위가
+ * 강등돼도 진짜 상위가 남게 한다(보정은 배당률을 낮추기만 하므로 원래 상위 500 안에
+ * 진짜 상위 100이 포함된다는 가정). 최종 절단은 finalize에서 DIVIDEND_RANKING_SIZE로.
+ */
+const RANKING_BUFFER_SIZE = 500;
+
+/** 이 배당률(%) 초과 이상치만 현재 액면가를 조회해 분할 보정한다 (콜 절약) */
+const SPLIT_CHECK_YIELD = 12;
+
+/** 폭배 판정 — 최근 1년 배당이 직전 정상연도 중앙값의 이 배수 이상이면 후보 (튜닝 대상) */
+const SURGE_RATIO = 3;
 
 export interface RefreshDividendRankingReport {
   trigger: string;
@@ -78,15 +99,15 @@ function compareEntries(
   return a.code < b.code ? -1 : a.code > b.code ? 1 : 0;
 }
 
-/** 상위 N만 유지하는 온라인 선택 — 최종 TOP N은 부분 상위 N의 부분집합 */
+/** 상위 버퍼만 유지하는 온라인 선택 — finalize에서 보정·재정렬 후 TOP N 절단 */
 function offerEntry(
   entries: DividendRankingEntry[],
   entry: DividendRankingEntry
 ): void {
   entries.push(entry);
   entries.sort(compareEntries);
-  if (entries.length > DIVIDEND_RANKING_SIZE) {
-    entries.length = DIVIDEND_RANKING_SIZE;
+  if (entries.length > RANKING_BUFFER_SIZE) {
+    entries.length = RANKING_BUFFER_SIZE;
   }
 }
 
@@ -95,39 +116,83 @@ function toKisDate(isoDate: string): string {
   return isoDate.replaceAll("-", "");
 }
 
-/** 예탁원 `stk_kind` → 현금/주식 구분. 표기가 흔들려도 문자열 포함으로 판정한다. */
-function toPayoutForm(stkKind: string | undefined): DividendPayoutForm {
-  const raw = stkKind?.trim() ?? "";
-  if (raw === "") {
-    return "unknown";
-  }
-  if (raw.includes("현금")) {
-    return "cash";
-  }
-  if (raw.includes("주식")) {
-    return "stock";
-  }
-  return "unknown";
+/** "YYYYMMDD" 두 날짜의 일수 차 */
+function dayDiff(fromYmd: string, toYmd: string): number {
+  const ms = (s: string) =>
+    Date.UTC(
+      Number(s.slice(0, 4)),
+      Number(s.slice(4, 6)) - 1,
+      Number(s.slice(6, 8))
+    );
+  return Math.round((ms(toYmd) - ms(fromYmd)) / 86_400_000);
 }
 
-/** 최빈 배당종류 — 동률이면 먼저 나온 값 */
-function dominantKind(kinds: string[]): string | null {
-  if (kinds.length === 0) {
-    return null;
+/** 배열의 중앙값 (빈 배열은 0) */
+function median(values: number[]): number {
+  if (values.length === 0) {
+    return 0;
   }
-  const counts = new Map<string, number>();
-  for (const kind of kinds) {
-    counts.set(kind, (counts.get(kind) ?? 0) + 1);
-  }
-  let best: string | null = null;
-  let bestCount = 0;
-  for (const [kind, count] of counts) {
-    if (count > bestCount) {
-      best = kind;
-      bestCount = count;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid];
+}
+
+/** 예탁원 `stk_kind === "우선"` → 우선주 (Phase 44 실측: 보통/우선). 최근값 기준 */
+function detectPreferred(rows: KisDividendRow[]): boolean {
+  for (const row of rows) {
+    const kind = row.stk_kind?.trim();
+    if (kind) {
+      return kind.includes("우선");
     }
   }
-  return best;
+  return false;
+}
+
+/**
+ * 배당 기준일 간격의 중앙값으로 지급 주기를 판정한다 (Phase 44).
+ * `divi_kind`는 분기/결산 혼재라 주기를 못 가려(실측) 간격을 쓴다. 회차 수가 아닌
+ * 중앙값 간격이라 12개월 롤링 경계에 회차가 ±1 흔들려도 견딘다.
+ * 날짜가 2개 미만이면 판정 불가 → 최근 1년 배당이 있으면 "연"으로 폴백.
+ */
+function derivePayoutCycle(
+  recentDates: string[],
+  hasAnnualDividend: boolean
+): PayoutCycle {
+  const sorted = [...new Set(recentDates)].sort(); // "YYYYMMDD" 오름차순
+  if (sorted.length < 2) {
+    return hasAnnualDividend ? "연" : null;
+  }
+  const gaps: number[] = [];
+  for (let i = 1; i < sorted.length; i++) {
+    gaps.push(dayDiff(sorted[i - 1], sorted[i]));
+  }
+  const gap = median(gaps);
+  if (gap <= 45) {
+    return "월";
+  }
+  if (gap <= 135) {
+    return "분기";
+  }
+  if (gap <= 270) {
+    return "반기";
+  }
+  return "연";
+}
+
+/**
+ * 폭배(비경상 급증) 후보 — 최근 1년 배당이 직전 정상연도들의 중앙값 대비
+ * SURGE_RATIO배 이상이면 true. 직전 연도가 2개 미만이면 판정 안 함(신규 배당·데이터
+ * 부족). 원인(특별배당/결산기 변경/영구증배)은 못 가려 감지만 하고 DART로 넘긴다.
+ */
+function isSurge(trailingDps: number, priorYearDps: number[]): boolean {
+  const priors = priorYearDps.filter((v) => v > 0);
+  if (priors.length < 2) {
+    return false;
+  }
+  const mid = median(priors);
+  return mid > 0 && trailingDps >= SURGE_RATIO * mid;
 }
 
 /**
@@ -172,11 +237,16 @@ function buildEntry(
   const oneYearAgo = toKisDate(`${baseYear - 1}${computedFor.slice(4)}`);
   const today = toKisDate(computedFor);
 
+  // 지급 주기 판정용 — 최근 2년 배당 기준일
+  const twoYearsAgo = toKisDate(`${baseYear - 2}${computedFor.slice(4)}`);
+
   const paidYears = new Set<number>();
-  const recentKinds: string[] = [];
+  const dpsByYear = new Map<number, number>();
+  const recentCycleDates: string[] = [];
   let annualDividendPerShare = 0;
   let roundsPerYear = 0;
-  let payoutForm: DividendPayoutForm = "unknown";
+  let dividendFaceValue = 0;
+  let stockDividendRate: number | null = null;
 
   for (const row of rows) {
     const recordDate = row.record_date?.trim();
@@ -187,18 +257,25 @@ function buildEntry(
       continue;
     }
 
-    paidYears.add(Number(recordDate.slice(0, 4)));
+    const year = Number(recordDate.slice(0, 4));
+    paidYears.add(year);
+    dpsByYear.set(year, (dpsByYear.get(year) ?? 0) + amount);
+
+    if (recordDate > twoYearsAgo && recordDate <= today) {
+      recentCycleDates.push(recordDate);
+    }
 
     if (recordDate > oneYearAgo && recordDate <= today) {
       annualDividendPerShare += amount;
       roundsPerYear += 1;
 
-      const kind = row.divi_kind?.trim();
-      if (kind) {
-        recentKinds.push(kind);
+      const face = parseNum(row.face_val);
+      if (face > 0) {
+        dividendFaceValue = face;
       }
-      if (payoutForm === "unknown") {
-        payoutForm = toPayoutForm(row.stk_kind);
+      const stkRate = parseNum(row.stk_divi_rate);
+      if (stkRate > 0) {
+        stockDividendRate = Math.max(stockDividendRate ?? 0, stkRate);
       }
     }
   }
@@ -213,8 +290,16 @@ function buildEntry(
     earliestQueryYear
   );
 
+  // 폭배 판정 — 최근 1년 대 직전 완결 연도들
+  const priorYearDps: number[] = [];
+  for (const [year, dps] of dpsByYear) {
+    if (year < baseYear && year >= earliestQueryYear) {
+      priorYearDps.push(dps);
+    }
+  }
+
   return {
-    rank: 0, // 최종 정렬 후 부여
+    rank: 0, // finalize에서 부여
     code: stock.code,
     name: stock.name,
     market: stock.market,
@@ -222,10 +307,15 @@ function buildEntry(
     dividendYield: Math.round((annualDividendPerShare / price) * 10000) / 100,
     annualDividendPerShare,
     roundsPerYear,
-    payoutCycle: dominantKind(recentKinds),
-    payoutForm,
+    payoutCycle: derivePayoutCycle(recentCycleDates, true),
     consecutiveYears,
     yearsCapped,
+    preferred: detectPreferred(rows),
+    stockDividendRate,
+    splitAdjusted: false,
+    surgeCandidate: isSurge(annualDividendPerShare, priorYearDps),
+    surge: null,
+    dividendFaceValue,
   };
 }
 
@@ -266,6 +356,109 @@ async function fetchAllPrices(
   }
 
   return prices;
+}
+
+/**
+ * 완료 시 마무리 — Phase 44. ① 배당률 이상치(>SPLIT_CHECK_YIELD)만 현재 액면가를
+ * 조회해 액면분할 보정 → ② 보정 후 재정렬·TOP N 절단 → ③ 폭배 종목만 DART
+ * 배당결정 공시 조회로 수치·링크 채움 → ④ 순위 부여. 이상치·폭배가 소수라 콜이 적다.
+ */
+async function finalizeEntries(
+  entries: DividendRankingEntry[],
+  computedFor: string
+): Promise<void> {
+  // ① 액면분할 보정 — 배당 당시 액면가 ÷ 현재 액면가 = 분할비율로 주당배당금 환산
+  for (const entry of entries) {
+    if (entry.dividendYield <= SPLIT_CHECK_YIELD || entry.dividendFaceValue <= 0) {
+      continue;
+    }
+
+    const callStartedAt = Date.now();
+    try {
+      const currentFace = await fetchKisStockFaceValue(entry.code);
+      if (currentFace > 0) {
+        const ratio = entry.dividendFaceValue / currentFace;
+        // 분할(비율↑)·병합(비율↓) 모두 보정 — 1에 가까우면 변동 없음으로 무시
+        if (ratio > 1.5 || ratio < 0.67) {
+          entry.annualDividendPerShare =
+            Math.round((entry.annualDividendPerShare / ratio) * 100) / 100;
+          entry.dividendYield =
+            Math.round((entry.annualDividendPerShare / entry.price) * 10000) /
+            100;
+          entry.splitAdjusted = true;
+        }
+      }
+    } catch (error) {
+      console.error(`[job] face value fetch failed (${entry.code}):`, error);
+    }
+
+    const elapsed = Date.now() - callStartedAt;
+    if (elapsed < CALL_INTERVAL_MS) {
+      await sleep(CALL_INTERVAL_MS - elapsed);
+    }
+  }
+
+  // ② 보정 후 재정렬 → TOP N 절단
+  entries.sort(compareEntries);
+  if (entries.length > DIVIDEND_RANKING_SIZE) {
+    entries.length = DIVIDEND_RANKING_SIZE;
+  }
+
+  // ③ 폭배 DART enrichment — 최종 TOP N 중 폭배 후보만
+  const surged = entries.filter((entry) => entry.surgeCandidate);
+  if (surged.length > 0) {
+    let corpMap: Record<string, string> | null = null;
+    try {
+      corpMap = await fetchDartCorpCodeMap();
+    } catch (error) {
+      console.error("[job] DART corp code map failed:", error);
+    }
+
+    if (corpMap !== null) {
+      const bgnDe = toKisDate(
+        `${Number(computedFor.slice(0, 4)) - 1}${computedFor.slice(4)}`
+      );
+      const endDe = toKisDate(computedFor);
+
+      for (const entry of surged) {
+        const corpCode = corpMap[entry.code];
+        if (corpCode === undefined) {
+          continue;
+        }
+
+        const callStartedAt = Date.now();
+        try {
+          const decision = await fetchDartDividendDecision(corpCode, {
+            bgnDe,
+            endDe,
+          });
+          if (decision !== null) {
+            entry.surge = {
+              rceptNo: decision.rceptNo,
+              perShare: decision.perShare,
+              officialYield: decision.officialYield,
+              recordDate: decision.recordDate,
+            };
+          }
+        } catch (error) {
+          console.error(
+            `[job] DART dividend decision failed (${entry.code}):`,
+            error
+          );
+        }
+
+        const elapsed = Date.now() - callStartedAt;
+        if (elapsed < CALL_INTERVAL_MS) {
+          await sleep(CALL_INTERVAL_MS - elapsed);
+        }
+      }
+    }
+  }
+
+  // ④ 순위 부여
+  entries.forEach((entry, i) => {
+    entry.rank = i + 1;
+  });
 }
 
 export async function refreshDividendRanking(
@@ -396,9 +589,7 @@ export async function refreshDividendRanking(
     }
   }
 
-  entries.forEach((entry, i) => {
-    entry.rank = i + 1;
-  });
+  await finalizeEntries(entries, computedFor);
 
   const result: StoredDividendRanking = {
     computedFor,
