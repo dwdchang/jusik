@@ -2945,6 +2945,16 @@ interface WatchItem {
 
 ---
 
+### Phase 48 — 동적 라우트 클라이언트 캐시 TTL 도입(`staleTimes.dynamic = 30`) (2026-07-20)
+
+- **요청 근거**: Phase 40에서 후속 후보로 남겨둔 2건 중 하나. Phase 40으로 `loading.tsx`가 붙어 동적 라우트가 prefetch 대상이 됐으나, `staleTimes.dynamic` 기본값이 0초라 **뒤로가기/재방문마다 전량 서버 재요청**이 발생. "얼마나 낡은 시세를 재사용할지"를 결정해 캐시 TTL을 도입.
+- **결정 근거**: 시세 원본이 QStash 갱신 잡으로 **10분마다만 갱신**되므로, 화면 숫자는 원래도 최대 10분 낡은 스냅샷이다. 30초 캐시의 신선도 손실은 사실상 0(같은 10분치 스냅샷 재사용)이고, 뒤로가기 시 Redis 조회+렌더 왕복을 건너뛰어 즉시 전환된다. 실시간 틱 원본이 아니므로 안전. `static`은 기본값(5분) 유지.
+- **구현**: `next.config.ts`에 `experimental.staleTimes.dynamic: 30` 추가(`node_modules/next/dist/docs/.../staleTimes.md` 형식 확인). 한 줄 config 변경.
+- **검증**: lint·tsc·build 통과(config 경고 없음).
+- **범위 밖**: 목록 화면 hover-prefetch 전환(속도가 아닌 요청량 절감 사안)은 여전히 후속 후보로 유지.
+
+---
+
 ## 7. PR 분리 권장 (선택)
 
 | PR | Phase | 리뷰 포인트 |
