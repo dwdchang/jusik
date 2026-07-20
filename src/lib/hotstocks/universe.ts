@@ -19,11 +19,26 @@ const MASTER_FETCH_TIMEOUT_MS = 30_000;
 
 export type UniverseMarket = "KOSPI" | "KOSDAQ";
 
+/**
+ * 증권그룹코드 (Phase 46) — ST(주권) 외에 배당/분배가 있는 상품 계열.
+ * EF=ETF · RT=리츠(부동산투자회사) · IF=인프라펀드. ETN(EN)은 채무증권이라 제외.
+ */
+export type UniverseGroup = "ST" | "EF" | "RT" | "IF";
+
+/** 배당상품 그룹 — 배당률 순위 "배당상품" 탭 대상 (Phase 46) */
+export const DIVIDEND_PRODUCT_GROUPS: ReadonlySet<UniverseGroup> = new Set([
+  "EF",
+  "RT",
+  "IF",
+]);
+
 export interface UniverseStock {
   /** 단축코드 — KOSDAQ 신형은 영숫자 6자리(예: 0001A0)일 수 있다 */
   code: string;
   name: string;
   market: UniverseMarket;
+  /** 증권그룹코드 — ST=주식, EF=ETF, RT=리츠, IF=인프라펀드 (Phase 46) */
+  group: UniverseGroup;
 }
 
 async function downloadMasterRecords(
@@ -69,9 +84,17 @@ async function downloadMasterRecords(
   return records;
 }
 
+/** 파싱 대상 그룹코드 판별 — 원시 2글자를 UniverseGroup으로 좁힌다 */
+function toUniverseGroup(raw: string): UniverseGroup | null {
+  return raw === "ST" || raw === "EF" || raw === "RT" || raw === "IF"
+    ? raw
+    : null;
+}
+
 function parseMasterRecords(
   records: Uint8Array[],
-  market: UniverseMarket
+  market: UniverseMarket,
+  allowedGroups: ReadonlySet<UniverseGroup>
 ): UniverseStock[] {
   const decoder = new TextDecoder("euc-kr");
   const tailBytes = MASTER_TAIL_BYTES[market];
@@ -86,39 +109,67 @@ function parseMasterRecords(
     const tail = record.subarray(record.length - tailBytes);
 
     // front: [0:9] 단축코드 / [9:21] 표준코드 / [21:] 종목명
-    const groupCode = decoder.decode(tail.subarray(1, 3));
-    if (groupCode !== "ST") {
+    const group = toUniverseGroup(decoder.decode(tail.subarray(1, 3)));
+    if (!group || !allowedGroups.has(group)) {
       continue;
     }
 
     const code = decoder.decode(front.subarray(0, 9)).trim();
     const name = decoder.decode(front.subarray(21)).trim();
 
+    // 스팩은 주권(ST)에만 존재하지만 안전하게 항상 제외한다
     if (!code || !name || name.includes("스팩")) {
       continue;
     }
 
-    stocks.push({ code, name, market });
+    stocks.push({ code, name, market, group });
   }
 
   return stocks;
 }
 
-/**
- * 코스피+코스닥 보통주(ST) 유니버스 — 스팩 제외, 약 2,650종목 (§14.1-4).
- * 커서 이어받기의 결정성을 위해 종목코드 오름차순으로 정렬해 반환한다.
- */
-export async function fetchHotStockUniverse(): Promise<UniverseStock[]> {
+async function fetchUniverse(
+  allowedGroups: ReadonlySet<UniverseGroup>
+): Promise<UniverseStock[]> {
   const [kospi, kosdaq] = await Promise.all([
     downloadMasterRecords("KOSPI"),
     downloadMasterRecords("KOSDAQ"),
   ]);
 
   const stocks = [
-    ...parseMasterRecords(kospi, "KOSPI"),
-    ...parseMasterRecords(kosdaq, "KOSDAQ"),
+    ...parseMasterRecords(kospi, "KOSPI", allowedGroups),
+    ...parseMasterRecords(kosdaq, "KOSDAQ", allowedGroups),
   ];
 
   stocks.sort((a, b) => (a.code < b.code ? -1 : a.code > b.code ? 1 : 0));
   return stocks;
+}
+
+const HOT_STOCK_GROUPS: ReadonlySet<UniverseGroup> = new Set(["ST"]);
+
+/** 배당률 순위 유니버스 — 일반종목(ST) + 배당상품(EF/RT/IF) (Phase 46) */
+const DIVIDEND_RANKING_GROUPS: ReadonlySet<UniverseGroup> = new Set([
+  "ST",
+  ...DIVIDEND_PRODUCT_GROUPS,
+]);
+
+/**
+ * 코스피+코스닥 보통주(ST) 유니버스 — 스팩 제외, 약 2,650종목 (§14.1-4).
+ * 커서 이어받기의 결정성을 위해 종목코드 오름차순으로 정렬해 반환한다.
+ *
+ * 주의(Phase 46): 이 함수는 핫종목 잡·종목명 검색(market:stockMaster)·배당률
+ * 순위(일반종목) 3곳이 공유한다. ST-only 동작을 바꾸면 핫종목·검색이 ETF로
+ * 오염되므로, 배당률 순위 잡은 아래 fetchDividendRankingUniverse를 쓴다.
+ */
+export async function fetchHotStockUniverse(): Promise<UniverseStock[]> {
+  return fetchUniverse(HOT_STOCK_GROUPS);
+}
+
+/**
+ * 배당률 순위 유니버스 — 일반종목(ST)과 배당상품(EF/RT/IF)을 한 번의 다운로드로
+ * 함께 받아 코드 오름차순으로 반환한다 (Phase 46). 각 레코드의 `group`으로
+ * 잡에서 일반종목/배당상품 두 순위로 분류한다. ETN(EN)은 채무증권이라 제외.
+ */
+export async function fetchDividendRankingUniverse(): Promise<UniverseStock[]> {
+  return fetchUniverse(DIVIDEND_RANKING_GROUPS);
 }
