@@ -12,8 +12,6 @@ export const KIS_BASE_URL =
 export const KIS_ENDPOINTS = {
   /** 접근토큰 발급 (1초 1건 제한) */
   TOKEN: "/oauth2/tokenP",
-  /** 국내업종 현재지수 */
-  INDEX_PRICE: "/uapi/domestic-stock/v1/quotations/inquire-index-price",
   /** 국내업종 일자별지수 (현재 스냅샷 output1 + 일자별 output2) */
   INDEX_DAILY_PRICE:
     "/uapi/domestic-stock/v1/quotations/inquire-index-daily-price",
@@ -42,7 +40,6 @@ export const KIS_ENDPOINTS = {
 } as const;
 
 export const KIS_TR_ID = {
-  INDEX_PRICE: "FHPUP02100000",
   INDEX_DAILY_PRICE: "FHPUP02120000",
   OVERSEAS_DAILY_CHART: "FHKST03030100",
   STOCK_PRICE: "FHKST01010100",
@@ -55,9 +52,6 @@ export const KIS_TR_ID = {
   INCOME_STATEMENT: "FHKST66430200",
   FINANCIAL_RATIO: "FHKST66430300",
 } as const;
-
-/** 시가총액 랭킹 1회 응답 건수 — 이 밖의 순위는 "30위권 밖"으로 표시 */
-export const KIS_MARKET_CAP_RANKING_SIZE = 30;
 
 /**
  * 등락률 순위 1회 응답 건수 — 전체시장 상위 30건이 상한 (2026-07-14 실측).
