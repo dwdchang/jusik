@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "투자의 공간",
-  description: "코스피·코스닥 지수 대시보드 (공공데이터포털)",
+  description: "국내 지수·환율·보유종목·배당을 한눈에 보는 투자 대시보드",
 };
 
 /** 최초 페인트 전에 테마를 결정해 다크 모드 깜빡임(FOUC)을 막는다. */
