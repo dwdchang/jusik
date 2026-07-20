@@ -319,6 +319,8 @@ QStash 스케줄 (월 1회 권장) → POST /api/jobs/refresh-dividend-ranking
   (인증·시간창 가드는 핫종목 잡과 동일)
   → refreshDividendRanking(trigger)  [lib/jobs/refreshDividendRanking.ts]
       완료 가드: market:dividendRanking.computedFor == KST 오늘이면 no-op
+         (단, ?force=true 수동 트리거는 이 가드를 우회해 키 삭제 없이 재시딩 —
+          진행 중 progress는 이어받아 여러 번 호출 시 커서부터 완주, Phase 46)
       → fetchDividendRankingUniverse: 일반종목(ST)+배당상품(EF/RT/IF)을 한 번의
          마스터 다운로드로 받아 코드 오름차순 (Phase 46, KIS 호출 0건). 레코드의
          group으로 이후 두 순위로 분류 — isFundStock(EF/RT/IF)=배당상품

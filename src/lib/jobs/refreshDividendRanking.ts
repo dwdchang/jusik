@@ -475,7 +475,8 @@ async function finalizeEntries(
 }
 
 export async function refreshDividendRanking(
-  trigger: string
+  trigger: string,
+  options: { force?: boolean } = {}
 ): Promise<RefreshDividendRankingReport> {
   const startedAt = new Date().toISOString();
   const deadline = Date.now() + TIME_BUDGET_MS;
@@ -483,9 +484,11 @@ export async function refreshDividendRanking(
 
   const base = { trigger, startedAt, computedFor };
 
-  // 완료 가드 — 같은 기준일 산출이 이미 저장돼 있으면 no-op
+  // 완료 가드 — 같은 기준일 산출이 이미 저장돼 있으면 no-op.
+  // force(수동 재시딩)면 이 가드를 건너뛰고 재계산한다. 진행 중 progress는
+  // 그대로 이어받으므로, 여러 번 호출하면 커서부터 완주한다 (§43·Phase 46).
   const existing = await getDividendRanking();
-  if (existing?.computedFor === computedFor) {
+  if (!options.force && existing?.computedFor === computedFor) {
     return {
       ...base,
       finishedAt: new Date().toISOString(),

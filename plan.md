@@ -2923,6 +2923,7 @@ interface WatchItem {
   2. **카테고리별 독립 TOP N** — 잡이 `isFundStock(stock)`(group∈EF/RT/IF)으로 `entries`(일반)·`productEntries`(배당상품) 두 버퍼에 분기 offer, 각각 독립 finalize·TOP 100. `DividendRankingEntry`에 `instrumentType: "stock"|"fund"` 추가. `StoredDividendRanking`은 `entries`/`universeCount`(일반, 하위호환) + `productEntries?`/`productUniverseCount?`(배당상품, 구 스키마 `?? []`·`?? 0` 폴백). `DividendRankingProgress`는 `productEntries` 추가 — 구 progress(필드 없음)는 이어받기 무효 처리 후 처음부터.
   3. **주식 전용 로직의 배당상품 예외** — 배당상품은 `buildEntry`에서 `preferred`·`stockDividendRate`·`surgeCandidate`를 강제 비활성(`fund ? … : …`), `finalizeEntries(entries, computedFor, isFund)`에서 `isFund=true`면 액면분할 보정①·폭배 DART③을 스킵(정렬②·순위④만). → 배당상품 탭 비고는 자연히 항상 "—".
   4. **화면** — `app/dividends/page.tsx`에 `?mode=`(stock/product) 서버 탭(`RANK_MODES`) 추가, 핫종목 탭 CSS(`.tabs/.tab/.tabActive`)를 `dividends/page.module.css`에 이식. 기존 8열 폼 그대로 두 탭 공용, 대상 수 문구·빈 안내만 탭별로.
+  5. **재시딩 편의** — `?force=true` 수동 트리거가 시간창뿐 아니라 **완료 가드까지 우회**하도록 `refreshDividendRanking(trigger, { force })`로 전달. 같은 기준일에 키 삭제 없이 재계산 가능(구 스키마 데이터를 새 2탭 스키마로 갈아끼울 때 사용). 진행 중 `progress`는 그대로 이어받아 여러 번 호출 시 커서부터 완주.
 - **검증**: tsc·lint·`npm run build` 통과. QStash 스케줄·잡 라우트 구조 불변(같은 `refresh-dividend-ranking` 잡이 두 카테고리 동시 산출).
 - **범위 밖**: 배당상품 **유형별 세부 그룹핑**(리츠/인프라/월배당 하위 분류) — ETF 종목명에 깔끔한 유형 코드가 없어 이름 휴리스틱이 필요하다. 이번엔 단일 "배당상품" 탭으로 통합하고, 세분화는 후속 과제로 남긴다. ETN(`EN`) 포함도 범위 밖. "시가배당률" 명칭은 이번엔 공용 각주 유지(배당상품 전용 "분배율" 문구는 후속).
 - **상태**: 구현 완료(tsc·lint·build 통과), 커밋·푸시 대기.

@@ -20,7 +20,8 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  // 시간창 우회(디버깅·최초 시딩용) — CRON_SECRET 수동 트리거에만 허용.
+  // 시간창·완료 가드 우회(디버깅·재시딩용) — CRON_SECRET 수동 트리거에만 허용.
+  // 완료 가드까지 우회하므로 키 삭제 없이 같은 기준일을 재계산할 수 있다 (Phase 46).
   const force =
     trigger === "manual" &&
     new URL(request.url).searchParams.get("force") === "true";
@@ -33,7 +34,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const report = await refreshDividendRanking(trigger);
+    const report = await refreshDividendRanking(trigger, { force });
     return Response.json(report, { status: report.ok ? 200 : 500 });
   } catch (error) {
     // 마스터 다운로드 실패·연속 실패 중단 등 — progress가 있으면 커서부터 재개된다.
