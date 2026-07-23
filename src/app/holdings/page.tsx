@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { DailyHistoryList } from "@/components/holdings/DailyHistoryList";
 import type { DailyHistoryRow } from "@/components/holdings/DailyHistoryList";
@@ -7,6 +6,7 @@ import { HoldingsChartClient } from "@/components/holdings/HoldingsChartClient";
 import type { HoldingsChartPoint } from "@/components/holdings/HoldingsChart";
 import { NavIconLink } from "@/components/nav/NavIconLink";
 import { StockSearchInput } from "@/components/stocks/StockSearchInput";
+import { HoverPrefetchLink } from "@/components/ui/HoverPrefetchLink";
 import { ensureAllowedSession } from "@/lib/auth/ensureAllowedSession";
 import { formatChangeRate } from "@/lib/format/change";
 import { formatKrw } from "@/lib/format/krw";
@@ -241,7 +241,7 @@ export default async function HoldingsPage({
                 );
                 return (
                   <li key={holding.id}>
-                    <Link
+                    <HoverPrefetchLink
                       href={`/holdings/${holding.symbolCode}`}
                       className={styles.holdingItem}
                     >
@@ -303,7 +303,7 @@ export default async function HoldingsPage({
                       <span className={styles.holdingDetailCue}>
                         상세 보기 →
                       </span>
-                    </Link>
+                    </HoverPrefetchLink>
                   </li>
                 );
               })}

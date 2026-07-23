@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { NavIconLink } from "@/components/nav/NavIconLink";
 import { StockSearchInput } from "@/components/stocks/StockSearchInput";
+import { HoverPrefetchLink } from "@/components/ui/HoverPrefetchLink";
 import { ensureAllowedSession } from "@/lib/auth/ensureAllowedSession";
 import { todayKstDate } from "@/lib/date/kst";
 import { formatChangeRate } from "@/lib/format/change";
@@ -149,7 +150,7 @@ export default async function WatchlistPage({
                 return (
                   <li key={item.id} className={styles.item}>
                     <div className={styles.itemHead}>
-                      <Link
+                      <HoverPrefetchLink
                         href={`/watchlist/${item.symbolCode}`}
                         className={styles.itemName}
                       >
@@ -157,7 +158,7 @@ export default async function WatchlistPage({
                         <span className={`${styles.itemCode} numeric`}>
                           {item.symbolCode}
                         </span>
-                      </Link>
+                      </HoverPrefetchLink>
                       {returnRate !== null ? (
                         <span
                           className={`${styles.itemReturn} numeric ${
@@ -230,12 +231,12 @@ export default async function WatchlistPage({
                           </form>
                         </>
                       ) : null}
-                      <Link
+                      <HoverPrefetchLink
                         href={`/watchlist/${item.symbolCode}`}
                         className={styles.detailLink}
                       >
                         상세 보기 →
-                      </Link>
+                      </HoverPrefetchLink>
                     </div>
                   </li>
                 );
