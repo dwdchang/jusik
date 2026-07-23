@@ -1,4 +1,8 @@
-import type { DividendRankingEntry, DividendRoundRecord } from "./store";
+import type {
+  DividendRankingEntry,
+  DividendRoundRecord,
+  PayoutCycle,
+} from "./store";
 
 /**
  * 배당률 순위 표시 포매터 — Phase 51에서 summary.ts(리더, Redis 의존)에서 분리.
@@ -29,44 +33,48 @@ export function formatStockDividend(entry: DividendRankingEntry): string | null 
 }
 
 /**
- * 회차별 배당률(연 환산·현재가 기준) — Phase 53.
- * 분자 = 주당배당금을 지급 주기로 연 환산(월×12·분기×4·반기×2·연/판정불가×1),
- * 분모 = 산출 시점 현재가(`entry.price`). 모든 회차가 같은 분모라 회차끼리 바로
- * 비교돼 폭배 회차만 튀고 정상 배당률 수준이 한눈에 들어온다(사용자 목표).
+ * 회차별 실배당률(현재가 기준) — Phase 55(연 환산 제거).
+ * 분자 = 그 회차가 실제로 준 주당배당금, 분모 = 산출 시점 현재가(`entry.price`).
+ * Phase 53의 연 환산(월×12·분기×4·반기×2)은 회차가 여럿인 배당상품에서 두 회차를
+ * 더해 실제의 2배로 오해하게 만들어(사용자 지적) 폐기 — 이제 각 회차가 준 몫을
+ * 있는 그대로 보여주고, 회차 합이 헤더 시가배당률과 자연히 맞아떨어진다.
  * `perShare`는 잡에서 액면분할 보정을 마친 값이라 헤더 배당률과 기준이 일치한다.
- * 괄호 순번 라벨은 Phase 54에서 `roundYearOrdinals`로 분리(연 환산 배수와 무관).
+ * 괄호 순번 라벨은 `roundYearOrdinals`로 분리(Phase 54·55).
  */
 export function formatRoundYield(
   entry: DividendRankingEntry,
   perShare: number
 ): number {
-  const yield100 = (multiplier: number) =>
-    (perShare * multiplier * 100) / entry.price;
-  switch (entry.payoutCycle) {
-    case "월":
-      return yield100(12);
-    case "분기":
-      return yield100(4);
-    case "반기":
-      return yield100(2);
-    default: // "연" | null(판정 불가는 연과 동일 취급)
-      return yield100(1);
-  }
+  return (perShare * 100) / entry.price;
 }
 
 /**
- * 회차별 "그해 순번" 괄호 라벨 — Phase 54(B안). `recordDate`의 연도(앞 4자)로 묶어
- * 그해 관측된 배당을 기준일 오름차순으로 세어 `순번/그해개수`("1/2"·"2/2")를 만든다.
- * 지급 주기와 무관하게 실제 관측 회차만 세므로(B안), 그해 1회뿐이면 순번이 무의미해
- * 라벨을 두지 않는다(연·비정기 배당은 자연히 괄호 없음). 예탁원이 중간 회차를 놓친
- * 해는 분모가 실제보다 작을 수 있으나 사용자가 자체 판단하기로 확정(B안).
+ * 회차별 괄호 라벨 — Phase 54(B안)·55. `recordDate`의 연도(앞 4자)로 묶어 그해 관측된
+ * 배당을 기준일 오름차순으로 세어 `순번/그해개수`("1/2"·"2/2")를 만든다. 지급 주기와
+ * 무관하게 실제 관측 회차만 세므로(B안), 그해 1회뿐이면 순번이 무의미해 라벨을 두지
+ * 않는다(예탁원이 중간 회차를 놓친 해는 분모가 실제보다 작을 수 있으나 사용자 자체
+ * 판단으로 확정, B안).
+ *
+ * Phase 55(B안): 지급 주기가 "연"으로 판정된 종목은 회차마다 "연"을 붙여 괄호를 "(연)"으로
+ * 표기한다 — 그해 관측 회차 수가 아니라 **간격 중앙값 기반 payoutCycle**을 기준으로 삼아,
+ * 데이터 누락으로 그해 1회만 잡힌 분기·반기 종목까지 "(연)"으로 오표기되지 않게 한다.
  *
  * 반환은 `recordDate` → 라벨 맵 — 펼침 표가 회차 key로 recordDate를 쓰므로(고유) 안전.
  * history의 저장 순서(최신순)와 무관하게 연도별로 오름차순 정렬해 순번을 매긴다.
  */
 export function roundYearOrdinals(
-  history: DividendRoundRecord[]
+  history: DividendRoundRecord[],
+  payoutCycle: PayoutCycle
 ): Map<string, string> {
+  // 연 배당 종목(간격 중앙값 판정) — 회차마다 "(연)" 표기 (Phase 55, B안)
+  if (payoutCycle === "연") {
+    const annual = new Map<string, string>();
+    for (const round of history) {
+      annual.set(round.recordDate, "연");
+    }
+    return annual;
+  }
+
   const byYear = new Map<string, DividendRoundRecord[]>();
   for (const round of history) {
     const year = round.recordDate.slice(0, 4);

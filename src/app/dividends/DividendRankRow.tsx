@@ -15,8 +15,8 @@ import { formatKrw } from "@/lib/format/krw";
 import styles from "./page.module.css";
 
 /**
- * 배당률 순위 행 — Phase 51. 종목명을 누르면 지난 배당 기록(회차별 기준일·
- * 주당배당금·지급일·종류)이 아래 행으로 펼쳐진다. 데이터는 스냅샷의 `entry.history`를
+ * 배당률 순위 행 — Phase 51. 종목명을 누르면 지난 배당 기록(회차별 기준일·주당배당금·
+ * 실배당률·지급일·지급 주기)이 아래 행으로 펼쳐진다. 데이터는 스냅샷의 `entry.history`를
  * 그대로 읽어 렌더 — 클릭 시 추가 조회 없음(KIS·Redis 접근 0). 표 정렬·sticky 열은
  * 서버 렌더 때와 동일한 page.module.css 클래스를 공유한다.
  */
@@ -88,7 +88,7 @@ function renderRemarks(entry: DividendRankingEntry): ReactNode {
 export function DividendRankRow({ entry }: { entry: DividendRankingEntry }) {
   const [expanded, setExpanded] = useState(false);
   const history = entry.history ?? [];
-  const roundLabels = roundYearOrdinals(history);
+  const roundLabels = roundYearOrdinals(history, entry.payoutCycle);
   const detailId = `dividend-history-${entry.code}`;
   const market = MARKET_SUP[entry.market];
 
@@ -171,7 +171,7 @@ export function DividendRankRow({ entry }: { entry: DividendRankingEntry }) {
                     <th scope="col">주당배당금</th>
                     <th scope="col">배당률</th>
                     <th scope="col">지급일</th>
-                    <th scope="col">종류</th>
+                    <th scope="col">지급 주기</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -192,7 +192,11 @@ export function DividendRankRow({ entry }: { entry: DividendRankingEntry }) {
                           {ordinalLabel !== null ? (
                             <span
                               className={styles.cycleFraction}
-                              title={`그해 관측된 배당 중 ${ordinalLabel.replace("/", "번째 / 총 ")}회`}
+                              title={
+                                ordinalLabel === "연"
+                                  ? "연 배당(지급 주기 간격 판정)"
+                                  : `그해 관측된 배당 중 ${ordinalLabel.replace("/", "번째 / 총 ")}회`
+                              }
                             >
                               ({ordinalLabel})
                             </span>
@@ -205,7 +209,10 @@ export function DividendRankRow({ entry }: { entry: DividendRankingEntry }) {
                             <span className={styles.payPending}>미정</span>
                           )}
                         </td>
-                        <td>{round.kind ?? "—"}</td>
+                        {/* 종류(예탁원 divi_kind: 결산/중간) 대신 간격 중앙값 기반
+                            지급 주기 — 메인 표와 통일 (Phase 55). 종목 단위 단일값이라
+                            회차 행마다 같은 값이 반복된다 */}
+                        <td>{formatPayoutCycle(entry)}</td>
                       </tr>
                     );
                   })}

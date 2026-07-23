@@ -388,7 +388,7 @@
   color: var(--color-text-tertiary);
 }
 
-/* 회차 배당률 옆 그해 순번 괄호(1/2·2/2 등) — 그해 관측 회차 순번, 약한 톤 (Phase 54) */
+/* 회차 배당률 옆 괄호 — 그해 관측 회차 순번(1/2·2/2) 또는 연 배당 "(연)"(Phase 54·55), 약한 톤 */
 .cycleFraction {
   margin-left: 2px;
   color: var(--color-text-tertiary);
