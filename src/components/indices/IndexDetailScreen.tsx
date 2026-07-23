@@ -7,6 +7,7 @@ import type { IndexDetailData, IndicatorId } from "@/types/indices";
 import { IndexCard } from "./IndexCard";
 import { IndexChartClient } from "./IndexChartClient";
 import { IndexDailyList } from "./IndexDailyList";
+import { InvestorFlowTable } from "./InvestorFlowTable";
 import styles from "./IndexDetailScreen.module.css";
 
 export async function IndexDetailScreen({
@@ -77,6 +78,14 @@ export async function IndexDetailScreen({
           <h2 className={styles.sectionTitle}>일별 시세</h2>
           <IndexDailyList rows={data.dailyRows} />
         </section>
+
+        {data.investorRows && data.investorRows.length > 0 && (
+          <section className={styles.section} aria-label="일별 수급">
+            <h2 className={styles.sectionTitle}>일별 수급</h2>
+            <p className={styles.sectionNote}>순매수 · 단위: 백만원</p>
+            <InvestorFlowTable rows={data.investorRows} />
+          </section>
+        )}
 
         {children}
 

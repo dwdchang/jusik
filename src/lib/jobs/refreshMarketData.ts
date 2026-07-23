@@ -6,6 +6,7 @@ import {
   fetchKisFluctuationRanking,
   fetchKisFxPairDaily,
   fetchKisIndexDaily,
+  fetchKisInvestorDaily,
   fetchKisMarketCapRanking,
   fetchKisOverseasDaily,
   fetchKisStockName,
@@ -38,6 +39,7 @@ import {
   mapKisSnapshot,
   parseNum,
 } from "@/lib/indices/kisMapper";
+import { mapKisInvestorRows } from "@/lib/indices/investorMapper";
 import {
   mapKisOverseasDailyRows,
   mapKisOverseasHistory,
@@ -52,6 +54,7 @@ import {
   INDICATOR_TO_DETAIL_KEY,
   getStockInfoBlocks,
   setDailyFluctuation,
+  setInvestorFlows,
   setLastRefreshRecord,
   setMarketDetail,
   getStockMaster,
@@ -105,6 +108,8 @@ export interface RefreshMarketDataReport {
   dailyFluctuation: { ok: boolean; count?: number; error?: string };
   /** 주간(5거래일 전 대비) 등락률 순위 저장 결과 — 당일과 동일하게 실패 격리 */
   weeklyFluctuation: { ok: boolean; count?: number; error?: string };
+  /** 일별 수급(코스피·코스닥 시장 전체 투자자 순매수) 저장 결과 — 부수 데이터, 실패 격리 */
+  investorFlows: { ok: boolean; count?: number; error?: string };
   /** 종목 마스터 저장 결과 — 1일 1회, 부수 데이터라 잡 전체 ok에 영향 없음 */
   stockMaster: { ok: boolean; count?: number; skipped?: true; error?: string };
   stocks: Array<{ symbolCode: string; ok: boolean; error?: string }>;
@@ -367,6 +372,30 @@ async function refreshWeeklyFluctuation(
     return { ok: true, count: items.length };
   } catch (error) {
     console.error("[job] weekly fluctuation refresh failed:", error);
+    return { ok: false, error: errorMessage(error) };
+  }
+}
+
+/**
+ * 시장 전체 일별 수급 → market:investor:{kospi|kosdaq} 저장 (§42).
+ * 코스피·코스닥 각 1콜(FHPTJ04040000)로 개인·외국인·기관계+기관 7종 순매수 금액을
+ * 최근 N거래일치 저장한다. 부수 데이터라 실패해도 잡 전체 ok에 영향 없이 로그만 남긴다
+ * — 다음 회차가 자연 재시도. 한 시장이 실패하면 그 회차는 통째로 재시도(멱등).
+ */
+async function refreshInvestorFlows(
+  fetchedAt: string
+): Promise<RefreshMarketDataReport["investorFlows"]> {
+  try {
+    let count = 0;
+    for (const market of ["KOSPI", "KOSDAQ"] as const) {
+      const raw = await fetchKisInvestorDaily(market);
+      const rows = mapKisInvestorRows(raw, market);
+      await setInvestorFlows({ market, rows, fetchedAt });
+      count += rows.length;
+    }
+    return { ok: true, count };
+  } catch (error) {
+    console.error("[job] investor flows refresh failed:", error);
     return { ok: false, error: errorMessage(error) };
   }
 }
@@ -711,6 +740,9 @@ export async function refreshMarketData(
   // 1b'. 주간(5거래일 전 대비) 등락률 순위 상위 30 → market:weeklyFluctuation (§19)
   const weeklyFluctuation = await refreshWeeklyFluctuation(startedAt);
 
+  // 1b''. 시장 전체 일별 수급 → market:investor:{kospi|kosdaq} (§42, 부수 데이터·실패 격리)
+  const investorFlows = await refreshInvestorFlows(startedAt);
+
   // 1c. 종목 마스터 → market:stockMaster (종목명 검색용, 1일 1회, 실패 격리)
   const stockMaster = await refreshStockMaster(startedAt);
 
@@ -808,6 +840,7 @@ export async function refreshMarketData(
     volatility,
     dailyFluctuation,
     weeklyFluctuation,
+    investorFlows,
     stockMaster,
     stocks,
     nameFills,

@@ -44,6 +44,46 @@ export interface KisIndexDailyResponse {
 }
 
 /**
+ * 시장별 투자자매매동향(일별) FHPTJ04040000 — output 1행 (Phase 42, 2026-07-22 실측).
+ * 각 주체별 순매수 수량(_ntby_qty, 천주)·금액(_ntby_tr_pbmn, 백만원)을 제공하며 값은
+ * 부호를 포함한다. 일별 수급 화면은 순매수 금액만 사용한다. 금액 필드는 전 주체가
+ * `_ntby_tr_pbmn` 접미사로 규칙적(frgn_reg/nreg 등 미사용 필드만 접미사가 다름).
+ */
+export interface KisInvestorDailyOutput {
+  /** 영업 일자 (YYYYMMDD) */
+  stck_bsop_date?: string;
+  /** 개인 순매수 금액(백만원) */
+  prsn_ntby_tr_pbmn?: string;
+  /** 외국인 순매수 금액(백만원) */
+  frgn_ntby_tr_pbmn?: string;
+  /** 기관계 순매수 금액(백만원) */
+  orgn_ntby_tr_pbmn?: string;
+  /** 금융투자 순매수 금액(백만원) */
+  scrt_ntby_tr_pbmn?: string;
+  /** 투신 순매수 금액(백만원) */
+  ivtr_ntby_tr_pbmn?: string;
+  /** 사모 순매수 금액(백만원) */
+  pe_fund_ntby_tr_pbmn?: string;
+  /** 은행 순매수 금액(백만원) */
+  bank_ntby_tr_pbmn?: string;
+  /** 보험 순매수 금액(백만원) */
+  insu_ntby_tr_pbmn?: string;
+  /** 종금 순매수 금액(백만원) */
+  mrbn_ntby_tr_pbmn?: string;
+  /** 연기금 순매수 금액(백만원) */
+  fund_ntby_tr_pbmn?: string;
+  [key: string]: unknown;
+}
+
+export interface KisInvestorDailyResponse {
+  rt_cd?: string;
+  msg_cd?: string;
+  msg1?: string;
+  /** 일자별 배열 (최신순) */
+  output?: KisInvestorDailyOutput[];
+}
+
+/**
  * 해외지수/환율/금리 기간별시세 (FHKST03030100) — output1 요약
  * 필드 구조는 국내업종의 bstp_nmix_*와 1:1 대응 (ovrs_nmix_* 접두)
  */

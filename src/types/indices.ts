@@ -83,6 +83,37 @@ export interface IndexDailyRow {
   direction: PriceDirection;
 }
 
+/**
+ * 일별 수급 1행 — 시장 전체 투자자 순매수 금액(백만원, 부호 포함). Phase 42.
+ * KIS FHPTJ04040000의 각 주체 `_ntby_tr_pbmn`을 그대로 담는다(원값 백만원).
+ */
+export interface InvestorFlowRow {
+  /** "YYYYMMDD" */
+  basDt: string;
+  /** "MM/DD" */
+  date: string;
+  /** 개인 */
+  individual: number;
+  /** 외국인 */
+  foreign: number;
+  /** 기관계 */
+  institution: number;
+  /** 금융투자 */
+  finInvest: number;
+  /** 투신 */
+  trust: number;
+  /** 사모 */
+  privateFund: number;
+  /** 은행 */
+  bank: number;
+  /** 보험 */
+  insurance: number;
+  /** 종금 */
+  merchantBank: number;
+  /** 연기금 */
+  pension: number;
+}
+
 /** 지수 상세 페이지 데이터 (차트 + 일별 리스트) */
 export interface IndexDetailData {
   asOf: string;
@@ -91,6 +122,11 @@ export interface IndexDetailData {
   history: IndexSeries;
   /** 최신순 정렬 */
   dailyRows: IndexDailyRow[];
+  /**
+   * 일별 수급 (KOSPI/KOSDAQ만) — 최신순, 순매수 금액(백만원). 스냅샷이 아직
+   * 없으면 생략된다(화면에서 섹션 미표시). 해외 지표는 항상 미포함.
+   */
+  investorRows?: InvestorFlowRow[];
 }
 
 export const KIS_DATA_NOTICE =

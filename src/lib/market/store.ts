@@ -6,6 +6,8 @@ import type {
   IndexSeries,
   IndexSnapshot,
   IndicatorId,
+  InvestorFlowRow,
+  MarketIndex,
 } from "@/types/indices";
 
 /**
@@ -42,6 +44,18 @@ export interface StoredMarketDetail {
   snapshot: IndexSnapshot;
   history: IndexSeries;
   dailyRows: IndexDailyRow[];
+  /** 잡이 KIS에서 받아온 시각 (ISO) */
+  fetchedAt: string;
+}
+
+/**
+ * market:investor:{kospi|kosdaq} — 일별 수급 스냅샷 (Phase 42).
+ * 시장 전체 투자자 순매수 금액(백만원). 시세 갱신 잡이 회차당 시장별 1콜로 덮어쓴다.
+ */
+export interface StoredInvestorFlows {
+  market: MarketIndex;
+  /** 최신순, 순매수 금액(백만원) */
+  rows: InvestorFlowRow[];
   /** 잡이 KIS에서 받아온 시각 (ISO) */
   fetchedAt: string;
 }
@@ -162,6 +176,11 @@ function detailKey(key: MarketDetailKey): string {
   return `market:detail:${key}`;
 }
 
+/** market:investor:{kospi|kosdaq} 키 조립 (Phase 42) */
+function investorKey(market: MarketIndex): string {
+  return `market:investor:${market === "KOSPI" ? "kospi" : "kosdaq"}`;
+}
+
 /** market:stock:{code} 키 조립 — 고아 키 정리 잡(Phase 49)이 접두사 SCAN·삭제에 공유한다 */
 export function stockKey(symbolCode: string): string {
   return `market:stock:${symbolCode}`;
@@ -203,6 +222,18 @@ export async function setMarketDetail(
   value: StoredMarketDetail
 ): Promise<void> {
   await getRedis().set(detailKey(key), value);
+}
+
+export async function getInvestorFlows(
+  market: MarketIndex
+): Promise<StoredInvestorFlows | null> {
+  return getRedis().get<StoredInvestorFlows>(investorKey(market));
+}
+
+export async function setInvestorFlows(
+  value: StoredInvestorFlows
+): Promise<void> {
+  await getRedis().set(investorKey(value.market), value);
 }
 
 export async function getStockSnapshot(

@@ -6,6 +6,7 @@ import {
   KIS_ENDPOINTS,
   KIS_FETCH_TIMEOUT_MS,
   KIS_INDEX_CODE,
+  KIS_INVESTOR_MARKET_PARAMS,
   KIS_MARKET_DIV_CODE,
   KIS_MULTI_PRICE_BATCH_SIZE,
   KIS_OVERSEAS_INDICATOR,
@@ -24,6 +25,7 @@ import type {
   KisIncomeStatementResponse,
   KisIncomeStatementRow,
   KisIndexDailyResponse,
+  KisInvestorDailyResponse,
   KisMarketCapRankingResponse,
   KisMarketCapRankingRow,
   KisMultiPriceResponse,
@@ -118,6 +120,33 @@ export async function fetchKisIndexDaily(
       FID_INPUT_ISCD: KIS_INDEX_CODE[market],
       FID_INPUT_DATE_1: todayKstYyyyMmDd(),
       FID_PERIOD_DIV_CODE: "D",
+    }
+  );
+}
+
+/**
+ * 시장별 투자자매매동향(일별) 조회 (FHPTJ04040000) — 1콜 최근 300거래일 (Phase 42).
+ * 정합 파라미터(FID_INPUT_ISCD_2 = 시장 지수코드) 필수 — 어긋나면 rt_cd=0이면서
+ * 전 수급 필드가 0으로 온다 (2026-07-22 실측). KIS 담당 잡(refreshMarketData)만
+ * 호출한다 (AGENTS.md §2). 각 행은 주체별 순매수 수량·금액을 부호 포함해 제공한다.
+ */
+export async function fetchKisInvestorDaily(
+  market: MarketIndex
+): Promise<KisInvestorDailyResponse> {
+  const { iscd, iscd1, iscd2 } = KIS_INVESTOR_MARKET_PARAMS[market];
+  const today = todayKstYyyyMmDd();
+
+  return fetchKisJson<KisInvestorDailyResponse>(
+    "investor daily",
+    KIS_ENDPOINTS.INVESTOR_DAILY_BY_MARKET,
+    KIS_TR_ID.INVESTOR_DAILY_BY_MARKET,
+    {
+      FID_COND_MRKT_DIV_CODE: KIS_MARKET_DIV_CODE,
+      FID_INPUT_ISCD: iscd,
+      FID_INPUT_ISCD_1: iscd1,
+      FID_INPUT_ISCD_2: iscd2,
+      FID_INPUT_DATE_1: today,
+      FID_INPUT_DATE_2: today,
     }
   );
 }

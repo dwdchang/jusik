@@ -37,6 +37,9 @@ export const KIS_ENDPOINTS = {
   INCOME_STATEMENT: "/uapi/domestic-stock/v1/finance/income-statement",
   /** 재무비율 — 증가율은 전년 동기 대비 직접 제공 */
   FINANCIAL_RATIO: "/uapi/domestic-stock/v1/finance/financial-ratio",
+  /** 시장별 투자자매매동향(일별) — 1콜 최근 300거래일·39필드 (Phase 42, 2026-07-22 실측) */
+  INVESTOR_DAILY_BY_MARKET:
+    "/uapi/domestic-stock/v1/quotations/inquire-investor-daily-by-market",
 } as const;
 
 export const KIS_TR_ID = {
@@ -51,6 +54,7 @@ export const KIS_TR_ID = {
   MULTI_PRICE: "FHKST11300006",
   INCOME_STATEMENT: "FHKST66430200",
   FINANCIAL_RATIO: "FHKST66430300",
+  INVESTOR_DAILY_BY_MARKET: "FHPTJ04040000",
 } as const;
 
 /**
@@ -134,5 +138,17 @@ export const KIS_INDEX_CODE = {
 
 /** 차트에 표시할 최근 거래일 수 */
 export const KIS_HISTORY_POINT_COUNT = 7;
+
+/**
+ * 시장별 투자자매매동향 정합 파라미터 (Phase 42) — FID_INPUT_ISCD_2가 시장 지수코드와
+ * 일치해야 수급 필드가 채워진다. 어긋나면 rt_cd=0이면서 전 필드 0 (2026-07-22 실측).
+ */
+export const KIS_INVESTOR_MARKET_PARAMS = {
+  KOSPI: { iscd: "0001", iscd1: "KSP", iscd2: "0001" },
+  KOSDAQ: { iscd: "1001", iscd1: "KSQ", iscd2: "1001" },
+} as const;
+
+/** 일별 수급 리스트 표시 거래일 수 — 응답 300행 중 최신 N행만 저장 (Phase 42) */
+export const KIS_INVESTOR_ROW_COUNT = 20;
 
 export const KIS_FETCH_TIMEOUT_MS = 15_000;

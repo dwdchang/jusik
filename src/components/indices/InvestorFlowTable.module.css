@@ -1,0 +1,76 @@
+.scroll {
+  overflow-x: auto;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  -webkit-overflow-scrolling: touch;
+}
+
+.table {
+  border-collapse: collapse;
+  width: 100%;
+  /* 열이 10개+날짜라 최소 너비를 주어 좁은 화면에서 가로 스크롤되게 한다 */
+  min-width: 640px;
+}
+
+.dateHead,
+.numHead {
+  font-size: var(--text-micro);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-secondary);
+  padding: var(--space-8) var(--space-12);
+  white-space: nowrap;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.numHead {
+  text-align: right;
+}
+
+/* 날짜 열은 헤더/본문 모두 좌측 고정 — 가로 스크롤 시에도 기준 유지 */
+.dateHead,
+.dateCell {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  text-align: left;
+  background-color: var(--color-surface);
+}
+
+.dateHead {
+  z-index: 2;
+}
+
+.dateCell {
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-secondary);
+  padding: var(--space-8) var(--space-12);
+  white-space: nowrap;
+}
+
+.num {
+  text-align: right;
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  padding: var(--space-8) var(--space-12);
+  white-space: nowrap;
+}
+
+tbody tr + tr .dateCell,
+tbody tr + tr .num {
+  border-top: 1px solid var(--color-border);
+}
+
+.rise {
+  color: var(--color-rise);
+}
+
+.fall {
+  color: var(--color-fall);
+}
+
+.flat {
+  color: var(--color-flat);
+}

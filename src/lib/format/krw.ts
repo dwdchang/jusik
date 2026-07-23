@@ -42,6 +42,26 @@ export function formatEokwon(eokwon: number): string {
 }
 
 /**
+ * 순매수 금액(백만원) 부호 표기 — 양수 앞 "+", 천단위 구분 (Phase 42).
+ * 단위(백만원)는 화면 헤더에 별도 표기하므로 접미사를 붙이지 않는다.
+ * 예: 2,621,088 → "+2,621,088", -878,805 → "-878,805", 0 → "0"
+ */
+export function formatNetBuyMillion(value: number): string {
+  const rounded = Math.round(value);
+  const grouped = new Intl.NumberFormat("ko-KR", {
+    maximumFractionDigits: 0,
+  }).format(Math.abs(rounded));
+
+  if (rounded > 0) {
+    return `+${grouped}`;
+  }
+  if (rounded < 0) {
+    return `-${grouped}`;
+  }
+  return "0";
+}
+
+/**
  * 원화 축약 표기 (차트 y축용) — M(백만원)/B(십억원) 영어 단위.
  * 예: 12,000,000 → "12M", 1,000,000,000 → "1B"
  */

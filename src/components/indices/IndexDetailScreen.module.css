@@ -44,6 +44,12 @@
   margin-bottom: var(--space-8);
 }
 
+.sectionNote {
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+  margin-bottom: var(--space-8);
+}
+
 .footer {
   margin-top: var(--space-24);
   padding: var(--card-padding);
