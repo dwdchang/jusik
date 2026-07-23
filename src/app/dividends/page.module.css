@@ -301,3 +301,86 @@
 .dartLink:hover {
   text-decoration: underline;
 }
+
+/* ── 지난 배당 기록 펼침 (Phase 51) ───────────────────────────────── */
+
+/* 종목명 = 펼침 토글 버튼 — 버튼 기본 스타일을 걷어내 셀 텍스트처럼 보이게 */
+.nameButton {
+  display: inline-flex;
+  align-items: baseline;
+  max-width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.nameButton:hover .nameText,
+.nameButton:focus-visible .nameText {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+/* 펼침 표시 삼각형 — 펼치면 90° 회전 */
+.expandIcon {
+  flex-shrink: 0;
+  margin-right: 4px;
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+  transition: transform 0.15s ease;
+}
+
+.expandIcon[data-expanded="true"] {
+  transform: rotate(90deg);
+}
+
+/* 펼침 상세 행 — colSpan 한 셀. 배경을 페이지색으로 낮춰 본문 행과 구분 */
+.detailCell {
+  padding: var(--space-8) var(--space-16) var(--space-12);
+  text-align: left;
+  white-space: normal;
+  background-color: var(--color-bg);
+}
+
+/* 회차 표 — 기준일·주당배당금·지급일·종류. .detailCell로 스코프해
+   상위 .rankTable th/td 규칙(중앙 정렬·테두리)의 하향 상속을 이긴다 */
+.historyTable {
+  width: auto;
+  border-collapse: collapse;
+  font-size: var(--text-micro);
+}
+
+.historyCaption {
+  margin-bottom: var(--space-8);
+  text-align: left;
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-secondary);
+}
+
+.detailCell .historyTable th,
+.detailCell .historyTable td {
+  padding: 4px var(--space-16) 4px 0;
+  text-align: left;
+  border: none;
+  font-weight: var(--weight-regular);
+}
+
+.detailCell .historyTable thead th {
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-tertiary);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.detailCell .historyTable .numCell {
+  text-align: right;
+}
+
+.historyEmpty {
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+}

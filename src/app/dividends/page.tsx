@@ -1,24 +1,18 @@
 import type { Metadata } from "next";
-import type { ReactNode } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { NavIconLink } from "@/components/nav/NavIconLink";
 import { DIVIDEND_RANKING_LOOKBACK_YEARS } from "@/lib/api/kis/constants";
 import { ensureAllowedSession } from "@/lib/auth/ensureAllowedSession";
-import type { DividendRankingEntry } from "@/lib/dividends/ranking/store";
 import {
-  dartDisclosureUrl,
   type DividendRankingCategory,
-  formatConsecutiveYears,
-  formatPayoutCycle,
-  formatStockDividend,
   getDividendRankingView,
-  surgeTooltip,
 } from "@/lib/dividends/ranking/summary";
 import { getDividendSchedule } from "@/lib/dividends/summary";
 import { formatKstDateTime } from "@/lib/format/datetime";
 import { formatKrw } from "@/lib/format/krw";
 import { getLastRefreshRecord } from "@/lib/market/store";
+import { DividendRankRow } from "./DividendRankRow";
 import styles from "./page.module.css";
 
 export const metadata: Metadata = {
@@ -30,16 +24,6 @@ export const metadata: Metadata = {
 function displayDate(isoDate: string): string {
   return isoDate.replaceAll("-", ".");
 }
-
-/**
- * 시장 구분 위첨자 — ᴷ/ᴰ는 자체 위첨자 문자라 <sup> 없이 span으로 표기.
- * 핫종목 표(hot-stocks/page.tsx)와 동형 (Phase 45). 배당률 순위는 엔트리에
- * `market`이 이미 있어 stockMaster 재조회 없이 `entry.market`을 바로 넘긴다.
- */
-const MARKET_SUP = {
-  KOSPI: { mark: "ᴷ", title: "코스피", srText: "코스피 종목" },
-  KOSDAQ: { mark: "ᴰ", title: "코스닥", srText: "코스닥 종목" },
-} as const;
 
 /** 배당 페이지 탭 키 — 순위 2종(일반종목/배당상품) + 개인 일정 1종(내 배당) */
 type DividendTab = DividendRankingCategory | "schedule";
@@ -75,53 +59,6 @@ const RANK_META: Record<
       "아직 산출된 배당상품 순위가 없습니다. ETF·리츠·인프라펀드 스캔이 다음 갱신 회차에 완료되면 여기에 표시됩니다.",
   },
 };
-
-/**
- * 배당률 순위 "비고" 셀 — 특이사항만 `·`로 이어 붙인다 (Phase 44).
- * 우선주("우") · 주식배당 병행("현+주N%") · 폭배(비경상 급증, DART 원문 링크).
- * 평범하면 "—". 폭배는 DART 배당결정 공시가 조회됐으면 링크·툴팁을 단다.
- */
-function renderRemarks(entry: DividendRankingEntry): ReactNode {
-  const parts: ReactNode[] = [];
-
-  if (entry.preferred) {
-    parts.push("우");
-  }
-
-  const stockDividend = formatStockDividend(entry);
-  if (stockDividend !== null) {
-    parts.push(stockDividend);
-  }
-
-  if (entry.surgeCandidate) {
-    parts.push(
-      entry.surge !== null ? (
-        <a
-          href={dartDisclosureUrl(entry.surge.rceptNo)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={styles.dartLink}
-          title={surgeTooltip(entry)}
-        >
-          폭배 ↗
-        </a>
-      ) : (
-        <span title={surgeTooltip(entry)}>폭배</span>
-      )
-    );
-  }
-
-  if (parts.length === 0) {
-    return <span className={styles.remarkEmpty}>—</span>;
-  }
-
-  return parts.map((part, i) => (
-    <span key={i}>
-      {i > 0 ? " · " : ""}
-      {part}
-    </span>
-  ));
-}
 
 /**
  * 배당 상세 페이지 — Phase 25 (plan.md §25). 홈 "배당" 카드에서 이동.
@@ -274,54 +211,7 @@ export default async function DividendsPage({
                   </thead>
                   <tbody>
                     {ranking.entries.map((entry) => (
-                      <tr key={entry.code}>
-                        <td className={`${styles.stickyRank} numeric`}>
-                          {entry.rank}
-                        </td>
-                        <th
-                          className={styles.stickyName}
-                          scope="row"
-                          title={entry.name}
-                        >
-                          <span className={styles.nameText}>{entry.name}</span>
-                          <span
-                            className={styles.marketSup}
-                            title={MARKET_SUP[entry.market].title}
-                            aria-hidden="true"
-                          >
-                            {MARKET_SUP[entry.market].mark}
-                          </span>
-                          <span className={styles.srOnly}>
-                            {MARKET_SUP[entry.market].srText}
-                          </span>
-                        </th>
-                        <td className={`${styles.numCell} numeric`}>
-                          {formatKrw(entry.price)}
-                        </td>
-                        <td
-                          className={`${styles.rankYield} ${styles.numCell} numeric`}
-                          title={
-                            entry.splitAdjusted
-                              ? "액면분할 보정됨 — 배당 당시 액면가와 현재 액면가가 달라 주당배당금을 신주 기준으로 환산"
-                              : undefined
-                          }
-                        >
-                          {entry.dividendYield.toFixed(2)}%
-                          {entry.splitAdjusted ? (
-                            <span className={styles.adjMark}>*</span>
-                          ) : null}
-                        </td>
-                        <td className={`${styles.numCell} numeric`}>
-                          {formatKrw(entry.annualDividendPerShare)}
-                        </td>
-                        <td>{formatPayoutCycle(entry)}</td>
-                        <td className={`${styles.numCell} numeric`}>
-                          {formatConsecutiveYears(entry)}
-                        </td>
-                        <td className={styles.remarkCell}>
-                          {renderRemarks(entry)}
-                        </td>
-                      </tr>
+                      <DividendRankRow key={entry.code} entry={entry} />
                     ))}
                   </tbody>
                 </table>
@@ -341,6 +231,10 @@ export default async function DividendsPage({
             </p>
           ) : (
             <>
+              <p className={styles.notice}>
+                <strong>종목명을 누르면</strong> 지난 배당 기록(회차별 기준일·주당배당금·
+                지급일)이 펼쳐집니다.
+              </p>
               <p className={styles.notice}>
                 배당률은 <strong>시가배당률</strong>(최근 1년 확정 주당배당금 합
                 ÷ 산출 시점 현재가)이며, 액면가배당률이 아닙니다.
