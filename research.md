@@ -143,7 +143,7 @@
 | `indices/getIndexDetail.ts` / `getOverseasDetail.ts` | 상세 리더 — `market:detail:{key}` 1건. **두 파일 내용이 사실상 동일** (§8) |
 | `indices/volatility.ts` | 변동성 기록 store+계산+카드 요약 (한 파일에 쓰기·읽기 혼재) |
 | `indices/dates.ts` | `getLast7BusinessDates` — **현재 미사용 (레거시)** (§9.2) |
-| `market/store.ts` | 공용 시세 Redis 스토어 — `market:detail:*`, `market:stock:*`, `market:stockInfo:*`(배당 회차 `rounds` 포함, §25), `market:lastRefreshAt`, `market:dailyFluctuation`, `market:weeklyFluctuation`, `market:stockMaster` (§5). `getStockInfoBlocksMap`(MGET 일괄, 없는 종목은 맵에서 제외) 제공 |
+| `market/store.ts` | 공용 시세 Redis 스토어 — `market:detail:*`, `market:stock:*`, `market:stockInfo:*`(배당 회차 `rounds` 포함, §25), `market:lastRefreshAt`, `market:dailyFluctuation`, `market:weeklyFluctuation`, `market:stockMaster`, `market:investor:*`(§42), `market:fiRanking:*`(§50) (§5). `getStockInfoBlocksMap`(MGET 일괄, 없는 종목은 맵에서 제외) 제공 |
 | `stocks/search.ts` | `"use server"` — `searchStocks(query)` 종목명 검색 액션. `auth`+`isEmailAllowed` 가드 후 `market:stockMaster` 부분일치 필터, 접두 우선·가나다 정렬 상위 20. 등록 폼 전용, KIS 직접 호출 없음 |
 | `market/staleness.ts` | KST 시간창 가드(`isWithinKisCallWindow` 09:00~18:40) + **스케줄 인지형 배지 판정** `resolveStaleness` — 시세 잡 스케줄 상수(`SCHEDULE_MINUTES`: 09:00~15:30 10분 + 15:40 + 18:15)로 "이미 완료됐어야 할 최근 슬롯(`lastDueRefreshMs`, 유예 20분)"을 구해, fetchedAt이 그보다 오래됐을 때만 배지(정상 휴지 구간엔 안 뜸). 지연 경과로 warn/critical. `SCHEDULE_MINUTES`는 외부 QStash 등록과 동기화 필수 |
 | `holdings/store.ts` | 보유종목·포트폴리오 히스토리 store — 암호화, 레거시 평문/`avgPrice` 읽기 하위호환 |
@@ -156,7 +156,7 @@
 | `hotstocks/universe.ts` | KIS 종목 마스터 zip 다운로드·EUC-KR 고정폭 파싱 — 스팩 제외·코드 오름차순. 내부 `fetchUniverse(groups)`(그룹 파라미터화)를 공개 2종이 감싼다: **`fetchHotStockUniverse`(ST-only, 불변)** — 핫종목 잡 + 종목명 검색(`market:stockMaster`) 공용이라 ST 필터를 바꾸면 두 곳이 오염됨 · **`fetchDividendRankingUniverse`(ST+EF+RT+IF, Phase 46)** — 배당률 순위 잡 전용, 한 번의 다운로드로 일반종목+배당상품을 함께 받아 레코드 `group`으로 분류. `UniverseStock.group`(`ST/EF/RT/IF`)·`DIVIDEND_PRODUCT_GROUPS`(EF/RT/IF) 노출. ETN(`EN`)은 채무증권이라 제외(2026-07-20 실측: 롯데리츠=`RT`, 맥쿼리인프라=`IF`, ACE 리츠부동산인프라액티브(0153P0)=`EF`) |
 | `hotstocks/summary.ts` | 월간 랭킹 갱신 지연 판정 `isHotStocksStale` (핫종목 페이지 월간 뷰용) |
 | `hotstocks/dailyCard.ts` | 홈 핫종목 카드 요약 `getDailyHotCardSummary` — `market:dailyFluctuation` 당일 등락률 상위 4 (§33에서 4행 통일) |
-| `jobs/refreshMarketData.ts` | **시세 갱신 잡 파이프라인 본체** (§4.1) — 지수·종목·포트폴리오 갱신에 더해 달러 인덱스(`refreshDxy`, 환율 6종 순차 조회→계산, §28)·비트코인(`refreshBtc`, 업비트 2마켓 순차, §30)·당일·주간 등락률 상위 30(`refreshDailyFluctuation`/`refreshWeeklyFluctuation`, 회차당 각 1콜)·종목 마스터(`refreshStockMaster`, 1일 1회) 저장. 다섯 다 부수·실패 격리 |
+| `jobs/refreshMarketData.ts` | **시세 갱신 잡 파이프라인 본체** (§4.1) — 지수·종목·포트폴리오 갱신에 더해 달러 인덱스(`refreshDxy`, 환율 6종 순차 조회→계산, §28)·비트코인(`refreshBtc`, 업비트 2마켓 순차, §30)·당일·주간 등락률 상위 30(`refreshDailyFluctuation`/`refreshWeeklyFluctuation`, 회차당 각 1콜)·시장 전체 일별 수급(`refreshInvestorFlows`, 시장별 1콜, §42)·종목별 수급 순위(`refreshFiRanking`, 시장당 4콜=외국인·기관×순매수·순매도, §50)·종목 마스터(`refreshStockMaster`, 1일 1회) 저장. 전부 부수·실패 격리 |
 | `jobs/refreshHotStocks.ts` | **핫종목 갱신 잡 파이프라인 본체** (§4.2) |
 | `jobs/refreshFeeds.ts` | **피드(공시·뉴스·수출입) 갱신 잡 파이프라인 본체** (§4.5) — corpCode 매핑→종목별 공시(DART)+뉴스(네이버, 종목명 키워드) 조회·저장. 소스·종목별 실패 격리. + `refreshTradeStats`(17-4) — 종목 무관 월 1회성(스냅샷 최신월<직전 완결월일 때만), 12개월 한도 때문에 2회 호출(최근 12개월+전년동월)→13개월 연속 저장. 잡 `ok` 게이팅 제외(다음 회차 가드가 재시도). 알림 훅 2종: `evaluateFeedAlerts`(공시·시장경보) + `evaluateDividendAlerts`(배당 지급일 당일, §25) |
 | `jobs/collectTargets.ts` | 잡 공용 수집 대상 조회 — `collectHoldings`/`collectWatchlists`/`unionSymbolCodes`/`errorMessage` (시세·피드 잡 공유, Phase 17-1에서 refreshMarketData 로컬 함수를 추출) |
@@ -186,8 +186,10 @@
 | `indices/DividendCard` | Server | 배당 일정 전용 카드 (§25) — 다가오는 지급일 상위 4행(§33, 종목명·지급일 MM/DD·주당배당금), **보유종목 기준**. 골격·배지·리스트 폼은 WatchlistCard와 동일 관례, 카드 전체 `/dividends` 링크 |
 | `indices/IndexDetailScreen` | Server(async) | **지표 상세 3종(코스피·코스닥·원달러) 공용 화면** — `getIndexDetail`/`getOverseasDetail` 분기, 헤더(홈 아이콘 + 지표명 `<h1>`(§36) + 마지막 갱신)+카드+차트+일별 리스트+푸터. `children` 슬롯(일별 시세와 푸터 사이 — usdkrw의 달러 인덱스 섹션용, §28) |
 | `indices/DollarIndexSection` | Server(async) | 원/달러 상세 하단 달러 인덱스 섹션 (§28) — `getOverseasDetail("DXY")` → IndexCard+차트+근사치 각주. 첫 갱신 전엔 준비 중 문구 |
-| `indices/IndexCard` / `IndexDailyList` / `DataAsOfFooter` | Server | 상세 스냅샷 카드 / 일별 시세 리스트 / 홈 푸터 |
-| `indices/IndexChartClient` → `IndexLineChart` | Client | Recharts 래핑 패턴: Client 셸이 `dynamic(…, { ssr: false })` + 스켈레톤 → 실제 차트 |
+| `indices/IndexCard` / `IndexDailyList` / `DataAsOfFooter` | Server | 상세 스냅샷 카드 / 일별 시세 리스트(해외 지표) / 홈 푸터 |
+| `indices/IndexDailyTable` / `InvestorFlowTable` | Server | 국내 지수 상세 탭: 일별 시세(거래량·거래대금 열, §50) / 일별 수급(투자자별 순매수 금액, §42). 억/만원·만주/억주 표기 |
+| `indices/DetailTabs` / `FiRankingTable` | Client | 상세 탭 래퍼(서버 컴포넌트를 panel로 전달, §50) / 종목별 수급 순위(외국인·기관·순매수·순매도 토글, §50) |
+| `indices/IndexChartClient` → `IndexLineChart` | Client | Recharts 래핑 패턴: Client 셸이 `dynamic(…, { ssr: false })` + 스켈레톤 → 실제 차트. 국내 지수는 `ComposedChart`로 지수 선 + 거래량/거래대금 막대 토글(§50) |
 | `indices/BtcChartClient` → `BtcLineChart` | Client | 동일 패턴, 비트코인 전용 (§30) — `currency` prop으로 축·툴팁 포맷 분기(원화 M/B 축약, 달러 소수 2자리). 호출부는 시장 카드뿐(비트코인 개별 상세·`BtcDetailSection`은 §31에서 제거) |
 | `indices/VolatilityChartClient` → `VolatilityChart` | Client | 동일 패턴, BarChart |
 | `holdings/HoldingsChartClient` → `HoldingsChart` | Client | 동일 패턴, LineChart + 수익률%↔원단위 토글. **보유종목 홈/상세·관심종목 상세 3곳 공용** (관심종목에선 totalValue 자리에 종가를 넣어 재활용) |
@@ -503,6 +505,8 @@ QStash 스케줄 (매일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 * * *) → POST /a
 | `market:dailyFluctuation` | `StoredDailyFluctuation` (당일 등락률 상위 30+basePrice(전일 종가, §20)+fetchedAt) | ✕ | 시세 잡 | 핫종목 페이지(기본 탭)·홈 핫종목 카드 |
 | `market:weeklyFluctuation` | `StoredWeeklyFluctuation` (주간=5거래일 전 대비 등락률 상위 30+basePrice(역산, §20)+fetchedAt) | ✕ | 시세 잡 | 핫종목 페이지 주간 탭 |
 | `market:stockMaster` | `StoredStockMaster` (코드↔종목명 ~2,650+fetchedAt) | ✕ | 시세 잡 (1일 1회) | 종목명 검색 `searchStocks` |
+| `market:investor:{kospi\|kosdaq}` | `StoredInvestorFlows` (시장 전체 투자자 순매수 금액 최근 20거래일, 백만원, §42) | ✕ | 시세 잡 | 지수 상세 "일별 수급" 탭 |
+| `market:fiRanking:{kospi\|kosdaq}` | `StoredFiRanking` (외국인·기관 × 순매수·순매도 각 상위 30, 수량=주·금액=백만원, §50) | ✕ | 시세 잡 | 지수 상세 "종목별 순위" 탭 |
 | `market:dividendRanking` | `StoredDividendRanking` — 일반종목 `entries`/`universeCount` + 배당상품 `productEntries?`/`productUniverseCount?`(Phase 46, 구 스키마 폴백) 시가배당률 각 TOP 100+fetchedAt | ✕ | 배당률 순위 잡 | 배당 페이지 순위 섹션(일반종목/배당상품 2탭) |
 | `market:dividendRanking:progress` | `DividendRankingProgress` (커서+일반/배당상품 두 버퍼+가격 스냅샷) | ✕ | 배당률 순위 잡 (완료 시 삭제) | 배당률 순위 잡 |
 | `holdings:{email}` | `Holding[]` | **○** | Server Action + 잡(종목명 채움) | 보유종목 화면·잡 |

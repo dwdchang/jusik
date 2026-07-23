@@ -2798,7 +2798,7 @@ interface WatchItem {
   4. `components/indices/IndexLineChart.tsx` — Recharts `LineChart` → `ComposedChart` 교체. 좌축 지수(`Line`)·우축 거래량(`Bar`, `yAxisId="volume"`), 거래량 축은 `domain={[0, dataMax*3]}`류로 눌러 지수선과 겹치지 않게. 툴팁에 거래량·거래대금 행 추가(단위 표기 필수, `.numeric`).
   5. `lib/format/` — 천주/백만원 → 사람이 읽는 단위(억/조) 포맷터. 기존 `format/trade.ts`(`formatUsdEok`) 패턴 참고.
 - **범위 밖**: 차트 구간 7→N거래일 확대(별도 결정 사안), 일별 시세 리스트에 거래량 열 추가(토글 Phase와 함께 판단).
-- **상태**: 계획 확정, 구현 대기.
+- **상태**: **Phase 50에 흡수·구현 완료(2026-07-23)** — 거래량 막대는 거래대금 토글과 함께 `ComposedChart`로, 일별 시세 거래량·거래대금 열은 `IndexDailyTable`로 구현됨.
 
 ---
 
@@ -2996,6 +2996,31 @@ interface WatchItem {
   4. `AGENTS.md` §2 — 잡 라우트 5종 → **6종** 개정(cleanup-orphan-stocks는 KIS 미호출 정리 잡 명기).
 - **검증**: lint·tsc·build 통과, 새 라우트 등록 확인.
 - **운영 남은 일**: QStash에 `0 3 * * *`(`CRON_TZ=Asia/Seoul`) 스케줄을 `/api/jobs/cleanup-orphan-stocks`로 사용자 등록 필요(다른 잡과 동일 방식).
+
+---
+
+### Phase 50 — 상세 화면 탭(일별 시세/수급/종목별 순위) + 거래량 열·차트 막대 + 억/만원 표기 (2026-07-23, 구현 완료)
+
+- **요청 근거**: 사용자 요청 — ① 일별 시세와 일별 수급을 **탭**으로 나란히, ② 탭 하나 더 추가해 **종목별 수급 순위**, ③ 일별 시세에 **거래량·거래대금 열** 추가, ④ 모든 금액을 **억/만원 한글 표기**(상위 2단 축약), ⑤ 차트에 **거래량/거래대금 막대 토글**. Phase 41(거래량 차트) 계획을 흡수한다.
+- **조사·결정 (2026-07-23 실측)**:
+  - **종목별 수급 순위**: `GET /uapi/domestic-stock/v1/quotations/foreign-institution-total`, `tr_id=FHPTJ04400000`. `FID_COND_MRKT_DIV_CODE=V`·`FID_COND_SCR_DIV_CODE=16449`·`FID_INPUT_ISCD`(코스피 0001/코스닥 1001)·`FID_ETC_CLS_CODE`(외국인 1/기관 2)·`FID_RANK_SORT_CLS_CODE`(순매수상위 0/순매도상위 1). **1콜 상위 30종목**이 상한. 행마다 종목명·코드·현재가·등락률 + 투자자별 순매수 수량(주)·금액(백만원). 정렬 지표 `ntby_qty`는 조회 그룹의 순매수 수량과 일치, 순매도상위는 값이 음수. 외국인=`frgn_*`, 기관=`orgn_*` 필드 사용(4변형 전부 실측).
+  - **거래량·거래대금**: 기존 `FHPUP02120000` output2에 `acml_vol`(천주)·`acml_tr_pbmn`(백만원) **이미 포함** — 추가 콜 없음(Phase 41 조사 확정).
+  - **결정(사용자 확정)**: 투자자 그룹 **외국인+기관 둘 다**, 정렬 **순매수+순매도 둘 다**(그래서 시장당 4콜), 열 구성 **순위·종목명·현재가·등락률·순매수수량·순매수금액**. 금액 표기 **상위 2단 축약**(`12조 3457억원`, `1억 1000만원`). 거래량 표시 **만주/억주**(저장은 천주 원값). 차트 막대 **거래량/거래대금 토글**. 탭 빈 상태는 **B안(탭 항상 노출 + "준비 중")**.
+- **구현 (KIS 단독)**:
+  - `lib/api/kis/constants.ts` — `FI_TRADE_RANKING` 엔드포인트·`tr_id`(FHPTJ04400000)·`KIS_FI_RANKING_ISCD`·`KIS_FI_RANKING_SIZE(30)`.
+  - `lib/api/kis/types.ts` — `KisIndexDailyOutput`에 `acml_vol`·`acml_tr_pbmn` 필드, `KisFiTradeRanking{Output,Response}`.
+  - `lib/api/kis/client.ts` — `fetchKisFiTradeRanking(market, group, sort)`. 잡 경유만(AGENTS.md §2).
+  - `lib/indices/kisMapper.ts` — `mapKisHistory`/`mapKisDailyRows`에 거래량·거래대금 매핑.
+  - `lib/indices/fiRankingMapper.ts`(신규) — `mapKisFiRankingRows`(상위 30, 빈 응답도 throw 안 함 — 8콜 격리).
+  - `lib/market/store.ts` — `StoredFiRanking`·`market:fiRanking:{kospi|kosdaq}` 키·`get/setFiRanking`.
+  - `lib/jobs/refreshMarketData.ts` — `refreshFiRanking`(시장당 4콜, **부수 데이터·실패 격리**로 합류). **신규 잡 없이 기존 잡 확장 → 6종 불변.**
+  - `lib/indices/getIndexDetail.ts` — 상세 데이터에 `fiRanking` 병합(없으면 생략).
+  - `lib/format/krw.ts` — `formatEokFromMillion`(백만원→조/억/만원 상위 2단, signed)·`formatSharesKo`(주→억/만/주 2단)·`formatEokAxis`/`formatSharesAxis`(차트 축 초압축). `formatNetBuyMillion` 제거(대체).
+  - `types/indices.ts` — `IndexChartPoint`/`IndexDailyRow`에 `volume`·`tradingValue`, `FiFlowStock`/`FiFlowDirectionLists`/`FiFlowRanking`, `IndexDetailData.fiRanking`.
+  - `components/indices/` — `DetailTabs`(+CSS, 얇은 클라이언트 탭 래퍼, 서버 컴포넌트를 panel로 전달)·`IndexDailyTable`(+CSS, 거래량·거래대금 열)·`FiRankingTable`(+CSS, 외국인/기관·순매수/순매도 토글, 클라이언트)·`IndexLineChart`(ComposedChart 전환 + 막대 토글)·`InvestorFlowTable`(억/만원 포맷)·`IndexDetailScreen`(국내는 3탭, 해외는 기존 단일 목록).
+- **아키텍처 준수**: KIS 직접 호출은 잡 경유만(화면은 Redis 스냅샷만 읽음), 신규 라우트 없이 잡 6종 불변. 탭 래퍼는 서버 컴포넌트를 props로 감싸므로 표는 서버 렌더 유지.
+- **표시 결정 정정**: Phase 42에서 "천주/백만원 원값 표시"였던 것을, 사용자 재요청으로 **금액은 억/만원(상위 2단), 수량은 만주/억주** 한글 표기로 변경(저장은 원값 유지, 렌더 시 변환).
+- **상태**: **구현 완료(2026-07-23)**. lint·tsc·build 통과. 종목별 순위 최초 데이터는 다음 `refresh-market-data` 회차(KIS 시간창 내)에 시딩된다.
 
 ---
 
