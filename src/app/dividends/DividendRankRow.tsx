@@ -8,6 +8,7 @@ import {
   formatPayoutCycle,
   formatRoundYield,
   formatStockDividend,
+  roundYearOrdinals,
   surgeTooltip,
 } from "@/lib/dividends/ranking/format";
 import { formatKrw } from "@/lib/format/krw";
@@ -20,7 +21,7 @@ import styles from "./page.module.css";
  * 서버 렌더 때와 동일한 page.module.css 클래스를 공유한다.
  */
 
-/** 배당률 순위 표 컬럼 수 — 펼침 상세 행의 colSpan */
+/** 배당률 순위 표 컬럼 수 — 펼침 상세 행은 빈 순위 셀 1 + colSpan(COLUMN_COUNT-1) */
 const COLUMN_COUNT = 8;
 
 /**
@@ -87,6 +88,7 @@ function renderRemarks(entry: DividendRankingEntry): ReactNode {
 export function DividendRankRow({ entry }: { entry: DividendRankingEntry }) {
   const [expanded, setExpanded] = useState(false);
   const history = entry.history ?? [];
+  const roundLabels = roundYearOrdinals(history);
   const detailId = `dividend-history-${entry.code}`;
   const market = MARKET_SUP[entry.market];
 
@@ -146,7 +148,13 @@ export function DividendRankRow({ entry }: { entry: DividendRankingEntry }) {
 
       {expanded ? (
         <tr className={styles.detailRow}>
-          <td className={styles.detailCell} colSpan={COLUMN_COUNT} id={detailId}>
+          {/* 빈 순위 셀 — 순위 열 영역을 비운 채 열 그리드 유지, 상세는 종목명 열부터 (Phase 54) */}
+          <td className={styles.stickyRank} aria-hidden="true" />
+          <td
+            className={styles.detailCell}
+            colSpan={COLUMN_COUNT - 1}
+            id={detailId}
+          >
             {history.length === 0 ? (
               <p className={styles.historyEmpty}>
                 지난 배당 기록이 준비 중입니다. 다음 갱신 회차에 수집되면 여기에
@@ -169,6 +177,8 @@ export function DividendRankRow({ entry }: { entry: DividendRankingEntry }) {
                 <tbody>
                   {history.map((round) => {
                     const roundYield = formatRoundYield(entry, round.perShare);
+                    const ordinalLabel =
+                      roundLabels.get(round.recordDate) ?? null;
                     return (
                       <tr key={round.recordDate}>
                         <td className="numeric">
@@ -178,10 +188,13 @@ export function DividendRankRow({ entry }: { entry: DividendRankingEntry }) {
                           {formatKrw(round.perShare)}
                         </td>
                         <td className={`${styles.numCell} numeric`}>
-                          {roundYield.percent.toFixed(2)}%
-                          {roundYield.label !== null ? (
-                            <span className={styles.cycleFraction}>
-                              ({roundYield.label})
+                          {roundYield.toFixed(2)}%
+                          {ordinalLabel !== null ? (
+                            <span
+                              className={styles.cycleFraction}
+                              title={`그해 관측된 배당 중 ${ordinalLabel.replace("/", "번째 / 총 ")}회`}
+                            >
+                              ({ordinalLabel})
                             </span>
                           ) : null}
                         </td>

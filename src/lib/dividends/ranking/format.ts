@@ -1,4 +1,4 @@
-import type { DividendRankingEntry } from "./store";
+import type { DividendRankingEntry, DividendRoundRecord } from "./store";
 
 /**
  * 배당률 순위 표시 포매터 — Phase 51에서 summary.ts(리더, Redis 의존)에서 분리.
@@ -29,32 +29,68 @@ export function formatStockDividend(entry: DividendRankingEntry): string | null 
 }
 
 /**
- * 회차별 배당률(연 환산·현재가 기준)과 지급 주기 괄호 라벨 — Phase 53.
+ * 회차별 배당률(연 환산·현재가 기준) — Phase 53.
  * 분자 = 주당배당금을 지급 주기로 연 환산(월×12·분기×4·반기×2·연/판정불가×1),
  * 분모 = 산출 시점 현재가(`entry.price`). 모든 회차가 같은 분모라 회차끼리 바로
  * 비교돼 폭배 회차만 튀고 정상 배당률 수준이 한눈에 들어온다(사용자 목표).
  * `perShare`는 잡에서 액면분할 보정을 마친 값이라 헤더 배당률과 기준이 일치한다.
- *
- * `label` = 괄호 안 문자열("1/12"·"1/4"·"1/2"), 연·판정불가는 null(괄호 폐기).
- * 특별배당 단독("특배") 표기는 두지 않는다 — 예탁원 `divi_kind`가 분기/결산/반기만
- * 담아(research.md §4.3 실측) 회차 단위로 특별배당을 가려낼 수 없기 때문이다.
+ * 괄호 순번 라벨은 Phase 54에서 `roundYearOrdinals`로 분리(연 환산 배수와 무관).
  */
 export function formatRoundYield(
   entry: DividendRankingEntry,
   perShare: number
-): { percent: number; label: string | null } {
+): number {
   const yield100 = (multiplier: number) =>
     (perShare * multiplier * 100) / entry.price;
   switch (entry.payoutCycle) {
     case "월":
-      return { percent: yield100(12), label: "1/12" };
+      return yield100(12);
     case "분기":
-      return { percent: yield100(4), label: "1/4" };
+      return yield100(4);
     case "반기":
-      return { percent: yield100(2), label: "1/2" };
+      return yield100(2);
     default: // "연" | null(판정 불가는 연과 동일 취급)
-      return { percent: yield100(1), label: null };
+      return yield100(1);
   }
+}
+
+/**
+ * 회차별 "그해 순번" 괄호 라벨 — Phase 54(B안). `recordDate`의 연도(앞 4자)로 묶어
+ * 그해 관측된 배당을 기준일 오름차순으로 세어 `순번/그해개수`("1/2"·"2/2")를 만든다.
+ * 지급 주기와 무관하게 실제 관측 회차만 세므로(B안), 그해 1회뿐이면 순번이 무의미해
+ * 라벨을 두지 않는다(연·비정기 배당은 자연히 괄호 없음). 예탁원이 중간 회차를 놓친
+ * 해는 분모가 실제보다 작을 수 있으나 사용자가 자체 판단하기로 확정(B안).
+ *
+ * 반환은 `recordDate` → 라벨 맵 — 펼침 표가 회차 key로 recordDate를 쓰므로(고유) 안전.
+ * history의 저장 순서(최신순)와 무관하게 연도별로 오름차순 정렬해 순번을 매긴다.
+ */
+export function roundYearOrdinals(
+  history: DividendRoundRecord[]
+): Map<string, string> {
+  const byYear = new Map<string, DividendRoundRecord[]>();
+  for (const round of history) {
+    const year = round.recordDate.slice(0, 4);
+    const bucket = byYear.get(year);
+    if (bucket) {
+      bucket.push(round);
+    } else {
+      byYear.set(year, [round]);
+    }
+  }
+
+  const labels = new Map<string, string>();
+  for (const rounds of byYear.values()) {
+    if (rounds.length <= 1) {
+      continue; // 그해 1회 → 순번 무의미(괄호 폐기)
+    }
+    const ascending = [...rounds].sort((a, b) =>
+      a.recordDate < b.recordDate ? -1 : a.recordDate > b.recordDate ? 1 : 0
+    );
+    ascending.forEach((round, index) => {
+      labels.set(round.recordDate, `${index + 1}/${ascending.length}`);
+    });
+  }
+  return labels;
 }
 
 /** DART 공시 원문 딥링크 */

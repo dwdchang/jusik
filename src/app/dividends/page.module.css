@@ -337,12 +337,12 @@
   transform: rotate(90deg);
 }
 
-/* 펼침 상세 행 — colSpan 한 셀. 배경을 페이지색으로 낮춰 본문 행과 구분.
-   좌측 들여쓰기는 순위 열(sticky, 52px) 폭 + 종목명 열 내부 패딩(--space-12)만큼 줘
-   상세 내용이 순위 열 영역을 침범하지 않고 종목명 아래에서 시작하게 한다 (Phase 53) */
+/* 펼침 상세 행 — 앞에 빈 순위 셀(.stickyRank, 52px)을 두고 이 셀이 종목명 열부터 시작.
+   순위 열은 빈 sticky 셀로 남아 열 그리드를 유지한 채 비워지고(Phase 54), 이 셀은
+   종목명 열 내부 패딩(--space-12)만큼만 좌측 여백을 줘 상세가 종목명 아래에서 시작한다.
+   배경은 페이지색으로 낮춰 본문 행과 구분(빈 순위 셀은 surface라 대비로 열이 드러남) */
 .detailCell {
-  padding: var(--space-8) var(--space-16) var(--space-12)
-    calc(52px + var(--space-12));
+  padding: var(--space-8) var(--space-16) var(--space-12) var(--space-12);
   text-align: left;
   white-space: normal;
   background-color: var(--color-bg);
@@ -388,7 +388,7 @@
   color: var(--color-text-tertiary);
 }
 
-/* 회차 배당률 옆 지급 주기 괄호(1/4 등) — 연 환산 배수 힌트, 약한 톤 (Phase 53) */
+/* 회차 배당률 옆 그해 순번 괄호(1/2·2/2 등) — 그해 관측 회차 순번, 약한 톤 (Phase 54) */
 .cycleFraction {
   margin-left: 2px;
   color: var(--color-text-tertiary);
