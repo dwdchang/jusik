@@ -472,6 +472,15 @@ async function finalizeEntries(
             Math.round((entry.annualDividendPerShare / entry.price) * 10000) /
             100;
           entry.splitAdjusted = true;
+          // 지난 배당 기록 회차도 같은 비율로 보정 — 펼침 표의 주당배당금·회차
+          // 배당률(Phase 53)이 신주 기준(헤더와 동일)으로 표시되게 한다.
+          // 창 안에서 분할 전후가 섞일 수 있으나 헤더 연간합과 같은 단순화를 따른다.
+          if (entry.history !== undefined) {
+            entry.history = entry.history.map((round) => ({
+              ...round,
+              perShare: Math.round((round.perShare / ratio) * 100) / 100,
+            }));
+          }
         }
       }
     } catch (error) {

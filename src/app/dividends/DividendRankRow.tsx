@@ -6,6 +6,7 @@ import {
   dartDisclosureUrl,
   formatConsecutiveYears,
   formatPayoutCycle,
+  formatRoundYield,
   formatStockDividend,
   surgeTooltip,
 } from "@/lib/dividends/ranking/format";
@@ -160,27 +161,41 @@ export function DividendRankRow({ entry }: { entry: DividendRankingEntry }) {
                   <tr>
                     <th scope="col">기준일</th>
                     <th scope="col">주당배당금</th>
+                    <th scope="col">배당률</th>
                     <th scope="col">지급일</th>
                     <th scope="col">종류</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {history.map((round) => (
-                    <tr key={round.recordDate}>
-                      <td className="numeric">{displayDate(round.recordDate)}</td>
-                      <td className={`${styles.numCell} numeric`}>
-                        {formatKrw(round.perShare)}
-                      </td>
-                      <td className="numeric">
-                        {round.payDate !== null ? (
-                          displayDate(round.payDate)
-                        ) : (
-                          <span className={styles.payPending}>미정</span>
-                        )}
-                      </td>
-                      <td>{round.kind ?? "—"}</td>
-                    </tr>
-                  ))}
+                  {history.map((round) => {
+                    const roundYield = formatRoundYield(entry, round.perShare);
+                    return (
+                      <tr key={round.recordDate}>
+                        <td className="numeric">
+                          {displayDate(round.recordDate)}
+                        </td>
+                        <td className={`${styles.numCell} numeric`}>
+                          {formatKrw(round.perShare)}
+                        </td>
+                        <td className={`${styles.numCell} numeric`}>
+                          {roundYield.percent.toFixed(2)}%
+                          {roundYield.label !== null ? (
+                            <span className={styles.cycleFraction}>
+                              ({roundYield.label})
+                            </span>
+                          ) : null}
+                        </td>
+                        <td className="numeric">
+                          {round.payDate !== null ? (
+                            displayDate(round.payDate)
+                          ) : (
+                            <span className={styles.payPending}>미정</span>
+                          )}
+                        </td>
+                        <td>{round.kind ?? "—"}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}
