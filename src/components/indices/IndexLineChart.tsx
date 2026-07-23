@@ -153,8 +153,8 @@ export function IndexLineChart({ series }: { series: IndexSeries }) {
               <Bar
                 yAxisId="bar"
                 dataKey={barMetric}
-                fill="var(--color-text-tertiary)"
-                fillOpacity={0.3}
+                fill="var(--chart-bar)"
+                fillOpacity={0.75}
                 isAnimationActive={false}
               />
               <Line
@@ -162,7 +162,7 @@ export function IndexLineChart({ series }: { series: IndexSeries }) {
                 type="monotone"
                 dataKey="close"
                 stroke={stroke}
-                strokeWidth={2}
+                strokeWidth={3}
                 dot={false}
                 activeDot={{ r: 4, strokeWidth: 0 }}
               />
@@ -196,7 +196,7 @@ export function IndexLineChart({ series }: { series: IndexSeries }) {
                 type="monotone"
                 dataKey="close"
                 stroke={stroke}
-                strokeWidth={2}
+                strokeWidth={3}
                 dot={false}
                 activeDot={{ r: 4, strokeWidth: 0 }}
               />

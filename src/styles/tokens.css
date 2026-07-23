@@ -70,6 +70,9 @@
   --chart-height: 200px;
   --chart-stroke-kospi: var(--color-primary);
   --chart-stroke-kosdaq: var(--color-fall);
+  /* 지수 상세 차트 거래량 막대 — 방향성(빨강/파랑)과 겹치지 않는 중성 회색.
+     다크에서는 배경보다 밝게 재정의(아래 html[data-theme="dark"]). */
+  --chart-bar: #c4ccd4;
 }
 
 /**
@@ -87,4 +90,7 @@ html[data-theme="dark"] {
 
   /* 어두운 배경 대비 확보 (§11.10-B4) */
   --color-warning: #f0a51c;
+
+  /* 거래량 막대 — 어두운 surface 위에서 시인성 확보용 밝은 슬레이트 회색 */
+  --chart-bar: #6b7688;
 }
