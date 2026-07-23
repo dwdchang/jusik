@@ -5,6 +5,7 @@ import {
   KIS_BASE_URL,
   KIS_ENDPOINTS,
   KIS_FETCH_TIMEOUT_MS,
+  KIS_FI_RANKING_ISCD,
   KIS_INDEX_CODE,
   KIS_INVESTOR_MARKET_PARAMS,
   KIS_MARKET_DIV_CODE,
@@ -18,6 +19,7 @@ import {
 import type {
   KisDividendResponse,
   KisDividendRow,
+  KisFiTradeRankingResponse,
   KisFinancialRatioResponse,
   KisFinancialRatioRow,
   KisFluctuationRankingResponse,
@@ -147,6 +149,32 @@ export async function fetchKisInvestorDaily(
       FID_INPUT_ISCD_2: iscd2,
       FID_INPUT_DATE_1: today,
       FID_INPUT_DATE_2: today,
+    }
+  );
+}
+
+/**
+ * 외국인/기관 매매상위 종목 조회 (FHPTJ04400000) — 1콜 상위 30종목 (Phase 50).
+ * group "foreign"(FID_ETC_CLS_CODE=1)/"institution"(=2), sort "0" 순매수상위/"1" 순매도상위.
+ * 순매수 수량은 주, 금액은 백만원이며 순매도상위 조회 시 값은 음수다 (2026-07-23 실측).
+ * KIS 담당 잡(refreshMarketData)만 호출한다 (AGENTS.md §2).
+ */
+export async function fetchKisFiTradeRanking(
+  market: MarketIndex,
+  group: "foreign" | "institution",
+  sort: "0" | "1"
+): Promise<KisFiTradeRankingResponse> {
+  return fetchKisJson<KisFiTradeRankingResponse>(
+    "fi trade ranking",
+    KIS_ENDPOINTS.FI_TRADE_RANKING,
+    KIS_TR_ID.FI_TRADE_RANKING,
+    {
+      FID_COND_MRKT_DIV_CODE: "V",
+      FID_COND_SCR_DIV_CODE: "16449",
+      FID_INPUT_ISCD: KIS_FI_RANKING_ISCD[market],
+      FID_DIV_CLS_CODE: "0",
+      FID_RANK_SORT_CLS_CODE: sort,
+      FID_ETC_CLS_CODE: group === "foreign" ? "1" : "2",
     }
   );
 }

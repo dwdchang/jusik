@@ -41,24 +41,113 @@ export function formatEokwon(eokwon: number): string {
   return `${sign}${format(eok)}억원`;
 }
 
-/**
- * 순매수 금액(백만원) 부호 표기 — 양수 앞 "+", 천단위 구분 (Phase 42).
- * 단위(백만원)는 화면 헤더에 별도 표기하므로 접미사를 붙이지 않는다.
- * 예: 2,621,088 → "+2,621,088", -878,805 → "-878,805", 0 → "0"
- */
-export function formatNetBuyMillion(value: number): string {
-  const rounded = Math.round(value);
-  const grouped = new Intl.NumberFormat("ko-KR", {
-    maximumFractionDigits: 0,
-  }).format(Math.abs(rounded));
+const koNum = (n: number): string =>
+  new Intl.NumberFormat("ko-KR", { maximumFractionDigits: 0 }).format(n);
 
-  if (rounded > 0) {
-    return `+${grouped}`;
+/**
+ * 백만원 → 조·억·만원 상위 2단 축약 한글 표기 (Phase 50). 저장은 백만원 원값,
+ * 표시 시점에만 변환한다. 가장 큰 단위와 그 아래 한 단만 남기고 하위 단은 버린다.
+ * 예: 100 → "1억원", 110 → "1억 1000만원", 2,621,088 → "26조 2109억원",
+ *     50 → "5000만원", 0 → "0원".
+ * signed=true면 양수 앞에 "+"를 붙인다(순매수/순매도 구분용). 음수는 항상 "-".
+ */
+export function formatEokFromMillion(
+  millionWon: number,
+  signed = false
+): string {
+  const rounded = Math.round(millionWon);
+  if (rounded === 0) {
+    return "0원";
   }
-  if (rounded < 0) {
-    return `-${grouped}`;
+  const sign = rounded < 0 ? "-" : signed ? "+" : "";
+  // 백만원 = 100만원 → 만원 단위 정수로 환산 (백만원은 항상 만원의 배수)
+  const manwon = Math.abs(rounded) * 100;
+  const jo = Math.floor(manwon / 100_000_000);
+  const eok = Math.floor((manwon % 100_000_000) / 10_000);
+  const man = manwon % 10_000;
+
+  if (jo > 0) {
+    return eok > 0
+      ? `${sign}${koNum(jo)}조 ${koNum(eok)}억원`
+      : `${sign}${koNum(jo)}조원`;
   }
-  return "0";
+  if (eok > 0) {
+    return man > 0
+      ? `${sign}${koNum(eok)}억 ${koNum(man)}만원`
+      : `${sign}${koNum(eok)}억원`;
+  }
+  return `${sign}${koNum(man)}만원`;
+}
+
+/**
+ * 주(株) → 억·만·주 상위 2단 축약 한글 표기 (Phase 50). 저장은 원값(주),
+ * 표시 시점에만 변환한다. 지수 거래량은 천주 저장이라 호출부에서 ×1000 후 넘긴다.
+ * 예: 468,193,000 → "4억 6819만주", 1,710,000 → "171만주",
+ *     1,329,000 → "132만 9000주", 0 → "0주".
+ */
+export function formatSharesKo(shares: number, signed = false): string {
+  const rounded = Math.round(shares);
+  if (rounded === 0) {
+    return "0주";
+  }
+  const sign = rounded < 0 ? "-" : signed ? "+" : "";
+  const abs = Math.abs(rounded);
+  const eok = Math.floor(abs / 100_000_000);
+  const man = Math.floor((abs % 100_000_000) / 10_000);
+  const ju = abs % 10_000;
+
+  if (eok > 0) {
+    return man > 0
+      ? `${sign}${koNum(eok)}억 ${koNum(man)}만주`
+      : `${sign}${koNum(eok)}억주`;
+  }
+  if (man > 0) {
+    return ju > 0
+      ? `${sign}${koNum(man)}만 ${koNum(ju)}주`
+      : `${sign}${koNum(man)}만주`;
+  }
+  return `${sign}${koNum(ju)}주`;
+}
+
+/**
+ * 백만원 → 차트 축용 초압축 표기 (Phase 50) — 최상위 단위 1개만, 소수 1자리.
+ * 예: 39,998,686 → "40조", 350,524 → "3505억", 50 → "5000만"
+ */
+export function formatEokAxis(millionWon: number): string {
+  const manwon = Math.abs(Math.round(millionWon)) * 100;
+  const sign = millionWon < 0 ? "-" : "";
+  const trim = (n: number): string => {
+    const f = n.toFixed(1);
+    return f.endsWith(".0") ? f.slice(0, -2) : f;
+  };
+  if (manwon >= 100_000_000) {
+    return `${sign}${trim(manwon / 100_000_000)}조`;
+  }
+  if (manwon >= 10_000) {
+    return `${sign}${trim(manwon / 10_000)}억`;
+  }
+  return `${sign}${koNum(manwon)}만`;
+}
+
+/**
+ * 주 → 차트 축용 초압축 표기 (Phase 50) — 최상위 단위 1개만, 소수 1자리.
+ * 지수 거래량은 천주 저장이라 호출부에서 ×1000 후 넘긴다.
+ * 예: 468,193,000 → "4.7억", 12,340,000 → "1234만"
+ */
+export function formatSharesAxis(shares: number): string {
+  const abs = Math.abs(Math.round(shares));
+  const sign = shares < 0 ? "-" : "";
+  const trim = (n: number): string => {
+    const f = n.toFixed(1);
+    return f.endsWith(".0") ? f.slice(0, -2) : f;
+  };
+  if (abs >= 100_000_000) {
+    return `${sign}${trim(abs / 100_000_000)}억`;
+  }
+  if (abs >= 10_000) {
+    return `${sign}${trim(abs / 10_000)}만`;
+  }
+  return `${sign}${koNum(abs)}`;
 }
 
 /**

@@ -74,6 +74,9 @@ export function mapKisHistory(
     .map((row) => ({
       basDt: row.stck_bsop_date as string,
       close: parseNum(row.bstp_nmix_prpr),
+      // 거래량(천주)·거래대금(백만원) — 차트 막대용 (Phase 50)
+      volume: parseNum(row.acml_vol),
+      tradingValue: parseNum(row.acml_tr_pbmn),
     }))
     .sort((a, b) => a.basDt.localeCompare(b.basDt))
     .slice(-KIS_HISTORY_POINT_COUNT)
@@ -81,6 +84,8 @@ export function mapKisHistory(
       basDt: point.basDt,
       date: formatBasDtLabel(point.basDt),
       close: point.close,
+      volume: point.volume,
+      tradingValue: point.tradingValue,
     }));
 
   if (points.length === 0) {
@@ -115,6 +120,9 @@ export function mapKisDailyRows(
         changeAmount: applyKisSign(parseNum(row.bstp_nmix_prdy_vrss), sign),
         changeRate,
         direction: resolveDirection(changeRate),
+        // 거래량(천주)·거래대금(백만원) — 일별 시세 표 열 (Phase 50)
+        volume: parseNum(row.acml_vol),
+        tradingValue: parseNum(row.acml_tr_pbmn),
       };
     });
 

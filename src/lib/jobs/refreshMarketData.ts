@@ -3,6 +3,7 @@ import {
   type PriceAlertsReport,
 } from "@/lib/alerts/evaluate";
 import {
+  fetchKisFiTradeRanking,
   fetchKisFluctuationRanking,
   fetchKisFxPairDaily,
   fetchKisIndexDaily,
@@ -40,6 +41,7 @@ import {
   parseNum,
 } from "@/lib/indices/kisMapper";
 import { mapKisInvestorRows } from "@/lib/indices/investorMapper";
+import { mapKisFiRankingRows } from "@/lib/indices/fiRankingMapper";
 import {
   mapKisOverseasDailyRows,
   mapKisOverseasHistory,
@@ -54,6 +56,7 @@ import {
   INDICATOR_TO_DETAIL_KEY,
   getStockInfoBlocks,
   setDailyFluctuation,
+  setFiRanking,
   setInvestorFlows,
   setLastRefreshRecord,
   setMarketDetail,
@@ -110,6 +113,8 @@ export interface RefreshMarketDataReport {
   weeklyFluctuation: { ok: boolean; count?: number; error?: string };
   /** 일별 수급(코스피·코스닥 시장 전체 투자자 순매수) 저장 결과 — 부수 데이터, 실패 격리 */
   investorFlows: { ok: boolean; count?: number; error?: string };
+  /** 종목별 수급 순위(외국인·기관 × 순매수·순매도) 저장 결과 — 부수 데이터, 실패 격리 */
+  fiRanking: { ok: boolean; count?: number; error?: string };
   /** 종목 마스터 저장 결과 — 1일 1회, 부수 데이터라 잡 전체 ok에 영향 없음 */
   stockMaster: { ok: boolean; count?: number; skipped?: true; error?: string };
   stocks: Array<{ symbolCode: string; ok: boolean; error?: string }>;
@@ -396,6 +401,54 @@ async function refreshInvestorFlows(
     return { ok: true, count };
   } catch (error) {
     console.error("[job] investor flows refresh failed:", error);
+    return { ok: false, error: errorMessage(error) };
+  }
+}
+
+/**
+ * 종목별 수급 순위 → market:fiRanking:{kospi|kosdaq} 저장 (§50).
+ * 시장당 4콜(외국인·기관 × 순매수·순매도, FHPTJ04400000)로 각 상위 30종목을 받아
+ * 저장한다. 부수 데이터라 실패해도 잡 전체 ok에 영향 없이 로그만 남긴다 — 다음 회차가
+ * 자연 재시도. 한 시장이 실패하면 그 회차는 통째로 재시도(멱등, SET 덮어쓰기).
+ */
+async function refreshFiRanking(
+  fetchedAt: string
+): Promise<RefreshMarketDataReport["fiRanking"]> {
+  try {
+    let count = 0;
+    for (const market of ["KOSPI", "KOSDAQ"] as const) {
+      const groups = {
+        foreign: {
+          buy: mapKisFiRankingRows(
+            await fetchKisFiTradeRanking(market, "foreign", "0"),
+            "foreign"
+          ),
+          sell: mapKisFiRankingRows(
+            await fetchKisFiTradeRanking(market, "foreign", "1"),
+            "foreign"
+          ),
+        },
+        institution: {
+          buy: mapKisFiRankingRows(
+            await fetchKisFiTradeRanking(market, "institution", "0"),
+            "institution"
+          ),
+          sell: mapKisFiRankingRows(
+            await fetchKisFiTradeRanking(market, "institution", "1"),
+            "institution"
+          ),
+        },
+      };
+      await setFiRanking({ market, groups, fetchedAt });
+      count +=
+        groups.foreign.buy.length +
+        groups.foreign.sell.length +
+        groups.institution.buy.length +
+        groups.institution.sell.length;
+    }
+    return { ok: true, count };
+  } catch (error) {
+    console.error("[job] fi ranking refresh failed:", error);
     return { ok: false, error: errorMessage(error) };
   }
 }
@@ -743,6 +796,9 @@ export async function refreshMarketData(
   // 1b''. 시장 전체 일별 수급 → market:investor:{kospi|kosdaq} (§42, 부수 데이터·실패 격리)
   const investorFlows = await refreshInvestorFlows(startedAt);
 
+  // 1b'''. 종목별 수급 순위 → market:fiRanking:{kospi|kosdaq} (§50, 부수 데이터·실패 격리)
+  const fiRanking = await refreshFiRanking(startedAt);
+
   // 1c. 종목 마스터 → market:stockMaster (종목명 검색용, 1일 1회, 실패 격리)
   const stockMaster = await refreshStockMaster(startedAt);
 
@@ -841,6 +897,7 @@ export async function refreshMarketData(
     dailyFluctuation,
     weeklyFluctuation,
     investorFlows,
+    fiRanking,
     stockMaster,
     stocks,
     nameFills,

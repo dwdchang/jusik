@@ -4,11 +4,54 @@ import { formatKstDateTime } from "@/lib/format/datetime";
 import { getIndexDetail } from "@/lib/indices/getIndexDetail";
 import { getOverseasDetail } from "@/lib/indices/getOverseasDetail";
 import type { IndexDetailData, IndicatorId } from "@/types/indices";
+import { DetailTabs, type DetailTab } from "./DetailTabs";
+import { FiRankingTable } from "./FiRankingTable";
 import { IndexCard } from "./IndexCard";
 import { IndexChartClient } from "./IndexChartClient";
 import { IndexDailyList } from "./IndexDailyList";
+import { IndexDailyTable } from "./IndexDailyTable";
 import { InvestorFlowTable } from "./InvestorFlowTable";
 import styles from "./IndexDetailScreen.module.css";
+
+/**
+ * 국내 지수(코스피/코스닥) 상세의 탭 구성 — 일별 시세 / 일별 수급 / 종목별 순위 (§50).
+ * 수급·순위 스냅샷은 초기 시딩 전 없을 수 있어(B안), 없으면 "준비 중"을 보여준다.
+ */
+function buildDomesticTabs(data: IndexDetailData): DetailTab[] {
+  const emptyPanel = <p className={styles.emptyPanel}>데이터 준비 중입니다.</p>;
+
+  return [
+    {
+      id: "price",
+      label: "일별 시세",
+      panel: <IndexDailyTable rows={data.dailyRows} />,
+    },
+    {
+      id: "investor",
+      label: "일별 수급",
+      panel:
+        data.investorRows && data.investorRows.length > 0 ? (
+          <>
+            <p className={styles.sectionNote}>
+              순매수 금액 · + 순매수 / − 순매도
+            </p>
+            <InvestorFlowTable rows={data.investorRows} />
+          </>
+        ) : (
+          emptyPanel
+        ),
+    },
+    {
+      id: "fiRanking",
+      label: "종목별 순위",
+      panel: data.fiRanking ? (
+        <FiRankingTable ranking={data.fiRanking} />
+      ) : (
+        emptyPanel
+      ),
+    },
+  ];
+}
 
 export async function IndexDetailScreen({
   market,
@@ -74,16 +117,14 @@ export async function IndexDetailScreen({
           <IndexChartClient series={data.history} />
         </section>
 
-        <section className={styles.section} aria-label="일별 시세">
-          <h2 className={styles.sectionTitle}>일별 시세</h2>
-          <IndexDailyList rows={data.dailyRows} />
-        </section>
-
-        {data.investorRows && data.investorRows.length > 0 && (
-          <section className={styles.section} aria-label="일별 수급">
-            <h2 className={styles.sectionTitle}>일별 수급</h2>
-            <p className={styles.sectionNote}>순매수 · 단위: 백만원</p>
-            <InvestorFlowTable rows={data.investorRows} />
+        {market === "KOSPI" || market === "KOSDAQ" ? (
+          <section className={styles.section} aria-label="일별 데이터">
+            <DetailTabs tabs={buildDomesticTabs(data)} />
+          </section>
+        ) : (
+          <section className={styles.section} aria-label="일별 시세">
+            <h2 className={styles.sectionTitle}>일별 시세</h2>
+            <IndexDailyList rows={data.dailyRows} />
           </section>
         )}
 

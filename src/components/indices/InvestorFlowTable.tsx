@@ -1,4 +1,4 @@
-import { formatNetBuyMillion } from "@/lib/format/krw";
+import { formatEokFromMillion } from "@/lib/format/krw";
 import type { InvestorFlowRow } from "@/types/indices";
 import styles from "./InvestorFlowTable.module.css";
 
@@ -59,7 +59,7 @@ export function InvestorFlowTable({ rows }: { rows: InvestorFlowRow[] }) {
                     key={col.key}
                     className={`${styles.num} numeric ${toneClass(value)}`}
                   >
-                    {formatNetBuyMillion(value)}
+                    {formatEokFromMillion(value, true)}
                   </td>
                 );
               })}

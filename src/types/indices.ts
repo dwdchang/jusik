@@ -49,6 +49,10 @@ export interface IndexChartPoint {
   date: string;
   basDt: string;
   close: number;
+  /** 거래량(천주) — 국내 지수만. 해외 지표는 미포함(undefined) (Phase 50) */
+  volume?: number;
+  /** 거래대금(백만원) — 국내 지수만 (Phase 50) */
+  tradingValue?: number;
 }
 
 export interface IndexSeries {
@@ -81,6 +85,10 @@ export interface IndexDailyRow {
   changeAmount: number;
   changeRate: number;
   direction: PriceDirection;
+  /** 거래량(천주) — 국내 지수만. 해외 지표는 미포함(undefined) (Phase 50) */
+  volume?: number;
+  /** 거래대금(백만원) — 국내 지수만 (Phase 50) */
+  tradingValue?: number;
 }
 
 /**
@@ -114,6 +122,41 @@ export interface InvestorFlowRow {
   pension: number;
 }
 
+/**
+ * 종목별 수급 순위 1종목 — 외국인/기관 순매수(또는 순매도) 상위 (Phase 50).
+ * netBuyQty(주)·netBuyAmount(백만원)는 조회한 투자자 그룹 기준이며, 순매도상위는 음수.
+ */
+export interface FiFlowStock {
+  /** 순위 (1부터) */
+  rank: number;
+  /** 종목코드 6자리 */
+  code: string;
+  name: string;
+  /** 현재가(원) */
+  price: number;
+  /** 전일 대비율(%) — 부호 적용 */
+  changeRate: number;
+  direction: PriceDirection;
+  /** 순매수 수량(주, 부호 포함) */
+  netBuyQty: number;
+  /** 순매수 금액(백만원, 부호 포함) */
+  netBuyAmount: number;
+}
+
+/** 한 투자자 그룹의 순매수/순매도 상위 목록 (각 상위 30) */
+export interface FiFlowDirectionLists {
+  /** 순매수 상위 */
+  buy: FiFlowStock[];
+  /** 순매도 상위 */
+  sell: FiFlowStock[];
+}
+
+/** 종목별 수급 순위 — 외국인·기관 × 순매수·순매도 (Phase 50) */
+export interface FiFlowRanking {
+  foreign: FiFlowDirectionLists;
+  institution: FiFlowDirectionLists;
+}
+
 /** 지수 상세 페이지 데이터 (차트 + 일별 리스트) */
 export interface IndexDetailData {
   asOf: string;
@@ -124,9 +167,14 @@ export interface IndexDetailData {
   dailyRows: IndexDailyRow[];
   /**
    * 일별 수급 (KOSPI/KOSDAQ만) — 최신순, 순매수 금액(백만원). 스냅샷이 아직
-   * 없으면 생략된다(화면에서 섹션 미표시). 해외 지표는 항상 미포함.
+   * 없으면 생략된다(화면에서 "준비 중" 표시). 해외 지표는 항상 미포함.
    */
   investorRows?: InvestorFlowRow[];
+  /**
+   * 종목별 수급 순위 (KOSPI/KOSDAQ만) — 외국인·기관 × 순매수·순매도 각 상위 30.
+   * 스냅샷이 아직 없으면 생략된다(화면에서 "준비 중" 표시). 해외 지표는 항상 미포함.
+   */
+  fiRanking?: FiFlowRanking;
 }
 
 export const KIS_DATA_NOTICE =

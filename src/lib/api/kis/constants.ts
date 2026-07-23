@@ -40,6 +40,9 @@ export const KIS_ENDPOINTS = {
   /** 시장별 투자자매매동향(일별) — 1콜 최근 300거래일·39필드 (Phase 42, 2026-07-22 실측) */
   INVESTOR_DAILY_BY_MARKET:
     "/uapi/domestic-stock/v1/quotations/inquire-investor-daily-by-market",
+  /** 외국인/기관 매매상위 종목 — 1콜 상위 30종목 (Phase 50, 2026-07-23 실측) */
+  FI_TRADE_RANKING:
+    "/uapi/domestic-stock/v1/quotations/foreign-institution-total",
 } as const;
 
 export const KIS_TR_ID = {
@@ -55,6 +58,7 @@ export const KIS_TR_ID = {
   INCOME_STATEMENT: "FHKST66430200",
   FINANCIAL_RATIO: "FHKST66430300",
   INVESTOR_DAILY_BY_MARKET: "FHPTJ04040000",
+  FI_TRADE_RANKING: "FHPTJ04400000",
 } as const;
 
 /**
@@ -150,5 +154,19 @@ export const KIS_INVESTOR_MARKET_PARAMS = {
 
 /** 일별 수급 리스트 표시 거래일 수 — 응답 300행 중 최신 N행만 저장 (Phase 42) */
 export const KIS_INVESTOR_ROW_COUNT = 20;
+
+/**
+ * 외국인/기관 매매상위 조회 파라미터 (Phase 50, 2026-07-23 실측).
+ * FID_INPUT_ISCD로 시장을 고르고, FID_ETC_CLS_CODE로 투자자 그룹("1" 외국인/"2" 기관계),
+ * FID_RANK_SORT_CLS_CODE로 정렬("0" 순매수상위/"1" 순매도상위)을 지정한다.
+ * 1콜 상위 30종목이 상한(다른 순위 API와 동일). 순매수 수량은 주(股), 금액은 백만원.
+ */
+export const KIS_FI_RANKING_ISCD = {
+  KOSPI: "0001",
+  KOSDAQ: "1001",
+} as const;
+
+/** 외국인/기관 매매상위 1콜 응답 종목 수 — 상위 30건이 상한 (2026-07-23 실측) */
+export const KIS_FI_RANKING_SIZE = 30;
 
 export const KIS_FETCH_TIMEOUT_MS = 15_000;

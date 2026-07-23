@@ -8,11 +8,46 @@
   box-shadow: var(--shadow-sm);
 }
 
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+  margin-bottom: var(--space-12);
+}
+
 .title {
   font-size: var(--text-caption);
   font-weight: var(--weight-semibold);
   color: var(--color-text-secondary);
-  margin-bottom: var(--space-12);
+}
+
+.toggleGroup {
+  display: inline-flex;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.toggle {
+  appearance: none;
+  border: none;
+  background-color: var(--color-surface);
+  color: var(--color-text-tertiary);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  padding: var(--space-4) var(--space-12);
+  cursor: pointer;
+}
+
+.toggle + .toggle {
+  border-left: 1px solid var(--color-border);
+}
+
+.toggle[aria-pressed="true"] {
+  background-color: var(--color-accent, var(--color-text-primary));
+  color: var(--color-bg);
+  font-weight: var(--weight-semibold);
 }
 
 .chartBody {
@@ -30,4 +65,10 @@
   font-size: var(--text-caption);
   font-weight: var(--weight-semibold);
   color: var(--color-text-primary);
+}
+
+.tooltipBar {
+  margin-top: var(--space-4);
+  font-size: var(--text-micro);
+  color: var(--color-text-secondary);
 }

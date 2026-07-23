@@ -10,8 +10,7 @@
 .table {
   border-collapse: collapse;
   width: 100%;
-  /* 열이 10개+날짜, 값이 "26조 2109억원"까지 길어져 최소 너비를 넉넉히 준다 */
-  min-width: 1080px;
+  min-width: 560px;
 }
 
 .dateHead,
@@ -54,6 +53,7 @@
   text-align: right;
   font-size: var(--text-micro);
   font-weight: var(--weight-medium);
+  color: var(--color-text-primary);
   padding: var(--space-8) var(--space-12);
   white-space: nowrap;
 }

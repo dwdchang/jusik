@@ -2,6 +2,7 @@ import { getRedis } from "@/lib/redis/client";
 import type { KisStockPriceOutput } from "@/lib/api/kis/types";
 import type { StockEarningsInfo } from "@/lib/holdings/stockInfo";
 import type {
+  FiFlowRanking,
   IndexDailyRow,
   IndexSeries,
   IndexSnapshot,
@@ -56,6 +57,17 @@ export interface StoredInvestorFlows {
   market: MarketIndex;
   /** 최신순, 순매수 금액(백만원) */
   rows: InvestorFlowRow[];
+  /** 잡이 KIS에서 받아온 시각 (ISO) */
+  fetchedAt: string;
+}
+
+/**
+ * market:fiRanking:{kospi|kosdaq} — 종목별 수급 순위 스냅샷 (Phase 50).
+ * 외국인·기관 × 순매수·순매도 각 상위 30. 시세 갱신 잡이 회차당 시장별 4콜로 덮어쓴다.
+ */
+export interface StoredFiRanking {
+  market: MarketIndex;
+  groups: FiFlowRanking;
   /** 잡이 KIS에서 받아온 시각 (ISO) */
   fetchedAt: string;
 }
@@ -181,6 +193,11 @@ function investorKey(market: MarketIndex): string {
   return `market:investor:${market === "KOSPI" ? "kospi" : "kosdaq"}`;
 }
 
+/** market:fiRanking:{kospi|kosdaq} 키 조립 (Phase 50) */
+function fiRankingKey(market: MarketIndex): string {
+  return `market:fiRanking:${market === "KOSPI" ? "kospi" : "kosdaq"}`;
+}
+
 /** market:stock:{code} 키 조립 — 고아 키 정리 잡(Phase 49)이 접두사 SCAN·삭제에 공유한다 */
 export function stockKey(symbolCode: string): string {
   return `market:stock:${symbolCode}`;
@@ -234,6 +251,16 @@ export async function setInvestorFlows(
   value: StoredInvestorFlows
 ): Promise<void> {
   await getRedis().set(investorKey(value.market), value);
+}
+
+export async function getFiRanking(
+  market: MarketIndex
+): Promise<StoredFiRanking | null> {
+  return getRedis().get<StoredFiRanking>(fiRankingKey(market));
+}
+
+export async function setFiRanking(value: StoredFiRanking): Promise<void> {
+  await getRedis().set(fiRankingKey(value.market), value);
 }
 
 export async function getStockSnapshot(

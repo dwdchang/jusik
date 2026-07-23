@@ -29,6 +29,10 @@ export interface KisIndexDailyOutput {
   bstp_nmix_hgpr?: string;
   /** 저가 */
   bstp_nmix_lwpr?: string;
+  /** 누적 거래량(천주) — output2 일자별에 존재 (Phase 50, 2026-07-23 실측) */
+  acml_vol?: string;
+  /** 누적 거래대금(백만원) — output2 일자별에 존재 (Phase 50, 2026-07-23 실측) */
+  acml_tr_pbmn?: string;
   [key: string]: unknown;
 }
 
@@ -81,6 +85,41 @@ export interface KisInvestorDailyResponse {
   msg1?: string;
   /** 일자별 배열 (최신순) */
   output?: KisInvestorDailyOutput[];
+}
+
+/**
+ * 외국인/기관 매매상위 (FHPTJ04400000) — output 1행 (Phase 50, 2026-07-23 실측).
+ * 정렬 지표 `ntby_qty`(주)는 조회한 투자자 그룹의 순매수 수량과 일치한다.
+ * 금액은 그룹별 `_ntby_tr_pbmn`(백만원)을 쓴다. 순매도상위 조회 시 값은 음수.
+ */
+export interface KisFiTradeRankingOutput {
+  /** 종목명 */
+  hts_kor_isnm?: string;
+  /** 단축 종목코드 6자리 */
+  mksc_shrn_iscd?: string;
+  /** 현재가(원) */
+  stck_prpr?: string;
+  /** 전일 대비 부호 (1 상한 / 2 상승 / 3 보합 / 4 하한 / 5 하락) */
+  prdy_vrss_sign?: string;
+  /** 전일 대비율(%) */
+  prdy_ctrt?: string;
+  /** 외국인 순매수 수량(주) */
+  frgn_ntby_qty?: string;
+  /** 기관계 순매수 수량(주) */
+  orgn_ntby_qty?: string;
+  /** 외국인 순매수 금액(백만원) */
+  frgn_ntby_tr_pbmn?: string;
+  /** 기관계 순매수 금액(백만원) */
+  orgn_ntby_tr_pbmn?: string;
+  [key: string]: unknown;
+}
+
+export interface KisFiTradeRankingResponse {
+  rt_cd?: string;
+  msg_cd?: string;
+  msg1?: string;
+  /** 상위 30종목 배열 */
+  output?: KisFiTradeRankingOutput[];
 }
 
 /**
