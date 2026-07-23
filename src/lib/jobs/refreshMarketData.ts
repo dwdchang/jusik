@@ -58,6 +58,7 @@ import {
   setDailyFluctuation,
   setFiRanking,
   setInvestorFlows,
+  getLastRefreshRecord,
   setLastRefreshRecord,
   setMarketDetail,
   getStockMaster,
@@ -778,6 +779,21 @@ export async function refreshMarketData(
   const startedAt = new Date().toISOString();
   const confirmedRound = isConfirmedRound();
 
+  // 실행 시작 기록 — 성공·실패 무관하게 "잡이 실제로 돌았는지"를 남긴다 (§52 방법2).
+  // 마지막 성공 시각(at)은 보존하고 attemptedAt만 갱신, ok는 완료 성공 시에만 true로 덮어쓴다.
+  // (미실행=QStash 미발화 시 이 레코드가 통째로 낡아, 홈에서 "stalled"로 판별된다)
+  try {
+    const prev = await getLastRefreshRecord();
+    await setLastRefreshRecord({
+      at: prev?.at ?? startedAt,
+      attemptedAt: startedAt,
+      trigger,
+      ok: false,
+    });
+  } catch (error) {
+    console.error("[job] attemptedAt save failed:", error);
+  }
+
   // 1. 지수·환율·금리·유가 5종 → market:detail:*
   const { results: indices, kospiRaw } = await refreshIndices(startedAt);
 
@@ -879,7 +895,12 @@ export async function refreshMarketData(
   // 마지막 갱신 성공 시각 — staleness 배지·수동 점검용 (§11.2)
   if (ok) {
     try {
-      await setLastRefreshRecord({ at: finishedAt, trigger, ok });
+      await setLastRefreshRecord({
+        at: finishedAt,
+        attemptedAt: startedAt,
+        trigger,
+        ok,
+      });
     } catch (error) {
       console.error("[job] lastRefreshAt save failed:", error);
     }

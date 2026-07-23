@@ -177,8 +177,13 @@ export interface StoredStockMaster {
 
 /** market:lastRefreshAt — 마지막 갱신 잡 실행 기록 (staleness 판단·수동 점검용) */
 export interface LastRefreshRecord {
-  /** 실행 완료 시각 (ISO) */
+  /** 마지막 성공 완료 시각 (ISO) */
   at: string;
+  /**
+   * 마지막 실행 "시작" 시각 (성공·실패 무관, ISO) — 잡이 실제로 돌았는지 판별용 (§52 방법2).
+   * 선택 필드: 도입 전 저장된 값은 없을 수 있어 리더는 폴백 처리한다.
+   */
+  attemptedAt?: string;
   /** 실행 주체 — "qstash" | "manual" 등 */
   trigger: string;
   ok: boolean;

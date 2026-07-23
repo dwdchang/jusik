@@ -108,3 +108,121 @@ export function resolveStaleness(
   const overdue = now.getTime() - lastDue;
   return overdue >= CRITICAL_AFTER_MS ? "critical" : "warn";
 }
+
+/**
+ * now 이후(초과) 가장 이른 예정 스케줄 슬롯의 절대 시각(ms) — "다음 갱신 예정" 표기용.
+ * 평일만 슬롯이 있어 야간·주말·15:40~18:15 휴지에는 다음 평일/회차로 넘어간다.
+ * 앞으로 7일 내 슬롯이 없으면(비정상) null.
+ */
+export function nextScheduledRefreshMs(now: Date = new Date()): number | null {
+  const nowMs = now.getTime();
+  const kst = new Date(nowMs + 9 * 60 * 60 * 1000);
+  const baseUtcMidnight = Date.UTC(
+    kst.getUTCFullYear(),
+    kst.getUTCMonth(),
+    kst.getUTCDate()
+  );
+
+  for (let ahead = 0; ahead < 7; ahead++) {
+    const dayUtcMidnight = baseUtcMidnight + ahead * 24 * 60 * 60 * 1000;
+    if (!isKstWeekday(new Date(dayUtcMidnight).getUTCDay())) {
+      continue;
+    }
+    const kstMidnightMs = dayUtcMidnight - 9 * 60 * 60 * 1000;
+    for (let i = 0; i < SCHEDULE_MINUTES.length; i++) {
+      const slotMs = kstMidnightMs + SCHEDULE_MINUTES[i] * 60 * 1000;
+      if (slotMs > nowMs) {
+        return slotMs;
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * lastSuccessMs 이후 "이미 완료됐어야 할(예정 시각 + 유예 경과)" 스케줄 슬롯이 몇 개
+ * 누락됐는지 — 단발 지연과 다발(장애성) 지연을 구분하는 신호(방법1의 넓이). 최대 5일 소급.
+ */
+function countMissedSlots(lastSuccessMs: number, now: Date): number {
+  const nowMs = now.getTime();
+  const kst = new Date(nowMs + 9 * 60 * 60 * 1000);
+  const baseUtcMidnight = Date.UTC(
+    kst.getUTCFullYear(),
+    kst.getUTCMonth(),
+    kst.getUTCDate()
+  );
+
+  let count = 0;
+  for (let back = 0; back < 5; back++) {
+    const dayUtcMidnight = baseUtcMidnight - back * 24 * 60 * 60 * 1000;
+    if (!isKstWeekday(new Date(dayUtcMidnight).getUTCDay())) {
+      continue;
+    }
+    const kstMidnightMs = dayUtcMidnight - 9 * 60 * 60 * 1000;
+    for (const minute of SCHEDULE_MINUTES) {
+      const slotMs = kstMidnightMs + minute * 60 * 1000;
+      if (slotMs + SLOT_GRACE_MS <= nowMs && slotMs > lastSuccessMs) {
+        count++;
+      }
+    }
+  }
+  return count;
+}
+
+/** 갱신 잡 미실행 판정 최소 레코드 — LastRefreshRecord 호환(at=마지막 성공, attemptedAt=마지막 실행 시작) */
+export interface RefreshRecordLike {
+  at: string | null;
+  attemptedAt?: string | null;
+}
+
+/**
+ * 갱신 지연 인시던트 — 홈 헤더 상태 표시용(§52). 예정 슬롯을 놓쳤을 때만 non-null.
+ * - kind: "stalled"(마지막 실행조차 예정 슬롯 이전 = 잡이 아예 안 돎, QStash 미발화 추정)
+ *         / "failing"(예정 슬롯 이후 실행은 됐으나 성공 기록 없음 = 엔드포인트·수집 실패)
+ * - level: 지연 심각도(resolveStaleness와 동일 임계)
+ * - sinceIso: 마지막 성공 갱신 시각(= 몇 시부터 멈췄나)
+ * - missedSlots: 연속 누락 회차 수 · nextSlotMs: 다음 예정 회차
+ */
+export interface RefreshIncident {
+  kind: "stalled" | "failing";
+  level: StalenessLevel;
+  sinceIso: string | null;
+  missedSlots: number;
+  nextSlotMs: number | null;
+}
+
+export function resolveRefreshIncident(
+  record: RefreshRecordLike | null | undefined,
+  now: Date = new Date()
+): RefreshIncident | null {
+  if (!record || !record.at) {
+    return null;
+  }
+  const fetchedMs = new Date(record.at).getTime();
+  if (!Number.isFinite(fetchedMs)) {
+    return null;
+  }
+
+  const lastDue = lastDueRefreshMs(now);
+  if (lastDue === null || fetchedMs >= lastDue) {
+    return null; // 예정 슬롯을 놓치지 않음(정상·휴지 구간 포함)
+  }
+
+  const overdue = now.getTime() - lastDue;
+  const level: StalenessLevel =
+    overdue >= CRITICAL_AFTER_MS ? "critical" : "warn";
+
+  // attemptedAt이 최근 예정 슬롯 이후면 "잡은 돌았으나 성공 못 함"(방법2)
+  const attemptedMs = record.attemptedAt
+    ? new Date(record.attemptedAt).getTime()
+    : NaN;
+  const ran = Number.isFinite(attemptedMs) && attemptedMs >= lastDue;
+
+  return {
+    kind: ran ? "failing" : "stalled",
+    level,
+    sinceIso: record.at,
+    missedSlots: countMissedSlots(fetchedMs, now),
+    nextSlotMs: nextScheduledRefreshMs(now),
+  };
+}

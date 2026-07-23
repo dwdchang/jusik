@@ -14,3 +14,16 @@ export function formatKstDateTime(iso: string): string {
     hour12: false,
   }).format(date);
 }
+
+/**
+ * ISO 문자열 또는 epoch(ms)를 KST "HH:MM"으로 포맷한다 — 상태 표시 등 시:분만 필요할 때.
+ */
+export function formatKstTime(input: string | number): string {
+  const date = new Date(input);
+  return new Intl.DateTimeFormat("ko-KR", {
+    timeZone: "Asia/Seoul",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+}
