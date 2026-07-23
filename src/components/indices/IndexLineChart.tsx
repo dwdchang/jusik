@@ -2,12 +2,7 @@
 
 import { useState } from "react";
 import { formatIndex } from "@/lib/format/index";
-import {
-  formatEokAxis,
-  formatEokFromMillion,
-  formatSharesAxis,
-  formatSharesKo,
-} from "@/lib/format/krw";
+import { formatEokFromMillion, formatSharesKo } from "@/lib/format/krw";
 import {
   INDICATOR_NAMES,
   type IndexChartPoint,
@@ -144,18 +139,13 @@ export function IndexLineChart({ series }: { series: IndexSeries }) {
                 width={55}
                 tickFormatter={(value: number) => formatIndex(value)}
               />
+              {/* 막대는 차트 하단 약 40%에만 오도록 도메인을 상단으로 늘려 압축.
+                  정확한 값은 툴팁·일별 시세 표에서 확인 (축 라벨은 감춤). */}
               <YAxis
                 yAxisId="bar"
                 orientation="right"
-                tick={{ fontSize: 11, fill: "var(--color-text-tertiary)" }}
-                axisLine={false}
-                tickLine={false}
-                width={48}
-                tickFormatter={(value: number) =>
-                  barMetric === "volume"
-                    ? formatSharesAxis(value * 1000)
-                    : formatEokAxis(value)
-                }
+                domain={[0, (dataMax: number) => dataMax * 2.5]}
+                hide
               />
               <Tooltip
                 content={<ChartTooltipContent barMetric={barMetric} />}
