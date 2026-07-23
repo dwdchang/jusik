@@ -12,10 +12,16 @@ import styles from "./HotStocksCard.module.css";
  */
 export function HotStocksCard({
   summary,
+  suppressStale = false,
 }: {
   summary: DailyHotCardSummary | null;
+  /** 홈 전반 갱신 지연(인시던트) 시 개별 배지 억제 — 헤더 상태 표시로 통합 (§52) */
+  suppressStale?: boolean;
 }) {
-  const stale = summary !== null ? resolveStaleness(summary.fetchedAt) : null;
+  const stale =
+    summary !== null && !suppressStale
+      ? resolveStaleness(summary.fetchedAt)
+      : null;
 
   return (
     <Link href="/hot-stocks" className={styles.card}>

@@ -9,8 +9,12 @@ import {
 } from "@/lib/format/change";
 import { formatIndex } from "@/lib/format/index";
 import type { DailyHotCardSummary } from "@/lib/hotstocks/dailyCard";
+import { formatKstTime } from "@/lib/format/datetime";
 import { resolveDirection } from "@/lib/indices/kisMapper";
-import type { StalenessLevel } from "@/lib/market/staleness";
+import type {
+  RefreshIncident,
+  StalenessLevel,
+} from "@/lib/market/staleness";
 import type { WatchlistCardSummary } from "@/lib/watchlist/summary";
 import type { HoldingsCardSummary } from "@/types/holdings";
 import type {
@@ -42,6 +46,38 @@ export type DashboardStaleness = Record<
   StalenessLevel | null
 >;
 
+/** 헤더 갱신 상태 문구 — 제목 오른쪽 라벨(짧게)과 제목 밑 설명(멈춘 시각·다음 회차) */
+function refreshStatusText(incident: RefreshIncident): {
+  label: string;
+  description: string;
+} {
+  const since = incident.sinceIso ? formatKstTime(incident.sinceIso) : null;
+  const next =
+    incident.nextSlotMs !== null
+      ? `다음 ${formatKstTime(incident.nextSlotMs)} 예정`
+      : null;
+
+  if (incident.kind === "failing") {
+    const head = since ? `${since} 이후 갱신 실패` : "최근 갱신 실패";
+    return {
+      label: "갱신 실패",
+      description: [head, "잠시 후 자동 재시도", next]
+        .filter(Boolean)
+        .join(" · "),
+    };
+  }
+
+  const head = since
+    ? `${since}부터 실시간 갱신 지연`
+    : "실시간 갱신 지연";
+  return {
+    label: "갱신 지연",
+    description: [head, "보통 수 분 내 자동 복구", next]
+      .filter(Boolean)
+      .join(" · "),
+  };
+}
+
 function indexSummaryProps(
   snapshot: IndexSnapshot,
   href: string,
@@ -67,6 +103,7 @@ export function IndexDashboard({
   watchlistSummary,
   dividendSummary,
   staleness,
+  incident,
   feedCounts,
 }: {
   data: IndexDashboardData;
@@ -76,13 +113,36 @@ export function IndexDashboard({
   watchlistSummary: WatchlistCardSummary | null;
   dividendSummary: DividendCardSummary | null;
   staleness: DashboardStaleness;
+  incident: RefreshIncident | null;
   feedCounts: TodayFeedCounts;
 }) {
+  const status = incident !== null ? refreshStatusText(incident) : null;
+
   return (
     <div className={styles.dashboard}>
       <header className={styles.header}>
         <NavIconLink href="/" label="홈" icon="home" />
-        <h1 className={styles.title}>Dashboard</h1>
+        <div className={styles.titleBlock}>
+          <div className={styles.titleRow}>
+            <h1 className={styles.title}>Dashboard</h1>
+            {status !== null ? (
+              <span
+                className={`${styles.statusLabel} ${
+                  incident?.kind === "failing"
+                    ? styles.statusFailing
+                    : styles.statusStalled
+                }`}
+              >
+                {status.label}
+              </span>
+            ) : null}
+          </div>
+          {status !== null ? (
+            <p className={styles.statusDesc} role="status">
+              {status.description}
+            </p>
+          ) : null}
+        </div>
         <div className={styles.headerActions}>
           <HeaderMenu />
         </div>
@@ -166,7 +226,10 @@ export function IndexDashboard({
             placeholder="기록 수집 전"
           />
         )}
-        <HotStocksCard summary={hotStocksSummary} />
+        <HotStocksCard
+          summary={hotStocksSummary}
+          suppressStale={incident !== null}
+        />
         <WatchlistCard
           summary={watchlistSummary}
           staleness={staleness.watchlist}

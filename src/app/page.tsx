@@ -11,7 +11,10 @@ import { getHoldingsCardSummary } from "@/lib/holdings/summary";
 import { getDailyHotCardSummary } from "@/lib/hotstocks/dailyCard";
 import { getDashboardData } from "@/lib/indices/getDashboard";
 import { getVolatilityCardSummary } from "@/lib/indices/volatility";
-import { resolveStaleness } from "@/lib/market/staleness";
+import {
+  resolveRefreshIncident,
+  resolveStaleness,
+} from "@/lib/market/staleness";
 import { getLastRefreshRecord } from "@/lib/market/store";
 import { getWatchlistCardSummary } from "@/lib/watchlist/summary";
 import styles from "./page.module.css";
@@ -117,16 +120,31 @@ export default async function HomePage() {
     ]
       .filter((at): at is string => at !== null)
       .sort()[0] ?? null;
-  const staleness: DashboardStaleness = {
-    kospi: resolveStaleness(data.fetchedAtByKey.kospi),
-    kosdaq: resolveStaleness(data.fetchedAtByKey.kosdaq),
-    usdkrw: resolveStaleness(data.fetchedAtByKey.usdkrw),
-    market: resolveStaleness(marketFetchedAt),
-    holdings: resolveStaleness(lastRefreshAt),
-    volatility: resolveStaleness(lastRefreshAt),
-    watchlist: resolveStaleness(lastRefreshAt),
-    dividends: resolveStaleness(lastRefreshAt),
-  };
+  // 갱신 잡이 예정 회차를 놓쳐 홈 전체가 stale이면 인시던트로 판정(§52 방법1+2).
+  // 이 경우 카드마다 배지를 흩뿌리지 않고 헤더 상태 표시 1개로 통합하므로 per-card 배지는 억제.
+  const incident = resolveRefreshIncident(lastRefresh);
+  const staleness: DashboardStaleness =
+    incident !== null
+      ? {
+        kospi: null,
+        kosdaq: null,
+        usdkrw: null,
+        market: null,
+        holdings: null,
+        volatility: null,
+        watchlist: null,
+        dividends: null,
+      }
+      : {
+        kospi: resolveStaleness(data.fetchedAtByKey.kospi),
+        kosdaq: resolveStaleness(data.fetchedAtByKey.kosdaq),
+        usdkrw: resolveStaleness(data.fetchedAtByKey.usdkrw),
+        market: resolveStaleness(marketFetchedAt),
+        holdings: resolveStaleness(lastRefreshAt),
+        volatility: resolveStaleness(lastRefreshAt),
+        watchlist: resolveStaleness(lastRefreshAt),
+        dividends: resolveStaleness(lastRefreshAt),
+      };
 
   return (
     <main className={styles.page}>
@@ -138,6 +156,7 @@ export default async function HomePage() {
         watchlistSummary={watchlistSummary}
         dividendSummary={dividendSummary}
         staleness={staleness}
+        incident={incident}
         feedCounts={feedCounts}
       />
     </main>

@@ -15,12 +15,55 @@
   margin-bottom: var(--space-16);
 }
 
+/* 제목 + 갱신 상태 설명을 세로로 묶는 블록 (§52) — 아이콘·메뉴는 헤더 flex가 세로 중앙 정렬 */
+.titleBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
 /* 홈 페이지 제목 (§36) — 상세 화면과 동일한 홈 아이콘 + h1 배치 */
 .title {
   font-size: var(--text-page-title);
   font-weight: var(--weight-regular);
   color: var(--color-text-primary);
   letter-spacing: var(--tracking-tight);
+}
+
+/* 제목 오른쪽에 상황 이름(짧은 라벨)을 나란히 (§52) */
+.titleRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-8);
+  flex-wrap: wrap;
+}
+
+/* 상황 이름 칩 — 자동 복구되는 지연이므로 톤 다운(경고색 강조는 실패 케이스만) */
+.statusLabel {
+  padding: 2px var(--space-8);
+  border: 1px solid;
+  border-radius: var(--radius-md);
+  font-size: var(--text-caption-sm);
+  font-weight: var(--weight-medium);
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.statusStalled {
+  color: var(--color-text-secondary);
+  border-color: var(--color-text-tertiary);
+}
+
+.statusFailing {
+  color: var(--color-warning);
+  border-color: var(--color-warning);
+}
+
+/* 제목 밑 설명 — 멈춘 시각·다음 예정 회차 등 (§52) */
+.statusDesc {
+  font-size: var(--text-caption);
+  color: var(--color-text-secondary);
 }
 
 .headerActions {
