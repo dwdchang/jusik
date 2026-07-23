@@ -3080,6 +3080,21 @@ interface WatchItem {
 
 ---
 
+### Phase 54 — 펼침 상세 행 순위 열 비우기 + 회차 괄호를 "그해 순번"으로 (2026-07-24, 구현 완료)
+
+- **요청 근거**: 사용자 요청 — Phase 53 펼침 표에서 ① 종목 클릭 펼침 시 **순위 열 영역을 비운 칸으로** 보이게(Phase 53은 반대로 순위 열 침범 방지 들여쓰기로 반영돼 의도 불일치) ② 배당률 옆 괄호를 지급 주기 배수 힌트(1/12·1/4·1/2 고정)가 아니라 **한 해에 첫 번째·두 번째라는 순번(1/2·2/2)**으로.
+- **정책(사용자 확정)**:
+  - **① 순위 열 비우기 = 권장안(빈 셀 유지)**: 상세 행을 `빈 <td class=stickyRank>` 1칸 + `colSpan(COLUMN_COUNT-1)` 상세 셀로 나눠, 순위 열을 sticky 빈 셀로 남겨 **열 그리드를 유지한 채 비운다**(surface 배경이라 dimmer 상세 셀과 대비로 순위 열이 드러남). 상세는 종목명 열부터 시작(`.detailCell` 좌측 패딩=종목명 패딩만). Phase 53의 `calc(52px + --space-12)` 큰 들여쓰기는 폐기.
+  - **② 그해 순번 = B안(그해 실제 관측 회차 수 분모) 확정**: `recordDate` 연도로 묶어 관측된 배당을 기준일 오름차순으로 세어 `순번/그해개수`(1/2·2/2). **그해 1회뿐이면 순번 무의미 → 괄호 폐기**(연·비정기는 자연히 괄호 없음). **한계 수용**: 예탁원이 중간 회차를 놓친 해는 분모가 실제보다 작게 나올 수 있으나 사용자가 자체 판단(A안=주기 기반 고정 분모는 그해 1회여도 1/2로 오해 소지라 배제). 지급 주기 무관이라 `formatRoundYield`(연 환산 배당률)와 분리.
+- **구현**:
+  - `lib/dividends/ranking/format.ts` — `formatRoundYield`를 `{ percent, label }` → **배당률 `number`만 반환**으로 축소(괄호 라벨 제거). `roundYearOrdinals(history): Map<recordDate, "순번/개수">` 신규(연도 그룹핑·오름차순 순번, 그해 1회면 미포함). `DividendRoundRecord` 타입 import 추가.
+  - `app/dividends/DividendRankRow.tsx` — `roundYearOrdinals(history)`로 라벨 맵 산출, 회차 행에서 `roundLabels.get(round.recordDate)`로 괄호 표기(툴팁 "그해 N번째 / 총 M회"). 상세 행에 **빈 순위 셀 + colSpan(COLUMN_COUNT-1)** 구조 적용.
+  - `app/dividends/page.module.css` — `.detailCell` 좌측 패딩 `calc(52px + --space-12)` → `--space-12` · `.cycleFraction` 주석 갱신(그해 순번).
+- **아키텍처 준수**: 순수 클라이언트 표시 로직만 변경. 잡·KIS 호출·스냅샷 스키마·라우트 6종 전부 불변(`history`는 Phase 51부터 있던 필드 재사용).
+- **상태**: **구현 완료(2026-07-24)**. lint·tsc 통과. 스냅샷 재시딩 불필요(기존 `history`로 즉시 반영).
+
+---
+
 ## 7. PR 분리 권장 (선택)
 
 | PR | Phase | 리뷰 포인트 |
