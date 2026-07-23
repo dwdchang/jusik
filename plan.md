@@ -3095,6 +3095,22 @@ interface WatchItem {
 
 ---
 
+### Phase 55 — 회차 실배당률 전환 + "종류" 열을 지급 주기로 + 연 배당 "(연)" 표기 (2026-07-24, 구현 완료)
+
+- **요청 근거**: 사용자 확인 — 신한글로벌액티브리츠(반기)에서 두 회차가 각각 25%로 떠 **합쳐 50%로 오해**되는 문제(실은 Phase 53 연 환산값이라 각 회차가 이미 연 25% 추정치). 또 반기인데 "종류"가 **결산**으로 떠 헷갈림(`divi_kind` 원문은 결산/중간 혼재라 주기 아님). → ① 회차 배당률을 **연 환산 없이 실배당률**로 ② "종류" 열을 **간격 중앙값 기반 지급 주기**(메인 표와 동일)로 ③ 그해 순번 괄호에서 연 배당은 지금까지 생략했는데 대신 **"(연)"**으로 표기.
+- **정책(사용자 확정)**:
+  - **① 실배당률**: `formatRoundYield` = `perShare × 100 / entry.price`(연 환산 배수 폐기). 반기 종목 회차가 25% → 약 12.5%로, 회차 합이 헤더 시가배당률과 자연히 일치해 합산 착시 제거. Phase 53의 "폭배 회차를 같은 연 눈금에서 튀게 보이기" 의도는 폐기.
+  - **② "종류" → "지급 주기"**: 예탁원 `divi_kind`(결산/중간) 대신 `entry.payoutCycle`(월/분기/반기/연, 판정 불가 "—")을 `formatPayoutCycle`로 표시. **종목 단위 단일값이라 회차 행마다 같은 값이 반복**된다(사용자 확정). 열 헤더 "종류"→"지급 주기". `round.kind`는 데이터엔 남되 화면 미사용.
+  - **③ 연 배당 "(연)" = B안(payoutCycle 기준) 확정**: `roundYearOrdinals`에 `payoutCycle`을 넘겨 **`payoutCycle === "연"`이면 회차마다 "연" 라벨**("(연)")을 붙인다. 그해 관측 회차 수(A안)가 아니라 간격 중앙값 판정을 기준으로 삼아, 데이터 누락으로 그해 1회만 잡힌 분기·반기 종목이 "(연)"으로 오표기되는 것을 막는다. 다회차 연도는 기존대로 1/2·2/2, 그해 1회(주기 연 아님)는 여전히 괄호 없음.
+- **구현**:
+  - `lib/dividends/ranking/format.ts` — `formatRoundYield` 연 환산 switch 제거(실배당률). `roundYearOrdinals(history, payoutCycle)`로 시그니처 확장, `payoutCycle==="연"`이면 전 회차 "연". `PayoutCycle` 타입 import 추가.
+  - `app/dividends/DividendRankRow.tsx` — `roundYearOrdinals(history, entry.payoutCycle)` 호출, "종류" 열을 `formatPayoutCycle(entry)`로·헤더 "지급 주기", 괄호 툴팁을 "연"/순번 분기, 상단 주석 현행화.
+  - `app/dividends/page.module.css` — `.cycleFraction` 주석에 "(연)" 반영.
+- **아키텍처 준수**: 순수 클라이언트 표시 로직만 변경. 잡·KIS 호출·스냅샷 스키마(`history`·`kind` 필드 유지)·라우트 6종 전부 불변.
+- **상태**: **구현 완료(2026-07-24)**. lint·tsc 통과. 스냅샷 재시딩 불필요(기존 `history`·`payoutCycle`로 즉시 반영).
+
+---
+
 ## 7. PR 분리 권장 (선택)
 
 | PR | Phase | 리뷰 포인트 |
