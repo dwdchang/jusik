@@ -79,7 +79,7 @@
 | `watchlist/actions.ts` | Server Actions: add/update(기준일 변경 시 기준가 null 리셋)/delete. update/delete 오류 redirect는 `/watchlist?edit=1`로 편집 모드 유지(`fail()`이 `?`/`&` 분기 결합) |
 | `hot-stocks/page.tsx` | 핫종목 — 서버 모드 탭 `[당일 등락률(기본) \| 주간 등락률 \| 월간 핫종목]`(`?mode=weekly\|monthly`). 당일/주간: `market:dailyFluctuation`/`market:weeklyFluctuation` 상위 30을 월간과 동일한 6열 폼(순위/종목명+ᴷ·ᴰ 위첨자/종목코드 열/등락률/기준 종가/현재가, §20)으로 표시+`resolveStaleness` 배지 — 공용 `FluctuationView`(variant별 데이터 소스·문구만 교체). 위첨자는 `market:stockMaster`를 읽어 코드→시장 매핑(`loadMarketByCode`, 실패·미등재 시 생략), 기준 종가 없는 구 스냅샷은 "—". 기준 문구는 전 탭 월간 형식: "… 상위 30종목 · 기준: {전일\|5거래일 전} 종가 · 대상 전체시장 · 갱신: …". 월간: 구간 수익률 TOP 100(`?period=1m\|3m\|6m\|12m`, 구간 링크는 `?mode=monthly&period=…` — mode 유지, §20 회귀 수정). 뷰는 async 서버 서브컴포넌트(`FluctuationView`/`MonthlyView`) |
 | `feeds/page.tsx` | 뉴스·공시 상세 (Phase 17-2b) — `ensureAllowedSession` + `getDisclosureBoard`·`getNewsBoard`·`getTradeStatsView`(17-4) + `FeedTabsClient`(뉴스/공시/수출입 탭+게시판+아코디언). 홈 "뉴스·공시" 요약 카드에서 이동 |
-| `dividends/page.tsx` | 배당 상세 (Phase 25·43·44·45·47) — **3탭 단일 구조**(Phase 47, `?mode=stock\|product\|schedule` 서버 탭 `DIVIDEND_TABS`, 기본 stock). 헤더 아래 탭 바 하나로 통합 — 활성 탭에 필요한 데이터만 로드하고 각주도 탭별로 갈린다. ① **일반종목**·② **배당상품** = **배당률 순위** 표(Phase 43·46, `getDividendRankingView(category)`·순위 메타 `RANK_META`): 시가배당률 TOP 100, 8열(순위·종목명·현재가·배당률·주당배당금·지급주기·연속배당·비고) 공용. 배당상품(ETF·리츠·인프라펀드) 탭은 우선주·폭배·주식배당·액면분할 보정이 없어 비고 항상 "—". 순위·종목명 2열 sticky 가로 스크롤. 비고 = 우/현+주N%/폭배(DART 딥링크)·배당률 `*`=액면분할 보정(Phase 44). **폼은 핫종목 표 스타일과 통일**(Phase 45): 헤더 가운데·micro 톤, 값 숫자 열 우측(`.numCell`)·종목명 좌측, 종목명 뒤 ᴷ/ᴰ 시장 위첨자(`entry.market` 직접 사용)·링크 없음. ③ **내 배당** = **보유종목 확정 배당** 목록(`getDividendSchedule`, **보유종목만**) 한 줄씩(종목명(**링크 없음**, Phase 47 오터치 방지)·배당종류·기준일·지급일(미정 표기)·주당배당금×보유수량·예상 지급액). 각주: 순위 탭 2건(시가배당률 정의·`+` 연수, 비고 우·현+주·폭배·`*` 분할 보정), 내 배당 탭 1건(예상액=현재 보유수량/세전 15.4%). 홈 "배당" 카드에서 이동 |
+| `dividends/page.tsx` | 배당 상세 (Phase 25·43·44·45·47) — **3탭 단일 구조**(Phase 47, `?mode=stock\|product\|schedule` 서버 탭 `DIVIDEND_TABS`, 기본 stock). 헤더 아래 탭 바 하나로 통합 — 활성 탭에 필요한 데이터만 로드하고 각주도 탭별로 갈린다. ① **일반종목**·② **배당상품** = **배당률 순위** 표(Phase 43·46, `getDividendRankingView(category)`·순위 메타 `RANK_META`): 시가배당률 TOP 100, 8열(순위·종목명·현재가·배당률·주당배당금·지급주기·연속배당·비고) 공용. 배당상품(ETF·리츠·인프라펀드) 탭은 우선주·폭배·주식배당·액면분할 보정이 없어 비고 항상 "—". 순위·종목명 2열 sticky 가로 스크롤. **종목명 클릭 시 지난 배당 기록 펼침**(Phase 51, `DividendRankRow` 클라이언트 — 데이터 행 + colSpan 상세 행으로 `entry.history`를 회차 표(기준일·주당배당금·지급일·종류)로 렌더, 추가 조회 0·구 스키마는 "기록 준비 중" 폴백). 표시 포매터는 `ranking/format.ts`(클라이언트 안전, `summary.ts`에서 분리)에서 서버·클라이언트 공용. 비고 = 우/현+주N%/폭배(DART 딥링크)·배당률 `*`=액면분할 보정(Phase 44). **폼은 핫종목 표 스타일과 통일**(Phase 45): 헤더 가운데·micro 톤, 값 숫자 열 우측(`.numCell`)·종목명 좌측, 종목명 뒤 ᴷ/ᴰ 시장 위첨자(`entry.market` 직접 사용)·링크 없음. ③ **내 배당** = **보유종목 확정 배당** 목록(`getDividendSchedule`, **보유종목만**) 한 줄씩(종목명(**링크 없음**, Phase 47 오터치 방지)·배당종류·기준일·지급일(미정 표기)·주당배당금×보유수량·예상 지급액). 각주: 순위 탭 2건(시가배당률 정의·`+` 연수, 비고 우·현+주·폭배·`*` 분할 보정), 내 배당 탭 1건(예상액=현재 보유수량/세전 15.4%). 홈 "배당" 카드에서 이동 |
 | `dlq/page.tsx` | QStash DLQ 읽기 전용 목록 (Phase 18) — `ensureAllowedSession` + `listDlqMessages(cursor)` 직접 호출(Redis 아닌 QStash API — §4.3 예외), `?cursor=` 페이지네이션. 햄버거 사이드바 "DLQ 확인"에서 진입, 재발송·삭제 없음 |
 | `alerts/page.tsx` | 알림 설정 (Phase 10) — `ensureAllowedSession` + `VAPID_PUBLIC_KEY`를 `PushSubscriptionManager`에 prop 전달 + 보유·관심종목별 알림 on/off(`StockAlertToggles`, 3단계에서 관심종목까지 확장) + 등록 기기 수 표시. 햄버거 사이드바 "알림 설정"에서 진입 |
 | `alerts/actions.ts` | Server Actions: 푸시 구독 등록/해지(입력 형식 검증 — endpoint https·keys 필수)·테스트 발송·종목별 알림 on/off(`setStockAlertEnabledAction` — 보유·관심종목만 허용, `alerts:{email}:muted` 갱신) |
@@ -335,7 +335,9 @@ QStash 스케줄 (월 1회 권장) → POST /api/jobs/refresh-dividend-ranking
       → 종목별 buildEntry: 예탁원 배당일정 1콜(최근 10년) → 최근 1년 주당배당금 합으로
          시가배당률 + 연속 배당 연수 + 지급 주기(기준일 평균 간격 → 월/분기/반기/연)
          + 우선주(stk_kind=="우선") + 주식배당률(stk_divi_rate) + 폭배 후보(전년 대비
-         급증) + 배당당시 액면가(face_val) 산출. 배당상품은 우선주·주식배당·폭배를
+         급증) + 배당당시 액면가(face_val) + 지난 배당 기록(history, Phase 51: 확정 회차를
+         지급 주기별 창 연 6년·반기 4년·분기 2년·월 12개월(판정불가는 연)으로 잘라 최신순)
+         산출. 배당상품은 우선주·주식배당·폭배를
          강제 비활성. instrumentType(stock/fund)에 따라 일반/배당상품 버퍼(각 상위 500)에
          온라인 선택
       → 시간 예산 250초 소진 시 progress 저장 후 종료
@@ -507,7 +509,7 @@ QStash 스케줄 (매일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 * * *) → POST /a
 | `market:stockMaster` | `StoredStockMaster` (코드↔종목명 ~2,650+fetchedAt) | ✕ | 시세 잡 (1일 1회) | 종목명 검색 `searchStocks` |
 | `market:investor:{kospi\|kosdaq}` | `StoredInvestorFlows` (시장 전체 투자자 순매수 금액 최근 20거래일, 백만원, §42) | ✕ | 시세 잡 | 지수 상세 "일별 수급" 탭 |
 | `market:fiRanking:{kospi\|kosdaq}` | `StoredFiRanking` (외국인·기관 × 순매수·순매도 각 상위 30, 수량=주·금액=백만원, §50) | ✕ | 시세 잡 | 지수 상세 "종목별 순위" 탭 |
-| `market:dividendRanking` | `StoredDividendRanking` — 일반종목 `entries`/`universeCount` + 배당상품 `productEntries?`/`productUniverseCount?`(Phase 46, 구 스키마 폴백) 시가배당률 각 TOP 100+fetchedAt | ✕ | 배당률 순위 잡 | 배당 페이지 순위 섹션(일반종목/배당상품 2탭) |
+| `market:dividendRanking` | `StoredDividendRanking` — 일반종목 `entries`/`universeCount` + 배당상품 `productEntries?`/`productUniverseCount?`(Phase 46, 구 스키마 폴백) 시가배당률 각 TOP 100+fetchedAt. 각 엔트리에 지난 배당 기록 `history?`(Phase 51, 회차별 기준일·주당배당금·지급일·종류, 주기별 창으로 절단) | ✕ | 배당률 순위 잡 | 배당 페이지 순위 섹션(일반종목/배당상품 2탭) |
 | `market:dividendRanking:progress` | `DividendRankingProgress` (커서+일반/배당상품 두 버퍼+가격 스냅샷) | ✕ | 배당률 순위 잡 (완료 시 삭제) | 배당률 순위 잡 |
 | `holdings:{email}` | `Holding[]` | **○** | Server Action + 잡(종목명 채움) | 보유종목 화면·잡 |
 | `holdings:{email}:history` | `PortfolioDailyRecord[]` | **○** | 시세 잡 | 보유종목 화면 |

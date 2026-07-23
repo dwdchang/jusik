@@ -3024,6 +3024,23 @@ interface WatchItem {
 
 ---
 
+### Phase 51 — 배당률 순위 종목명 클릭 시 지난 배당 기록 펼침 (2026-07-23, 구현 완료)
+
+- **요청 근거**: 사용자 요청 — 홈 배당 상세의 배당률 순위(일반종목·배당상품)에서 **종목명을 클릭하면 지난 배당금 기록이 아래로 펼쳐지게**.
+- **조사 결과**: 순위 스냅샷 엔트리는 집계값(연 주당배당금 합·연속연수·주기)만 담고 **회차별 원본은 버려지고 있었음**. 다만 잡(`refreshDividendRanking`)이 종목마다 예탁원 배당일정 **최근 10년치**(연속연수·폭배 계산에 필요, 축소 불가)를 이미 받아옴 → 그 중 표시분만 스냅샷에 함께 저장하면 **KIS 추가 호출 0**. 화면·Server Action의 KIS 직접 호출은 금지(AGENTS.md §2)라, 클릭 시점 조회(B안)는 배제하고 **잡이 저장 → 화면은 Redis만 읽어 펼침**(A안).
+- **정책(사용자 확정)**: 표시 회차 부담을 6~12회로 균질화하려 **지급 주기별 보존 창** — 연 6년·반기 4년·분기 2년·**월 12개월**, 주기 판정 불가(null)는 연과 동일(폴백). 잡이 받는 10년치 중 이 창만 잘라 최신순 저장(용량 ~100KB 수준, 무시 가능).
+- **구현**:
+  - `lib/dividends/ranking/store.ts` — `DividendRoundRecord`(기준일·주당배당금·지급일·종류) 타입 + 엔트리 `history?`(구 스키마 폴백).
+  - `lib/jobs/refreshDividendRanking.ts` — `buildEntry`에서 확정 회차 수집 → `HISTORY_WINDOW_MONTHS`(연72·반48·분24·월12) · `ymdMonthsBefore` · `toIsoDate`(예탁원 혼합 포맷 정규화, Phase 47 규칙 재사용)로 주기별 창 절단·최신순 부착. 회차 데이터는 이미 순회 중이라 추가 콜·유의미한 비용 없음.
+  - `lib/dividends/ranking/format.ts`(신규) — `summary.ts`(Redis 리더)의 순수 포매터 5종(`formatPayoutCycle`·`formatConsecutiveYears`·`formatStockDividend`·`dartDisclosureUrl`·`surgeTooltip`) 이관 → 클라이언트 컴포넌트가 Redis 클라이언트를 번들에 딸려오지 않게 분리. `summary.ts`는 리더·타입만 유지.
+  - `app/dividends/DividendRankRow.tsx`(신규 클라이언트) — 데이터 `<tr>` + 펼침 상세 `<tr colSpan=8>`. 종목명을 `<button aria-expanded>`로, 클릭 시 `entry.history`를 회차 표(기준일·주당배당금·지급일·종류)로 렌더. `MARKET_SUP`·`renderRemarks` 이 컴포넌트로 이관.
+  - `app/dividends/page.tsx` — 순위 `<tbody>`를 `<DividendRankRow>` 위임으로 축소, 이관 헬퍼·import 정리, 순위 각주에 "종목명을 누르면 …" 안내 1줄 추가.
+  - `app/dividends/page.module.css` — `.nameButton`(버튼 리셋)·`.expandIcon`(90° 회전)·`.detailCell`(페이지색 배경)·`.historyTable`(`.detailCell`로 스코프해 `.rankTable` 하향 상속 극복)·`.historyEmpty`.
+- **아키텍처 준수**: KIS 직접 호출 잡 경유만·화면은 Redis 스냅샷만 읽음, 신규 잡·라우트 없이 6종 불변. 클라이언트 컴포넌트는 상호작용용(선례 `DetailTabs`·`FiRankingTable`)이며 데이터 페칭은 서버 유지.
+- **상태**: **구현 완료(2026-07-23)**. lint·tsc·build 통과. 실제 기록 노출은 다음 `refresh-dividend-ranking` 회차(또는 `?force=true` 재시딩)부터 — 그 전 구 스키마 엔트리는 "기록 준비 중" 폴백.
+
+---
+
 ## 7. PR 분리 권장 (선택)
 
 | PR | Phase | 리뷰 포인트 |
