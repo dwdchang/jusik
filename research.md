@@ -65,7 +65,7 @@
 | 경로 | 역할 |
 |---|---|
 | `layout.tsx` | 루트 레이아웃. Geist 폰트, `tokens.css`+`globals.css` import, 테마 FOUC 방지 인라인 스크립트(`data-theme` 선결정) |
-| `page.tsx` | 홈 대시보드. 세션 검사 → 허용 외 이메일이면 access-denied 화면 → 카드 8종 데이터 병렬 조회(`Promise.all`) → `IndexDashboard` 렌더. staleness 배지 판정도 여기서 수행 |
+| `page.tsx` | 홈 대시보드. 세션 검사 → 허용 외 이메일이면 access-denied 화면 → 카드 8종 데이터 병렬 조회(`Promise.all`) → `IndexDashboard` 렌더. staleness 배지 판정도 여기서 수행. **갱신 지연 인시던트**(`resolveRefreshIncident`, §52)가 있으면 per-card 배지를 전부 억제하고 헤더 상태 표시로 통합(`incident` prop 전달) |
 | `login/page.tsx` | Google 로그인 버튼 (Server Action으로 `signIn("google")`). 세션 있으면 `/` redirect, 인라인 `GoogleIcon` SVG 로컬 정의 |
 | `indices/kospi` `kosdaq` `usdkrw/page.tsx` | 지표 상세 3종 — 전부 `ensureAllowedSession()` 후 `<IndexDetailScreen market=…>` 한 줄 위임(제목 `<h1>`도 §36에서 공용 컴포넌트에 들어가 3화면 동시 적용). usdkrw만 children으로 `<DollarIndexSection>`(달러 인덱스, §28) 추가. us10y·oil·gold·btc 개별 상세는 §31에서 제거(시장 카드 접힘 목록으로 대체) |
 | `indices/market/page.tsx` | 글로벌 지표 요약(§37에서 표시명 `시장`→`글로벌 지표` — 라우트·컴포넌트명·Redis 키는 `market` 유지). 금리·유가·금 미니 카드 3종 + 비트코인 커스텀 카드 — 원/달러는 §28에서 홈 카드로 분리, 수출입 카드는 §30에서 제거). `getMarketDetails` MGET 1회(5키). 카드마다 "일별 기록" `<details>` 접힘 목록(§31 — KIS 3종은 `IndexDailyList` 재사용, 비트코인은 원화 목록 인라인)·개별 상세 링크 없음. 비트코인 카드는 원화 대표값+달러 병기 |
@@ -143,9 +143,9 @@
 | `indices/getIndexDetail.ts` / `getOverseasDetail.ts` | 상세 리더 — `market:detail:{key}` 1건. **두 파일 내용이 사실상 동일** (§8) |
 | `indices/volatility.ts` | 변동성 기록 store+계산+카드 요약 (한 파일에 쓰기·읽기 혼재) |
 | `indices/dates.ts` | `getLast7BusinessDates` — **현재 미사용 (레거시)** (§9.2) |
-| `market/store.ts` | 공용 시세 Redis 스토어 — `market:detail:*`, `market:stock:*`, `market:stockInfo:*`(배당 회차 `rounds` 포함, §25), `market:lastRefreshAt`, `market:dailyFluctuation`, `market:weeklyFluctuation`, `market:stockMaster`, `market:investor:*`(§42), `market:fiRanking:*`(§50) (§5). `getStockInfoBlocksMap`(MGET 일괄, 없는 종목은 맵에서 제외) 제공 |
+| `market/store.ts` | 공용 시세 Redis 스토어 — `market:detail:*`, `market:stock:*`, `market:stockInfo:*`(배당 회차 `rounds` 포함, §25), `market:lastRefreshAt`(`LastRefreshRecord`: `at`=마지막 성공·`attemptedAt`=마지막 실행 시작(§52)·`trigger`·`ok`), `market:dailyFluctuation`, `market:weeklyFluctuation`, `market:stockMaster`, `market:investor:*`(§42), `market:fiRanking:*`(§50) (§5). `getStockInfoBlocksMap`(MGET 일괄, 없는 종목은 맵에서 제외) 제공 |
 | `stocks/search.ts` | `"use server"` — `searchStocks(query)` 종목명 검색 액션. `auth`+`isEmailAllowed` 가드 후 `market:stockMaster` 부분일치 필터, 접두 우선·가나다 정렬 상위 20. 등록 폼 전용, KIS 직접 호출 없음 |
-| `market/staleness.ts` | KST 시간창 가드(`isWithinKisCallWindow` 09:00~18:40) + **스케줄 인지형 배지 판정** `resolveStaleness` — 시세 잡 스케줄 상수(`SCHEDULE_MINUTES`: 09:00~15:30 10분 + 15:40 + 18:15)로 "이미 완료됐어야 할 최근 슬롯(`lastDueRefreshMs`, 유예 20분)"을 구해, fetchedAt이 그보다 오래됐을 때만 배지(정상 휴지 구간엔 안 뜸). 지연 경과로 warn/critical. `SCHEDULE_MINUTES`는 외부 QStash 등록과 동기화 필수 |
+| `market/staleness.ts` | KST 시간창 가드(`isWithinKisCallWindow` 09:00~18:40) + **스케줄 인지형 배지 판정** `resolveStaleness` — 시세 잡 스케줄 상수(`SCHEDULE_MINUTES`: 09:00~15:30 10분 + 15:40 + 18:15)로 "이미 완료됐어야 할 최근 슬롯(`lastDueRefreshMs`, 유예 20분)"을 구해, fetchedAt이 그보다 오래됐을 때만 배지(정상 휴지 구간엔 안 뜸). 지연 경과로 warn/critical. `SCHEDULE_MINUTES`는 외부 QStash 등록과 동기화 필수. **`resolveRefreshIncident`**(§52) — `market:lastRefreshAt` 레코드(`at`=마지막 성공, `attemptedAt`=마지막 실행 시작)로 홈 전반 갱신 지연 인시던트 판정: 예정 슬롯을 놓쳤고 `attemptedAt`도 그 이전이면 `stalled`(잡 미실행=QStash 미발화 추정), `attemptedAt`은 그 이후면 `failing`(실행됐으나 실패). `since`(멈춘 시각)·`missedSlots`(`countMissedSlots`)·`nextSlotMs`(`nextScheduledRefreshMs`) 동반 |
 | `holdings/store.ts` | 보유종목·포트폴리오 히스토리 store — 암호화, 레거시 평문/`avgPrice` 읽기 하위호환 |
 | `holdings/valuation.ts` | 포트폴리오 평가(스냅샷 MGET) — 시세 없는 종목 null 격리·합계 제외. 일일 등락률(`totalDailyChangeRate`)은 종목별 `changeRate`로 전일 평가액을 역산·가중(히스토리 불필요·항상 가용) |
 | `holdings/summary.ts` | 홈 보유종목 카드 요약 (실패 시 null) |
@@ -296,7 +296,9 @@ QStash 스케줄 4개 (평일 09:00~15:30 10분 간격 / 15:40 / 18:15 KST)
          → evaluatePriceAlerts(lib/alerts/evaluate.ts): 보유+관심종목 union
          대상 조건 3종 판정→신고가 갱신→음소거·쿨다운 체크→발송→쿨다운 SET
          (휴장일 skip, 실패해도 200)
-      9. 전부 성공 시 market:lastRefreshAt 기록
+      0. (시작 시) market:lastRefreshAt.attemptedAt 기록 — 성공·실패 무관하게
+         "잡이 실제로 돌았는지" 남김(§52 방법2, at·ok는 보존/false)
+      9. 전부 성공 시 market:lastRefreshAt 갱신(at=완료 시각·attemptedAt·ok=true)
   → 응답: report (데이터 갱신 실패 시 500 → QStash 재시도)
 ```
 

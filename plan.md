@@ -3041,6 +3041,27 @@ interface WatchItem {
 
 ---
 
+### Phase 52 — 갱신 지연 인시던트 판정 + 헤더 상태 표시 (방법1+2) (2026-07-23, 구현 완료)
+
+- **요청 근거**: 2026-07-23 15:00~16:06 KST QStash 스케줄링 공백으로 `refresh-market-data`의 15:10·15:20·15:30·15:40 회차가 발화조차 안 돼(전날들은 정상 — 스케줄·엔드포인트 문제 아님, 업스트림 일시 장애로 확정), 홈 카드가 일제히 stale → 느낌표 배지가 대부분 카드에 동시 표시된 사건. 자동 복구되는 지연이므로 **카드마다 배지를 흩뿌리지 말고, QStash 장애성 지연임을 사용자가 바로 인식하도록 헤더에 상태를 통합 표시**하자는 사용자 요청.
+- **조사·결정**:
+  - 홈 배지 8종(+핫종목 미리보기)은 **예외 없이 `refresh-market-data` 타임스탬프**(`market:lastRefreshAt`/`market:detail:*`/`market:dailyFluctuation`)에서 나옴 → 한 잡이 멈추면 전부 동시에 stale(=인시던트의 넓이 신호). 월간 `market:hotStocks`는 홈 배지 소스가 아님(의도적으로 오래된 데이터).
+  - stale의 원인(A: QStash 미발화 / B: 엔드포인트 실패 / C: 일부 데이터 실패)은 스냅샷만으로 구분 불가. **`lastRefreshAt`은 성공 시에만 기록**돼 A·B가 동일하게 보임 → feeds에 이미 있는 `attemptedAt` 패턴을 이식해 "잡이 돌긴 했는지"를 남겨 구분(방법2).
+  - 촉발체가 QStash면 장애 중 무의미하므로 **자동 재실행(워치독)은 이번 범위에서 제외** — 판정·표시(방법1+2)만.
+- **구현 (KIS 무관, 화면·판정 로직만)**:
+  - `lib/market/store.ts` — `LastRefreshRecord.attemptedAt?`(마지막 실행 시작, 선택 필드·구 스키마 폴백).
+  - `lib/jobs/refreshMarketData.ts` — 잡 **시작 시** `attemptedAt` 기록(성공한 `at` 보존·`ok:false`), 완료 성공 시 `at`·`attemptedAt`·`ok:true` 갱신. 미실행 시 레코드가 통째로 낡아 `stalled`로 판별됨.
+  - `lib/market/staleness.ts` — `resolveRefreshIncident`(예정 슬롯 누락 시 `stalled`/`failing`·`level`·`since`·`missedSlots`·`nextSlotMs`), `nextScheduledRefreshMs`(다음 예정 회차), `countMissedSlots`(연속 누락 수). 기존 `resolveStaleness`와 동일 임계(`lastDueRefreshMs`, 유예 20분) 재사용.
+  - `lib/format/datetime.ts` — `formatKstTime`(HH:MM).
+  - `app/page.tsx` — `resolveRefreshIncident(lastRefresh)` 계산 → 인시던트면 **per-card staleness 전부 null(배지 억제)** + `incident` prop 전달.
+  - `components/indices/IndexDashboard.tsx`(+CSS) — 헤더를 `titleBlock`(세로 컬럼)으로: **제목 오른쪽=상황 이름 칩**(`갱신 지연`/`갱신 실패`), **제목 밑=설명**(`{HH:MM}부터 실시간 갱신 지연 · 보통 수 분 내 자동 복구 · 다음 {HH:MM} 예정`). 톤은 muted(실패만 경고색). `role="status"`.
+  - `components/indices/HotStocksCard.tsx` — `suppressStale` prop(인시던트 시 자체 배지 억제).
+- **아키텍처 준수**: KIS 직접 호출 없음(화면은 Redis만 읽고 판정), 잡 6종·라우트 불변. 외부 API(QStash Events 등) 렌더 경로 호출 없음.
+- **동작 요약**: 정상·휴지 구간=표시 없음 · 예정 슬롯 누락 & 잡 미실행=`갱신 지연`(자동 복구 안내) · 실행됐으나 실패=`갱신 실패`(재시도 안내). 인시던트 중엔 카드 배지 억제.
+- **상태**: **구현 완료(2026-07-23)**. lint·tsc·build 통과.
+
+---
+
 ## 7. PR 분리 권장 (선택)
 
 | PR | Phase | 리뷰 포인트 |
