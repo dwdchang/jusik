@@ -21,6 +21,7 @@ import {
   setDividendRanking,
   setDividendRankingProgress,
   type DividendRankingEntry,
+  type DividendRoundRecord,
   type PayoutCycle,
   type StoredDividendRanking,
 } from "@/lib/dividends/ranking/store";
@@ -64,6 +65,18 @@ const SPLIT_CHECK_YIELD = 12;
 
 /** 폭배 판정 — 최근 1년 배당이 직전 정상연도 중앙값의 이 배수 이상이면 후보 (튜닝 대상) */
 const SURGE_RATIO = 3;
+
+/**
+ * 지난 배당 기록(종목명 클릭 시 펼침) 보존 창 — 지급 주기별 개월 수 (Phase 51).
+ * 연 72(6년)·반기 48(4년)·분기 24(2년)·월 12(1년)로 회차 수를 6~12로 균질화한다.
+ * 주기 판정 불가(null)는 연과 동일 취급(폴백). 잡이 이미 받는 10년치 중 이 창만 잘라 저장.
+ */
+const HISTORY_WINDOW_MONTHS: Record<Exclude<PayoutCycle, null>, number> = {
+  연: 72,
+  반기: 48,
+  분기: 24,
+  월: 12,
+};
 
 export interface RefreshDividendRankingReport {
   trigger: string;
@@ -126,6 +139,35 @@ function dayDiff(fromYmd: string, toYmd: string): number {
       Number(s.slice(6, 8))
     );
   return Math.round((ms(toYmd) - ms(fromYmd)) / 86_400_000);
+}
+
+/** "YYYY-MM-DD"에서 months개월 전 → "YYYYMMDD" (말일 오버플로우는 Date가 보정) */
+function ymdMonthsBefore(isoDate: string, months: number): string {
+  const base = new Date(
+    Date.UTC(
+      Number(isoDate.slice(0, 4)),
+      Number(isoDate.slice(5, 7)) - 1,
+      Number(isoDate.slice(8, 10))
+    )
+  );
+  base.setUTCMonth(base.getUTCMonth() - months);
+  const y = base.getUTCFullYear();
+  const m = String(base.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(base.getUTCDate()).padStart(2, "0");
+  return `${y}${m}${d}`;
+}
+
+/**
+ * 예탁원 날짜("YYYYMMDD" 또는 "YYYY/MM/DD", 미정이면 빈 문자열) → "YYYY-MM-DD".
+ * 구분자를 걷어낸 뒤 8자리 판정 — 같은 응답에서 record_date="20260331"·
+ * divi_pay_dt="2026/05/29"로 포맷이 섞여 오는 예탁원 특성 대응 (Phase 47 실측과 동일 규칙).
+ */
+function toIsoDate(raw: string | undefined): string | null {
+  const digits = (raw ?? "").replace(/\D/g, "");
+  if (digits.length !== 8) {
+    return null;
+  }
+  return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
 }
 
 /** 배열의 중앙값 (빈 배열은 0) */
@@ -250,6 +292,13 @@ function buildEntry(
   const paidYears = new Set<number>();
   const dpsByYear = new Map<number, number>();
   const recentCycleDates: string[] = [];
+  // 지난 배당 기록(Phase 51) — 확정 회차만 모아 뒤에서 주기별 창으로 잘라 붙인다
+  const confirmedRounds: {
+    ymd: string;
+    perShare: number;
+    payDate: string | null;
+    kind: string | null;
+  }[] = [];
   let annualDividendPerShare = 0;
   let roundsPerYear = 0;
   let dividendFaceValue = 0;
@@ -267,6 +316,13 @@ function buildEntry(
     const year = Number(recordDate.slice(0, 4));
     paidYears.add(year);
     dpsByYear.set(year, (dpsByYear.get(year) ?? 0) + amount);
+
+    confirmedRounds.push({
+      ymd: recordDate,
+      perShare: amount,
+      payDate: toIsoDate(row.divi_pay_dt),
+      kind: row.divi_kind?.trim() || null,
+    });
 
     if (recordDate > twoYearsAgo && recordDate <= today) {
       recentCycleDates.push(recordDate);
@@ -297,6 +353,22 @@ function buildEntry(
     earliestQueryYear
   );
 
+  // 지난 배당 기록 — 지급 주기별 보존 창으로 잘라 최신순 (Phase 51)
+  const payoutCycle = derivePayoutCycle(recentCycleDates, true);
+  const historyCutoff = ymdMonthsBefore(
+    computedFor,
+    HISTORY_WINDOW_MONTHS[payoutCycle ?? "연"]
+  );
+  const history: DividendRoundRecord[] = confirmedRounds
+    .filter((round) => round.ymd >= historyCutoff)
+    .sort((a, b) => (a.ymd < b.ymd ? 1 : a.ymd > b.ymd ? -1 : 0))
+    .map((round) => ({
+      recordDate: toIsoDate(round.ymd) ?? round.ymd,
+      perShare: round.perShare,
+      payDate: round.payDate,
+      kind: round.kind,
+    }));
+
   // 폭배 판정 — 최근 1년 대 직전 완결 연도들
   const priorYearDps: number[] = [];
   for (const [year, dps] of dpsByYear) {
@@ -315,7 +387,7 @@ function buildEntry(
     dividendYield: Math.round((annualDividendPerShare / price) * 10000) / 100,
     annualDividendPerShare,
     roundsPerYear,
-    payoutCycle: derivePayoutCycle(recentCycleDates, true),
+    payoutCycle,
     consecutiveYears,
     yearsCapped,
     // 배당상품은 우선주·주식배당·폭배(DART 배당결정) 개념이 없어 판정을 건너뛴다
@@ -325,6 +397,7 @@ function buildEntry(
     surgeCandidate: fund ? false : isSurge(annualDividendPerShare, priorYearDps),
     surge: null,
     dividendFaceValue,
+    history,
   };
 }
 

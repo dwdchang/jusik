@@ -25,6 +25,18 @@ export interface DividendSurgeDart {
 /** 종목 유형 — 일반종목(주권) / 배당상품(ETF·리츠·인프라펀드) (Phase 46) */
 export type DividendInstrumentType = "stock" | "fund";
 
+/** 지난 배당 회차 1건 — 순위 종목명 클릭 시 펼침용 (Phase 51) */
+export interface DividendRoundRecord {
+  /** 배당 기준일 "YYYY-MM-DD" */
+  recordDate: string;
+  /** 주당배당금(원) — 확정 회차만 담으므로 항상 >0 */
+  perShare: number;
+  /** 현금 지급일 "YYYY-MM-DD" — 미정이면 null */
+  payDate: string | null;
+  /** 배당종류 — "분기"/"결산"/"중간" 등, 없으면 null */
+  kind: string | null;
+}
+
 export interface DividendRankingEntry {
   rank: number;
   code: string;
@@ -64,6 +76,12 @@ export interface DividendRankingEntry {
   surge: DividendSurgeDart | null;
   /** [스캔 전용] 최근 1년 배당 회차의 액면가(원) — 분할 보정 대조용(화면 미사용) */
   dividendFaceValue: number;
+  /**
+   * 지난 배당 기록 — 종목명 클릭 시 펼침용, 최신순 (Phase 51). 지급 주기별 보존
+   * 창(연 6년·반기 4년·분기 2년·월 12개월, 판정불가는 연과 동일)으로 잘라 담는다.
+   * 구 스키마 엔트리에는 없어 화면에서 `?? []`로 폴백한다.
+   */
+  history?: DividendRoundRecord[];
 }
 
 /** market:dividendRanking — 화면이 그대로 읽는 시가배당률 TOP N */
