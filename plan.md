@@ -3256,6 +3256,35 @@ interface WatchItem {
 
 ---
 
+### Phase 63 — 종목 등록 시 종목명·기준가 즉시 채우기 (비갱신 시간대 개선) (2026-07-24, 구현 완료)
+
+- **요청 근거**: 사용자 — 장 시간(비갱신 시간대) 밖에 보유·관심종목을 추가하면 종목명이 안 잡혀 **종목코드로 표기**되는 현상. 잡 백필 전제라 의도이긴 하나, 등록 즉시 이름이 뜨게 개선하고 싶다.
+- **핵심 발견**: 종목명은 **이미 `market:stockMaster`(잡이 하루 1회 저장하는 코드↔종목명 전체 스냅샷, Redis)에 전 종목이 있고**, 등록 폼 검색(`searchStocks`)이 바로 그걸 읽는다. 즉 등록 시점에 이름을 손에 쥐고 있는데 저장 때 `name:""`로 버려 왔다 → **외부 호출 0으로 즉시 채울 수 있다**(DART·KIS 불필요).
+- **종가(기준가)**: stockMaster엔 가격이 없고 DART는 시세를 안 준다. KIS는 시간창 밖 호출 불가. 대신 **금융위원회_주식시세정보 API**(data.go.kr 15094808, KRX EOD, **시간창 없음**·영업일+1 확정)로 조회 가능 — 인증키 `DATA_GO_KR_SERVICE_KEY`(관세청과 공유) 재사용.
+  - **관심종목만** 채운다 — 레코드에 `priceAtRegistration`/`priceBasisDate` 슬롯이 있어 정합적. **보유종목은 가격 슬롯이 없고**(평가는 `market:stock` 스냅샷=잡 소유 키 경유) 금융위 값만으로 스냅샷을 합성하면 52주·PER가 비므로 **종가는 기존대로 잡 백필**(이름만 채움).
+  - 등록 기준일 이하 가장 최근 확정 종가를 쓴다(영업일+1이라 직전 거래일일 수 있음 — 잠정, 다음 갱신 회차에 잡이 승격 재확인).
+- **구현**:
+  - `lib/api/fsc/stockPrice.ts`(신규) — `fetchStockCloseAsOf(code, "YYYYMMDD")`→`{close, basisDate}|null`. `likeSrtnCd`+`beginBasDt~endBasDt`(12일 창) 조회, 정확 일치 종목의 최신 기준일 종가. 실패·타임아웃·미상장은 null 격리.
+  - `app/stocks/actions.ts` — `resolveStockName(code)`(stockMaster 리더, 실패 시 "") 추가. `addHoldingAction`=이름만 채움. `addWatchItemAction`=이름 + `fetchStockCloseAsOf(code, registeredAt)`로 기준가·기준일 채움.
+- **아키텍처 예외(문서화)**: Server Action이 외부 API(금융위)를 직접 호출한다(§3 잡 경유 원칙 예외 — 이 API는 시간창이 없고 등록 시점 기준가 확정용, 실패는 잡 폴백). 종목명 채우기는 Redis 읽기라 예외 아님.
+- **상태**: **구현 완료(2026-07-24)**. tsc·eslint·build 통과.
+
+### Phase 64 — 종목분석 카드 + 상세화면(DART 재무제표·재무지표 온디맨드) (2026-07-24, 구현 완료)
+
+- **요청 근거**: 사용자 — 홈에 「종목분석」카드 신설, 상세화면에서 종목의 재무제표·실적 등 상세정보를 보고 싶다. **재무 항목 전체·최근 5개년**.
+- **원천 결정(사용자 확정)**: KIS는 손익 3줄뿐이라 부족. **DART**가 전체 재무제표(재무상태표·손익·현금흐름 등)+재무지표를 주고 이미 연동돼 있음(corpCode 매핑·클라이언트). **DART 온디맨드**(상세화면 진입·종목 열람 시에만 호출) + **Redis 고정 TTL 30일 캐시**(평소 호출·갱신 잡 0). 재무는 (연도·보고서) 확정 후 불변이라 만료돼도 재조회로 충분.
+- **구현**:
+  - `lib/api/dart/finance.ts`(신규) — `fetchDartFinancialStatements(corp, year, "CFS"|"OFS")`(fnlttSinglAcntAll, 전 계정 당기금액)·`fetchDartFinancialIndices(corp, year, idxClCode)`(fnlttSinglIndx, 수익성·안정성·성장성·활동성). status 013=빈 배열, 인증키 공시 클라이언트와 공유.
+  - `lib/analysis/financials.ts`(신규) — read-through 리더 `getFinancialAnalysis(code)`: corpCode 매핑(`getCorpCodeMap`) → Redis `analysis:financials:{corpCode}` 히트 시 반환 → 미스 시 최근 5개년(직전연도부터) DART 조회(연결 우선, 비면 별도)·`fnlttSinglAcntAll` 연도별 당기금액을 계정×연도 행렬로 병합·재무지표 (연도×4분류) 병합(동시성 5) → TTL 30일 저장. 상태 4종(`ok/not_listed/no_data/error`). **아키텍처 예외 2건**: 화면이 DART 직접 호출 + Redis 쓰기(단 `analysis:*` 별도 네임스페이스라 `market:*` 시세 키와 무충돌).
+  - `components/analysis/FinancialSection.tsx`(신규) — 계정명 sticky + 연도 열 가로 스크롤 표(재무제표·재무지표 공용, `format` 주입). 금액=조/억/원 축약, 지표=소수 2자리.
+  - `app/analysis/page.tsx`(랜딩, 검색)·`AnalysisSearch.tsx`(클라이언트, `StockSearchInput` 재사용→`/analysis/{code}` 이동)·`app/analysis/[symbolCode]/page.tsx`(상세, 재무제표+재무지표 표)·각 `page.module.css`·`loading.tsx`.
+  - `components/indices/IndexDashboard.tsx` — 홈에 「종목분석」`SummaryCard`(진입 버튼형, `/analysis` 링크) 추가.
+- **KIS 한계 인지**: DART는 시세(현재가·시총·PER)를 안 줌 — 종목분석은 재무 전용, 시세성 지표는 기존 종목 상세(`/stocks/[code]`) 담당. "재무제표"는 DART 특성상 손익·재무상태·현금흐름 중심(대차대조표·손익·현금흐름표 제공).
+- **아키텍처 준수**: 잡 6종·KIS 경로 불변. `/analysis`는 일반 페이지(proxy 세션 검사+`ensureAllowedSession`), 잡 라우트 아니라 matcher 변경 불필요.
+- **상태**: **구현 완료(2026-07-24)**. tsc·eslint·build 통과. **실 DART 응답 필드(sj_div·account_nm·idx_val 등) 실측 검증은 배포 후 실종목 열람으로 확인 필요**(파싱은 표준 필드명 기준 작성).
+
+---
+
 ## 7. PR 분리 권장 (선택)
 
 | PR | Phase | 리뷰 포인트 |
