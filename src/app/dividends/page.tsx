@@ -236,8 +236,12 @@ export default async function DividendsPage({
                 지급일)이 펼쳐집니다.
               </p>
               <p className={styles.notice}>
-                배당률은 <strong>시가배당률</strong>(최근 1년 확정 주당배당금 합
-                ÷ 산출 시점 현재가)이며, 액면가배당률이 아닙니다.
+                배당률은 <strong>시가배당률</strong>(<strong>직전 사업연도</strong>{" "}
+                확정 배당금 합 ÷ 산출 시점 현재가)이며, 액면가배당률이 아닙니다.
+                사업연도는 <strong>결산배당 기준일</strong>로 구분하며 그 사이의
+                중간·분기 배당을 함께 합산합니다(결산배당이 없거나 오래된
+                종목·배당상품만 최근 1년 합산). 종목명을 눌러 펼치면{" "}
+                <strong>강조된 행</strong>이 해당 사업연도의 산입 회차입니다.
                 현재가·배당률·순위는 산출 시점 기준으로 함께 고정되므로 장중
                 시세와는 차이가 있습니다. 연속 배당 연수의 <strong>+</strong>{" "}
                 표기는 조회 범위(최근 {DIVIDEND_RANKING_LOOKBACK_YEARS}년) 끝까지

@@ -35,6 +35,11 @@ export interface DividendRoundRecord {
   payDate: string | null;
   /** 배당종류 — "분기"/"결산"/"중간" 등, 없으면 null */
   kind: string | null;
+  /**
+   * 헤더 시가배당률에 산입된 회차인지 — 사업연도 귀속 basis 창에 든 회차만 true (Phase 59).
+   * 펼침 표에서 이 회차들을 강조해 "헤더 배당률 = 강조 행 합"임을 드러낸다. 구 스키마엔 없음.
+   */
+  inBasis?: boolean;
 }
 
 export interface DividendRankingEntry {
@@ -49,11 +54,14 @@ export interface DividendRankingEntry {
   instrumentType: DividendInstrumentType;
   /** 산출 시점 현재가(원) — 배당률의 분모, 순위와 한 세트로 고정 */
   price: number;
-  /** 시가배당률(%) = 최근 1년 주당배당금 합 ÷ 현재가 × 100, 소수 둘째 자리 */
+  /**
+   * 시가배당률(%) = 배당 basis 주당배당금 합 ÷ 현재가 × 100, 소수 둘째 자리 (Phase 59).
+   * basis = 직전 사업연도 확정 배당 합(결산 회차 없거나 오래되면·배당상품이면 최근 1년 롤링).
+   */
   dividendYield: number;
-  /** 최근 1년 주당배당금 합계(원) — 분할 보정 시 신주 기준으로 조정됨 */
+  /** 배당 basis 주당배당금 합계(원) — 직전 사업연도 합(폴백 시 최근 1년), 분할 보정 시 신주 기준 */
   annualDividendPerShare: number;
-  /** 최근 1년 배당 회차 수 */
+  /** 배당 basis 회차 수 (직전 사업연도, 폴백 시 최근 1년) */
   roundsPerYear: number;
   /** 지급 주기 — 배당 기준일 평균 간격 기반 (월/분기/반기/연) */
   payoutCycle: PayoutCycle;
@@ -82,6 +90,12 @@ export interface DividendRankingEntry {
    * 구 스키마 엔트리에는 없어 화면에서 `?? []`로 폴백한다.
    */
   history?: DividendRoundRecord[];
+  /**
+   * 배당률 basis가 귀속된 사업연도 "YYYY" — 결산 회차로 사업연도를 구분한 경우만 (Phase 59).
+   * null(또는 필드 없음)이면 폴백(최근 1년 롤링): 결산 회차가 없거나 최신 결산이 오래됐거나
+   * 배당상품인 경우. 펼침 캡션·헤더 툴팁에서 "N 사업연도 기준" 표기에 쓴다.
+   */
+  dividendBasisYear?: string | null;
 }
 
 /** market:dividendRanking — 화면이 그대로 읽는 시가배당률 TOP N */

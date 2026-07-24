@@ -91,6 +91,17 @@ export function DividendRankRow({ entry }: { entry: DividendRankingEntry }) {
   const roundLabels = roundYearOrdinals(history, entry.payoutCycle);
   const detailId = `dividend-history-${entry.code}`;
   const market = MARKET_SUP[entry.market];
+  // 배당률 basis 근거 — 사업연도 귀속이면 "N 사업연도", 폴백이면 "최근 1년" (Phase 59)
+  const basisYear = entry.dividendBasisYear ?? null;
+  const basisLabel = basisYear !== null ? `${basisYear} 사업연도` : "최근 1년";
+  const yieldTitle = [
+    `배당률 = ${basisLabel} 확정 배당금 합 ÷ 현재가`,
+    entry.splitAdjusted
+      ? "액면분할 보정됨 — 배당 당시 액면가와 현재 액면가가 달라 주당배당금을 신주 기준으로 환산"
+      : null,
+  ]
+    .filter((line): line is string => line !== null)
+    .join("\n");
 
   return (
     <>
@@ -127,11 +138,7 @@ export function DividendRankRow({ entry }: { entry: DividendRankingEntry }) {
         <td className={`${styles.numCell} numeric`}>{formatKrw(entry.price)}</td>
         <td
           className={`${styles.rankYield} ${styles.numCell} numeric`}
-          title={
-            entry.splitAdjusted
-              ? "액면분할 보정됨 — 배당 당시 액면가와 현재 액면가가 달라 주당배당금을 신주 기준으로 환산"
-              : undefined
-          }
+          title={yieldTitle}
         >
           {entry.dividendYield.toFixed(2)}%
           {entry.splitAdjusted ? <span className={styles.adjMark}>*</span> : null}
@@ -164,6 +171,19 @@ export function DividendRankRow({ entry }: { entry: DividendRankingEntry }) {
               <table className={styles.historyTable}>
                 <caption className={styles.historyCaption}>
                   {entry.name} 지난 배당 기록 ({history.length}회)
+                  {basisYear !== null ? (
+                    <span className={styles.basisNote}>
+                      {" "}
+                      — 배당률은 <strong>{basisYear} 사업연도</strong>(강조 행)
+                      확정 배당 합 기준
+                    </span>
+                  ) : (
+                    <span className={styles.basisNote}>
+                      {" "}
+                      — 배당률은 <strong>최근 1년</strong>(강조 행) 확정 배당 합
+                      기준
+                    </span>
+                  )}
                 </caption>
                 <thead>
                   <tr>
@@ -180,7 +200,10 @@ export function DividendRankRow({ entry }: { entry: DividendRankingEntry }) {
                     const ordinalLabel =
                       roundLabels.get(round.recordDate) ?? null;
                     return (
-                      <tr key={round.recordDate}>
+                      <tr
+                        key={round.recordDate}
+                        className={round.inBasis ? styles.basisRow : undefined}
+                      >
                         <td className="numeric">
                           {displayDate(round.recordDate)}
                         </td>

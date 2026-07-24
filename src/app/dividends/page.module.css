@@ -393,3 +393,18 @@
   margin-left: 2px;
   color: var(--color-text-tertiary);
 }
+
+/* 배당률 basis(직전 사업연도) 산입 회차 강조 — 헤더 배당률이 이 행들의 합임을 드러낸다 (Phase 59) */
+.detailCell .historyTable tbody tr.basisRow {
+  background-color: var(--color-surface);
+}
+
+.detailCell .historyTable tbody tr.basisRow td:first-child {
+  box-shadow: inset 2px 0 0 var(--color-primary);
+}
+
+/* 펼침 캡션의 basis 안내 문구 — 사업연도/최근 1년 기준 표기 (Phase 59) */
+.basisNote {
+  font-weight: var(--weight-regular);
+  color: var(--color-text-tertiary);
+}

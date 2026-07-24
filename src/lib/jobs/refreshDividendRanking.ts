@@ -67,6 +67,18 @@ const SPLIT_CHECK_YIELD = 12;
 const SURGE_RATIO = 3;
 
 /**
+ * 사업연도 귀속(Phase 59) — 최신 결산 기준일이 오늘로부터 이 일수 이내여야 사업연도
+ * 기준을 쓴다. 넘으면 최근 배당이 끊긴 것으로 보고 12개월 롤링(폴백)으로 넘긴다.
+ */
+const FISCAL_YEAR_RECENCY_DAYS = 400;
+
+/**
+ * 결산 회차가 하나뿐일 때 그 결산 이전 중간·분기 배당을 담을 창 폭(직전 결산 대용).
+ * 12개월보다 넉넉히 잡아 기준일이 며칠 움직여도 같은 사업연도 회차를 놓치지 않는다.
+ */
+const FISCAL_YEAR_WINDOW_DAYS = 400;
+
+/**
  * 지난 배당 기록(종목명 클릭 시 펼침) 보존 창 — 지급 주기별 개월 수 (Phase 51).
  * 연 72(6년)·반기 48(4년)·분기 24(2년)·월 12(1년)로 회차 수를 6~12로 균질화한다.
  * 주기 판정 불가(null)는 연과 동일 취급(폴백). 잡이 이미 받는 10년치 중 이 창만 잘라 저장.
@@ -170,6 +182,33 @@ function toIsoDate(raw: string | undefined): string | null {
   return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`;
 }
 
+/** "YYYYMMDD"에서 days일 전 → "YYYYMMDD" (Phase 59) */
+function ymdDaysBefore(ymd: string, days: number): string {
+  const base = Date.UTC(
+    Number(ymd.slice(0, 4)),
+    Number(ymd.slice(4, 6)) - 1,
+    Number(ymd.slice(6, 8))
+  );
+  const d = new Date(base - days * 86_400_000);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}${m}${day}`;
+}
+
+/**
+ * 결산(연배당) 기준일 → 귀속 사업연도 라벨 "YYYY" (Phase 59).
+ * 선배당후기준일로 결산 기준일이 이듬해 1~6월로 옮겨간 12월 결산 법인이 다수라,
+ * 상반기(1~6월) 기준일은 전년도로 귀속한다. 3·6월 결산 등 비12월 법인은 소수라
+ * 오귀속 가능성을 감수한다(Phase 59 조사: 결산 기준일 월 분포에서 상반기는 대부분
+ * 12월 결산의 이동분으로 확인).
+ */
+function fiscalYearLabel(settlementYmd: string): string {
+  const year = Number(settlementYmd.slice(0, 4));
+  const month = Number(settlementYmd.slice(4, 6));
+  return String(month <= 6 ? year - 1 : year);
+}
+
 /** 배열의 중앙값 (빈 배열은 0) */
 function median(values: number[]): number {
   if (values.length === 0) {
@@ -264,15 +303,93 @@ function countConsecutiveYears(
   return { consecutiveYears: count, yearsCapped: year < earliestQueryYear };
 }
 
-/**
- * 종목 1건 처리 — 배당 1콜로 시가배당률·지급 주기·연속 배당 연수를 함께 만든다.
- * 최근 1년 확정 주당배당금이 0이면 순위 대상이 아니다(무배당·미확정만 있는 종목).
- */
 /** 배당상품(ETF·리츠·인프라펀드) 여부 — 우선주·폭배·액면분할 판정을 건너뛴다 (Phase 46) */
 function isFundStock(stock: UniverseStock): boolean {
   return DIVIDEND_PRODUCT_GROUPS.has(stock.group);
 }
 
+/** buildEntry 내부에서 다루는 확정 배당 회차(액면가·주식배당률 포함) */
+interface ConfirmedRound {
+  ymd: string;
+  perShare: number;
+  payDate: string | null;
+  kind: string | null;
+  /** 배당락 시점 액면가(원) — 분할 보정 대조용 */
+  face: number;
+  /** 주식배당률(%) — >0이면 현금+주식 병행 */
+  stkRate: number;
+}
+
+/**
+ * 배당 basis(배당률 분자) 산출 — 사업연도 귀속 (Phase 59).
+ * 결산(`divi_kind==="결산"`, 연배당) 회차를 각 사업연도의 종점으로 보고,
+ * **(직전 결산, 이 결산] 창**의 회차(중간·분기 포함)를 그 사업연도 배당으로 묶는다.
+ * basis = 가장 최근 완결 사업연도 합. 12개월 롤링(TTM)이 중간배당 기준일의 미세
+ * 이동으로 같은 성격의 배당을 두 번 계상하거나(조선내화·CR홀딩스 실측) 서로 다른
+ * 사업연도를 섞던 문제를 없앤다.
+ *
+ * 폴백(TTM, `basisYear=null`): ⓐ 결산 회차가 없는 종목(중간·분기 배당만)
+ * ⓑ 최신 결산이 오늘로부터 400일 초과(최근 배당 끊김) ⓒ 배당상품(월·분기 분배금이라
+ * 사업연도 개념이 약함). 폴백 창은 최근 12개월.
+ */
+function computeDividendBasis(
+  rounds: ConfirmedRound[],
+  fund: boolean,
+  oneYearAgo: string,
+  today: string
+): { basisRounds: ConfirmedRound[]; basisYear: string | null; priorFyTotals: number[] } {
+  const settlementYmds = rounds
+    .filter((r) => r.kind === "결산")
+    .map((r) => r.ymd)
+    .sort();
+  const latestSettlement = settlementYmds[settlementYmds.length - 1];
+  const useFiscal =
+    !fund &&
+    latestSettlement !== undefined &&
+    dayDiff(latestSettlement, today) <= FISCAL_YEAR_RECENCY_DAYS;
+
+  if (!useFiscal) {
+    return {
+      basisRounds: rounds.filter((r) => r.ymd > oneYearAgo && r.ymd <= today),
+      basisYear: null,
+      priorFyTotals: [],
+    };
+  }
+
+  // 결산 i를 종점으로 하는 사업연도 창 (직전 결산, 이 결산]. 첫 결산은 직전이 없어
+  // FISCAL_YEAR_WINDOW_DAYS 전을 대용으로 쓴다.
+  const fyWindow = (endIdx: number): { start: string; end: string } => {
+    const end = settlementYmds[endIdx];
+    const start =
+      endIdx > 0
+        ? settlementYmds[endIdx - 1]
+        : ymdDaysBefore(end, FISCAL_YEAR_WINDOW_DAYS);
+    return { start, end };
+  };
+  const sumWindow = (start: string, end: string): number =>
+    rounds
+      .filter((r) => r.ymd > start && r.ymd <= end)
+      .reduce((sum, r) => sum + r.perShare, 0);
+
+  const priorFyTotals: number[] = [];
+  for (let i = 0; i < settlementYmds.length - 1; i++) {
+    const { start, end } = fyWindow(i);
+    priorFyTotals.push(sumWindow(start, end));
+  }
+
+  const { start, end } = fyWindow(settlementYmds.length - 1);
+  return {
+    basisRounds: rounds.filter((r) => r.ymd > start && r.ymd <= end),
+    basisYear: fiscalYearLabel(end),
+    priorFyTotals,
+  };
+}
+
+/**
+ * 종목 1건 처리 — 배당 1콜로 시가배당률·지급 주기·연속 배당 연수를 함께 만든다.
+ * 배당률 분자는 직전 사업연도 확정 배당 합(폴백 시 최근 1년) — computeDividendBasis 참고.
+ * 그 합이 0이면 순위 대상이 아니다(무배당·미확정만 있는 종목).
+ */
 function buildEntry(
   stock: UniverseStock,
   rows: KisDividendRow[],
@@ -282,7 +399,7 @@ function buildEntry(
   const fund = isFundStock(stock);
   const baseYear = Number(computedFor.slice(0, 4));
   const earliestQueryYear = baseYear - DIVIDEND_RANKING_LOOKBACK_YEARS + 1;
-  // 같은 월·일의 1년 전 — 기존 stockInfo의 최근 1년 집계와 같은 기준
+  // 같은 월·일의 1년 전 — basis 폴백(TTM) 창의 시작
   const oneYearAgo = toKisDate(`${baseYear - 1}${computedFor.slice(4)}`);
   const today = toKisDate(computedFor);
 
@@ -290,19 +407,9 @@ function buildEntry(
   const twoYearsAgo = toKisDate(`${baseYear - 2}${computedFor.slice(4)}`);
 
   const paidYears = new Set<number>();
-  const dpsByYear = new Map<number, number>();
   const recentCycleDates: string[] = [];
   // 지난 배당 기록(Phase 51) — 확정 회차만 모아 뒤에서 주기별 창으로 잘라 붙인다
-  const confirmedRounds: {
-    ymd: string;
-    perShare: number;
-    payDate: string | null;
-    kind: string | null;
-  }[] = [];
-  let annualDividendPerShare = 0;
-  let roundsPerYear = 0;
-  let dividendFaceValue = 0;
-  let stockDividendRate: number | null = null;
+  const confirmedRounds: ConfirmedRound[] = [];
 
   for (const row of rows) {
     const recordDate = row.record_date?.trim();
@@ -313,38 +420,49 @@ function buildEntry(
       continue;
     }
 
-    const year = Number(recordDate.slice(0, 4));
-    paidYears.add(year);
-    dpsByYear.set(year, (dpsByYear.get(year) ?? 0) + amount);
+    paidYears.add(Number(recordDate.slice(0, 4)));
 
     confirmedRounds.push({
       ymd: recordDate,
       perShare: amount,
       payDate: toIsoDate(row.divi_pay_dt),
       kind: row.divi_kind?.trim() || null,
+      face: parseNum(row.face_val),
+      stkRate: parseNum(row.stk_divi_rate),
     });
 
     if (recordDate > twoYearsAgo && recordDate <= today) {
       recentCycleDates.push(recordDate);
     }
-
-    if (recordDate > oneYearAgo && recordDate <= today) {
-      annualDividendPerShare += amount;
-      roundsPerYear += 1;
-
-      const face = parseNum(row.face_val);
-      if (face > 0) {
-        dividendFaceValue = face;
-      }
-      const stkRate = parseNum(row.stk_divi_rate);
-      if (stkRate > 0) {
-        stockDividendRate = Math.max(stockDividendRate ?? 0, stkRate);
-      }
-    }
   }
 
+  // 배당 basis — 사업연도 귀속(폴백 시 최근 1년 롤링) (Phase 59)
+  const { basisRounds, basisYear, priorFyTotals } = computeDividendBasis(
+    confirmedRounds,
+    fund,
+    oneYearAgo,
+    today
+  );
+
+  const annualDividendPerShare = basisRounds.reduce(
+    (sum, r) => sum + r.perShare,
+    0
+  );
   if (annualDividendPerShare <= 0) {
     return null;
+  }
+
+  const roundsPerYear = basisRounds.length;
+  // 액면가·주식배당률은 basis 회차 기준 — 분할 보정·"현+주N%" 표기가 basis와 일치
+  let dividendFaceValue = 0;
+  let stockDividendRate: number | null = null;
+  for (const r of basisRounds) {
+    if (r.face > 0) {
+      dividendFaceValue = r.face;
+    }
+    if (r.stkRate > 0) {
+      stockDividendRate = Math.max(stockDividendRate ?? 0, r.stkRate);
+    }
   }
 
   const { consecutiveYears, yearsCapped } = countConsecutiveYears(
@@ -353,12 +471,14 @@ function buildEntry(
     earliestQueryYear
   );
 
-  // 지난 배당 기록 — 지급 주기별 보존 창으로 잘라 최신순 (Phase 51)
+  // 지난 배당 기록 — 지급 주기별 보존 창으로 잘라 최신순 (Phase 51).
+  // basis 산입 회차는 inBasis로 표식해 펼침 표에서 강조한다 (Phase 59).
   const payoutCycle = derivePayoutCycle(recentCycleDates, true);
   const historyCutoff = ymdMonthsBefore(
     computedFor,
     HISTORY_WINDOW_MONTHS[payoutCycle ?? "연"]
   );
+  const basisYmds = new Set(basisRounds.map((r) => r.ymd));
   const history: DividendRoundRecord[] = confirmedRounds
     .filter((round) => round.ymd >= historyCutoff)
     .sort((a, b) => (a.ymd < b.ymd ? 1 : a.ymd > b.ymd ? -1 : 0))
@@ -367,15 +487,8 @@ function buildEntry(
       perShare: round.perShare,
       payDate: round.payDate,
       kind: round.kind,
+      inBasis: basisYmds.has(round.ymd),
     }));
-
-  // 폭배 판정 — 최근 1년 대 직전 완결 연도들
-  const priorYearDps: number[] = [];
-  for (const [year, dps] of dpsByYear) {
-    if (year < baseYear && year >= earliestQueryYear) {
-      priorYearDps.push(dps);
-    }
-  }
 
   return {
     rank: 0, // finalize에서 부여
@@ -394,9 +507,11 @@ function buildEntry(
     preferred: fund ? false : detectPreferred(rows),
     stockDividendRate: fund ? null : stockDividendRate,
     splitAdjusted: false,
-    surgeCandidate: fund ? false : isSurge(annualDividendPerShare, priorYearDps),
+    // 폭배 — basis(직전 사업연도) 대 그 이전 사업연도 총액들 (Phase 59)
+    surgeCandidate: fund ? false : isSurge(annualDividendPerShare, priorFyTotals),
     surge: null,
     dividendFaceValue,
+    dividendBasisYear: basisYear,
     history,
   };
 }
