@@ -3176,6 +3176,29 @@ interface WatchItem {
 
 ---
 
+### Phase 59 — 배당률 순위 「사업연도 귀속」 계산 전환 (12개월 롤링 이중계상 수정) (2026-07-24, 구현 완료)
+
+- **요청 근거**: 사용자 확인 — 배당률 순위 목록의 배당률이 "작년 말 배당률과 올해 초 배당률의 합산"으로 보이며, 배당률은 당해(사업연도)만 합산해야 하는 것 아니냐는 지적. Redis 저장 스냅샷(`market:dividendRanking`, 2026-07-23)을 직접 대조해 확인.
+- **원인**: `buildEntry`가 배당률 분자를 **오늘 기준 최근 365일 롤링(TTM)** 으로 합산(`recordDate > oneYearAgo && recordDate <= today`). 사업연도 귀속을 무시하므로,
+  - **① 같은 성격 중간배당 이중계상** — 중간배당 기준일이 해마다 며칠씩 당겨지면(예 8/1→7/15) 12개월 창에 중간배당이 **2번** 들어감. 폭배(`SURGE_RATIO=3`)에도 안 걸려 상위 노출. 실측: 조선내화(8위) 1,000원→1,800원으로 **13.08%**(실제 7.27%), CR홀딩스(7위) 410원→610원 **13.15%**(실제 8.84%).
+  - **② 서로 다른 사업연도 혼합** — 배당절차 개선(선배당후기준일)으로 결산배당 기준일이 이듬해 2~4월로 이동한 종목이 많아 "기준일 연도≠귀속 사업연도". 실측: 유아이엘(12위) FY2025 결산 + FY2026 분기가 섞여 **12.26%**(FY2025 기준 10.9%), 현대엘리베이터(4위) FY2025 3회+FY2026 1회 21.32%.
+  - 반면 1위 이지홀딩스(30.79%)·2위 노바텍(25.75%)은 결산 1회만 계상된 진짜 증배로 `폭배` 표기가 정상 — 계산 자체는 옳음.
+- **정책(사용자 확정)**:
+  - **사업연도 귀속 기준** — 결산(`divi_kind==="결산"`) 회차를 각 사업연도의 종점으로 보고, **(직전 결산, 이 결산] 창**의 회차(중간·분기 포함)를 합산해 그 사업연도 배당으로 삼는다. 배당률 분자 = **가장 최근 완결 사업연도** 합.
+  - **결산 기준일 → 귀속 사업연도**: 기준일 월이 1~6월이면 `연도-1`(선배당후기준일로 이듬해 상반기로 옮겨간 12월 결산 법인 다수), 7~12월이면 `연도`. 3·6월 결산 등 **비12월 법인은 소수**라 오귀속 가능성을 감수(조사에서 결산 기준일 월 분포 12월 370·03월 54·02월 12·04월 7·07월 3 확인 — 상반기는 대부분 12월 결산의 이동분).
+  - **폴백(TTM 유지)**: ⓐ 결산 회차가 없는 종목(중간·분기 배당만 — 예 예림당) ⓑ 최신 결산이 오늘로부터 400일 초과(최근 배당 끊김) ⓒ **배당상품(ETF·리츠·인프라펀드)** — 월·분기 분배금이라 사업연도 개념이 약해 12개월 롤링이 맞다. 폴백은 사업연도 라벨 없이 "최근 1년"으로 표기.
+- **구현**:
+  - `lib/jobs/refreshDividendRanking.ts` `buildEntry` 재구성 — 루프는 확정 회차(`confirmedRounds`, `face`·`stkRate` 추가)·`paidYears`·`recentCycleDates`만 모으고, TTM 누산(annual/roundsPerYear/face/stkRate) 제거. 이후 결산 기준일 목록(`settlementYmds`)으로 사업연도 창을 계산해 `basisRounds`·`priorFyTotals`를 산출. `annualDividendPerShare`·`roundsPerYear`·`dividendFaceValue`·`stockDividendRate`는 모두 `basisRounds` 기준. `surgeCandidate`는 TTM 대 직전 연도가 아니라 **basis 대 직전 사업연도 총액(`priorFyTotals`)** 으로 판정. 헬퍼 `ymdDaysBefore`·`fiscalYearLabel`, 상수 `FISCAL_YEAR_RECENCY_DAYS`·`FISCAL_YEAR_WINDOW_DAYS`(각 400) 추가. `dpsByYear` 제거.
+  - `lib/dividends/ranking/store.ts` — `DividendRoundRecord.inBasis?`(basis 산입 회차 표식)·`DividendRankingEntry.dividendBasisYear?`(귀속 사업연도 "YYYY", 폴백이면 null) 2필드 추가. `annualDividendPerShare`·`dividendYield` 주석을 사업연도 기준으로 갱신.
+  - `app/dividends/DividendRankRow.tsx` — 펼침 표에서 `round.inBasis` 행 강조(`.basisRow`), 캡션에 귀속 사업연도 주석. 헤더 배당률 `title`에 basis 연도 노출.
+  - `app/dividends/page.module.css` — `.basisRow` 강조(좌측 강조선+옅은 배경).
+  - `app/dividends/page.tsx` — 각주를 "직전 사업연도 확정 배당 합 ÷ 산출 시점 현재가"로 갱신하고 결산 기준 합산·폴백을 한 줄로 설명.
+- **범위 밖**: 홈 보유·내 종목의 per-종목 배당 블록(`lib/holdings/stockInfo.ts`)도 TTM으로 배당률을 계산하나, 이번 지적은 **순위 목록** 대상이라 그대로 둔다(필요 시 후속 Phase).
+- **아키텍처 준수**: 잡 6종·KIS 호출 경로·Redis 키·Server Action 시그니처 전부 불변. 스냅샷 스키마는 선택 필드 2개 추가(구 엔트리는 `?? undefined`로 안전). 실데이터 정정은 다음 `refresh-dividend-ranking`(또는 `?force=true`) 회차부터.
+- **상태**: **구현 완료(2026-07-24)**. build·lint·tsc 통과.
+
+---
+
 ## 7. PR 분리 권장 (선택)
 
 | PR | Phase | 리뷰 포인트 |
