@@ -204,6 +204,11 @@ export function IndexDashboard({
           staleness={staleness.dividends}
         />
         <FeedSummaryCard counts={feedCounts} />
+        <SummaryCard
+          title="종목분석"
+          href="/analysis"
+          placeholder="종목 재무·실적 분석"
+        />
       </section>
 
       <DataAsOfFooter data={data} />
