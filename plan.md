@@ -3111,6 +3111,34 @@ interface WatchItem {
 
 ---
 
+### Phase 56 — 관심종목 화면을 3탭(모두/보유종목/관심종목) 순위표 폼으로 전환 (2026-07-24)
+
+- **요청 근거**: 사용자 요청 — 홈 관심종목 카드로 들어가는 `/watchlist` 목록을 카드형 `<ul>`에서 **종목 순위 목록(핫종목·배당률 순위) 표 폼**으로 바꾸고, **[모두 | 보유종목 | 관심종목] 탭**을 붙여 한 화면에서 두 목록을 다 본다.
+- **정책(사용자 확정)**:
+  - **탭 3종**: `?mode=all|holdings|watchlist` 서버 탭(기본 `all`). 핫종목 `MODES`·배당 `DIVIDEND_TABS`와 동형 — 클라이언트 상태 없이 `<Link>`, 활성 탭 데이터만 로드.
+  - **열 구성**: 모두·보유종목 탭 = 종목명 + **현재가·등락률(전일 대비)·수익률·수익금·평균단가·총 매입금액** 6열. 관심종목 탭 = 종목명 + **현재가·등락률·수익률·기준일** 4열. 모두 탭의 관심종목 행은 해당 없는 3열(수익금·평균단가·총 매입금액)을 `-`로 채운다.
+  - **정렬**: 전 탭 **수익률 내림차순**, 수익률이 null인 행(시세·기준가 미확정)은 맨 뒤로.
+  - **중복 종목**: 같은 종목을 보유·관심 둘 다 등록했으면 모두 탭에 **2행으로 따로** 표시(합치지 않음).
+  - **보유종목 구분**: 모두 탭에서 **종목명 글자색만** 다르게(보유=강조색, 관심=기본색). 등락·수익 색(빨강/파랑)과 겹치지 않게 종목명 열에만 적용하고, 라이트/다크 각각의 대비를 위해 토큰 2벌로 정의한다.
+  - **추가 폼**: 모두 탭에는 없음. 보유종목 탭 = `+ 보유종목 추가`(수량·총 매입금액), 관심종목 탭 = `+ 관심종목 추가`(등록 기준일) — 탭마다 고유 폼.
+  - **펼침(행 클릭)**: 배당률 순위 `DividendRankRow` 패턴 재사용. 공통 = 52주 최고/최저(현재가 대비 괴리율)·PER/PBR·시가총액, 보유 = 수량·평가금액·오늘 손익, 관심 = 기준가(직전 거래일 잠정 표기)·등록 후 경과일 + **기준일 변경·삭제 폼**. 상세 보기 링크.
+  - **`?edit=1` 편집 모드 폐지**: 관심종목 기준일 변경·삭제를 펼침 영역으로 흡수(Phase 23의 `editToggle` 링크 제거).
+  - **`/holdings` 유지**: 보유종목 목록이 두 곳이 되지만 이번엔 그대로 둔다(통합 여부는 추후 결정 — 사용자 확정).
+- **구현**:
+  - `app/watchlist/rows.ts` (신규) — 화면 행 모델 `StockRow`(kind=holding|watch) + `buildHoldingRows`/`buildWatchRows`/`sortRowsByReturnRate`(수익률 내림차순·null 후순위). 펼침용 지표(52주·PER/PBR·시가총액)는 스냅샷 `raw`에서 뽑아 행에 실어 클라이언트가 KIS 원본 타입을 몰라도 되게 한다.
+  - `app/watchlist/StockRowItem.tsx` (신규, `'use client'`) — 종목명 버튼 `aria-expanded` 토글 + colSpan 상세 행. 관심 행 펼침에 기준일 변경·삭제 Server Action 폼.
+  - `app/watchlist/page.tsx` — 탭 바 + 탭별 데이터 로드(`getWatchlist`/`getHoldings`+`getPortfolioValuation`) + 표 렌더 + 탭별 추가 폼. 카드형 `<ul>`·`?edit=1` 분기 제거.
+  - `app/watchlist/page.module.css` — 탭·표(sticky 종목명 열·가로 스크롤)·펼침 스타일 추가, 카드형 목록 스타일 제거.
+  - `app/watchlist/actions.ts` — 리다이렉트를 탭 경로(`/watchlist?mode=…`)로. 폼의 `mode` 히든값은 화이트리스트 파싱 후 **경로를 서버가 직접 조립**(오픈 리다이렉트 차단).
+  - `app/holdings/actions.ts` — `addHoldingAction`에 `from=watchlist` 히든값 지원(있으면 `/watchlist?mode=holdings`로 복귀, 없으면 기존 `/holdings`). 불리언 플래그라 경로 주입 없음.
+  - `lib/holdings/stockInfo.ts` — `buildIndicators`를 `buildStockIndicators`로 export(52주·PER/PBR 파싱 재사용, 파서 중복 방지).
+  - `styles/tokens.css` — `--color-holding-name` 라이트/다크 2벌.
+  - **화면 이름**: 두 목록을 함께 담으므로 `<h1>`·metadata를 「관심종목」 → **「내 종목」**으로. 라우트(`/watchlist`)·홈 "관심종목" 카드 링크는 그대로이고, 카드로 들어오면 기본 탭(모두)에 도착한다.
+- **아키텍처 준수**: 읽기 경로는 Redis 스냅샷만(KIS 직접 호출 없음). 잡 6종·스냅샷 스키마·Redis 키 전부 불변, 새 lib 없음. Redis 조회는 탭당 목록 키 1개 + 스냅샷 MGET 1회(보유가 있는 탭은 `getPortfolioValuation` 내부 MGET 1회 추가).
+- **상태**: **구현 완료(2026-07-24)**. build·lint·tsc 통과. 데이터 변경 없음(기존 `holdings:{email}`·`watchlist:{email}`·시세 스냅샷 그대로 읽음).
+
+---
+
 ## 7. PR 분리 권장 (선택)
 
 | PR | Phase | 리뷰 포인트 |
