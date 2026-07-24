@@ -314,7 +314,12 @@ export async function fetchStockInfoBlocks(
 
 // ---------- 읽기 경로 (화면 전용 — Redis만 읽음) ----------
 
-function buildIndicators(
+/**
+ * 현재가 스냅샷 원본 → 투자지표(PER/PBR/EPS/BPS·52주 최고·최저).
+ * 종목 상세(getStockInfo)와 종목 목록 펼침(app/watchlist/rows.ts) 공용 —
+ * KIS 문자열 숫자 파싱을 한 곳에만 두기 위해 export한다 (§56).
+ */
+export function buildStockIndicators(
   snapshot: KisStockPriceOutput | null
 ): StockIndicatorsInfo | null {
   if (snapshot === null) {
@@ -364,6 +369,6 @@ export async function getStockInfo(symbolCode: string): Promise<StockInfo> {
           }
         : null,
     earnings: blocks?.earnings ?? null,
-    indicators: buildIndicators(raw),
+    indicators: buildStockIndicators(raw),
   };
 }

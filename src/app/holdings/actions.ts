@@ -18,7 +18,18 @@ async function requireEmail(): Promise<string> {
 }
 
 function fail(code: string, basePath = "/holdings"): never {
-  redirect(`${basePath}?error=${code}`);
+  redirect(`${basePath}${basePath.includes("?") ? "&" : "?"}error=${code}`);
+}
+
+/**
+ * 추가 폼이 어느 화면에서 왔는지 (§56) — 종목 목록 화면(`/watchlist`)의 보유종목
+ * 탭에도 같은 추가 폼이 있어, 거기서 온 제출은 그 탭으로 돌려보낸다.
+ * 폼 값은 불리언 플래그로만 쓰고 경로는 서버가 조립한다(경로 주입 없음).
+ */
+function addReturnPath(formData: FormData): string {
+  return String(formData.get("from") ?? "") === "watchlist"
+    ? "/watchlist?mode=holdings"
+    : "/holdings";
 }
 
 /** 수량·총 매입금액 — 1주당 평균 매입가는 저장하지 않는다 (plan.md §13.1) */
@@ -44,19 +55,20 @@ function parseEditableFields(
 
 export async function addHoldingAction(formData: FormData): Promise<void> {
   const email = await requireEmail();
+  const returnPath = addReturnPath(formData);
   const symbolCode = String(formData.get("symbolCode") ?? "").trim();
 
   if (!/^\d{6}$/.test(symbolCode)) {
-    fail("invalid_code");
+    fail("invalid_code", returnPath);
   }
 
-  const { quantity, totalCost } = parseEditableFields(formData, "/holdings");
+  const { quantity, totalCost } = parseEditableFields(formData, returnPath);
 
   const holdings = await getHoldings(email);
 
   // 상세 페이지가 종목코드 단위이므로 동일 종목 중복 등록은 막는다 (plan.md §13.3)
   if (holdings.some((holding) => holding.symbolCode === symbolCode)) {
-    fail("duplicate_code");
+    fail("duplicate_code", returnPath);
   }
 
   // KIS 실존 검증·종목명 조회·히스토리 백필은 하지 않는다 — 사용자 액션은 임의 시각에
@@ -76,7 +88,8 @@ export async function addHoldingAction(formData: FormData): Promise<void> {
 
   await saveHoldings(email, holdings);
   revalidatePath("/holdings");
-  redirect("/holdings");
+  revalidatePath("/watchlist");
+  redirect(returnPath);
 }
 
 export async function updateHoldingAction(formData: FormData): Promise<void> {
@@ -99,6 +112,8 @@ export async function updateHoldingAction(formData: FormData): Promise<void> {
 
   await saveHoldings(email, holdings);
   revalidatePath("/holdings");
+  // 종목 목록 화면(§56)도 보유종목을 보여주므로 함께 무효화
+  revalidatePath("/watchlist");
   revalidatePath(detailPath);
   redirect(detailPath);
 }
@@ -116,5 +131,6 @@ export async function deleteHoldingAction(formData: FormData): Promise<void> {
 
   await saveHoldings(email, next);
   revalidatePath("/holdings");
+  revalidatePath("/watchlist");
   redirect("/holdings");
 }

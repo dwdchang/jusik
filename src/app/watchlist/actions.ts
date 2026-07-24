@@ -23,6 +23,18 @@ function fail(code: string, basePath = "/watchlist"): never {
   redirect(`${basePath}${basePath.includes("?") ? "&" : "?"}error=${code}`);
 }
 
+/**
+ * 폼이 제출된 탭으로 돌아갈 경로 (§56) — 폼의 `mode` 히든값을 화이트리스트로
+ * 검사하고 **경로는 서버가 직접 조립**한다(입력값을 리다이렉트 경로에 그대로
+ * 넣지 않으므로 오픈 리다이렉트 여지 없음). 알 수 없는 값은 기본 탭.
+ */
+function watchlistPath(formData: FormData): string {
+  const mode = String(formData.get("mode") ?? "");
+  return mode === "holdings" || mode === "watchlist"
+    ? `/watchlist?mode=${mode}`
+    : "/watchlist";
+}
+
 /** "YYYY-MM-DD"에 일수를 더한 "YYYY-MM-DD" (달력일 기준) */
 function addDaysIsoDate(date: string, days: number): string {
   const base = new Date(`${date}T00:00:00Z`);
@@ -63,18 +75,19 @@ function parseRegisteredAt(formData: FormData, basePath: string): string {
 
 export async function addWatchItemAction(formData: FormData): Promise<void> {
   const email = await requireEmail();
+  const basePath = watchlistPath(formData);
   const symbolCode = String(formData.get("symbolCode") ?? "").trim();
 
   if (!/^\d{6}$/.test(symbolCode)) {
-    fail("invalid_code");
+    fail("invalid_code", basePath);
   }
 
-  const registeredAt = parseRegisteredAt(formData, "/watchlist");
+  const registeredAt = parseRegisteredAt(formData, basePath);
   const items = await getWatchlist(email);
 
   // 상세 페이지가 종목코드 단위이므로 동일 종목 중복 등록은 막는다
   if (items.some((item) => item.symbolCode === symbolCode)) {
-    fail("duplicate_code");
+    fail("duplicate_code", basePath);
   }
 
   // KIS 실존 검증·종목명 조회·기준가 확정은 하지 않는다 — 사용자 액션은 임의 시각에
@@ -95,22 +108,23 @@ export async function addWatchItemAction(formData: FormData): Promise<void> {
 
   await saveWatchlist(email, items);
   revalidatePath("/watchlist");
-  redirect("/watchlist");
+  redirect(basePath);
 }
 
 export async function updateWatchItemAction(formData: FormData): Promise<void> {
   const email = await requireEmail();
+  const basePath = watchlistPath(formData);
   const id = String(formData.get("id") ?? "");
 
   const items = await getWatchlist(email);
   const target = items.find((item) => item.id === id);
 
-  // 편집 폼은 ?edit=1에서만 노출되므로 오류 시에도 편집 모드를 유지한다
+  // 편집 폼은 행 펼침 안에 있으므로 오류 시에도 같은 탭으로 돌려보낸다 (§56)
   if (!target) {
-    fail("not_found", "/watchlist?edit=1");
+    fail("not_found", basePath);
   }
 
-  const registeredAt = parseRegisteredAt(formData, "/watchlist?edit=1");
+  const registeredAt = parseRegisteredAt(formData, basePath);
 
   // 기준일이 바뀌면 기준가를 null로 리셋 — 다음 갱신 회차에서 잡이 재확정 (§15.4)
   target.registeredAt = registeredAt;
@@ -121,21 +135,22 @@ export async function updateWatchItemAction(formData: FormData): Promise<void> {
   await saveWatchlist(email, items);
   revalidatePath("/watchlist");
   revalidatePath(`/watchlist/${target.symbolCode}`);
-  redirect("/watchlist");
+  redirect(basePath);
 }
 
 export async function deleteWatchItemAction(formData: FormData): Promise<void> {
   const email = await requireEmail();
+  const basePath = watchlistPath(formData);
   const id = String(formData.get("id") ?? "");
 
   const items = await getWatchlist(email);
   const next = items.filter((item) => item.id !== id);
 
   if (next.length === items.length) {
-    fail("not_found", "/watchlist?edit=1");
+    fail("not_found", basePath);
   }
 
   await saveWatchlist(email, next);
   revalidatePath("/watchlist");
-  redirect("/watchlist");
+  redirect(basePath);
 }

@@ -27,6 +27,11 @@
   --color-text-secondary: #4e5968;
   --color-text-tertiary: #8b95a1;
 
+  /* 종목 목록 "모두" 탭에서 보유종목 행을 구분하는 종목명 색 (§56).
+     등락 색(빨강/파랑)과 겹치지 않는 보라 계열이고, 라이트는 배경보다 진하게·
+     다크는 기본 텍스트(#f2f4f6)보다 한 톤 낮게 잡아 각 테마에서 대비를 지킨다. */
+  --color-holding-name: #7048e8;
+
   /* Typography */
   --font-sans: var(--font-geist-sans), -apple-system, BlinkMacSystemFont,
     "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
@@ -90,6 +95,9 @@ html[data-theme="dark"] {
 
   /* 어두운 배경 대비 확보 (§11.10-B4) */
   --color-warning: #f0a51c;
+
+  /* 보유종목 종목명 — 어두운 surface 위에서 읽히는 밝은 보라 (§56) */
+  --color-holding-name: #b197fc;
 
   /* 거래량 막대 — 어두운 surface 위에서 시인성 확보용 밝은 슬레이트 회색 */
   --chart-bar: #6b7688;

@@ -43,32 +43,38 @@
 }
 
 .section {
-  margin-bottom: var(--space-16);
+  margin-top: var(--space-16);
 }
 
-.sectionHead {
+/* 탭 — 모두/보유종목/관심종목 (§56, 핫종목·배당 .tabs와 동형) */
+.tabs {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-wrap: wrap;
   gap: var(--space-8);
-  margin-bottom: var(--space-8);
+  margin-bottom: var(--space-12);
 }
 
-.sectionTitle {
-  font-size: var(--text-caption);
-  font-weight: var(--weight-semibold);
-  color: var(--color-text-secondary);
-}
-
-.editToggle {
+.tab {
+  padding: var(--space-8) var(--space-12);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   font-size: var(--text-caption);
   font-weight: var(--weight-medium);
-  color: var(--color-primary);
+  color: var(--color-text-secondary);
   text-decoration: none;
+  transition: border-color 0.15s ease;
 }
 
-.editToggle:hover {
-  text-decoration: underline;
+.tab:hover,
+.tab:focus-visible {
+  border-color: var(--color-primary);
+}
+
+.tabActive {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  font-weight: var(--weight-semibold);
 }
 
 .emptyNotice {
@@ -178,93 +184,189 @@
   color: var(--color-text-tertiary);
 }
 
-.itemList {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-12);
-}
-
-.item {
-  padding: var(--card-padding);
+/* ── 종목 목록 표 (§56) ─────────────────────────────────────────────
+   모두·보유종목 탭은 종목명+6열이라 모바일 한 줄에 안 들어가므로 가로 스크롤.
+   종목명 열은 sticky로 고정해 오른쪽 끝을 볼 때도 행 식별이 유지된다
+   (배당률 순위 표 .tableScroll/.rankTable 관례와 동형) */
+.tableScroll {
+  overflow-x: auto;
   background-color: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
+  -webkit-overflow-scrolling: touch;
 }
 
-.itemHead {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-8);
-  margin-bottom: var(--space-12);
-}
-
-.itemName {
+.stockTable {
+  width: 100%;
+  border-collapse: collapse;
   font-size: var(--text-caption);
-  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+}
+
+/* 헤더·값 기본 가운데 정렬 — 숫자 열(.numCell)만 우측, 종목명은 좌측 */
+.stockTable th,
+.stockTable td {
+  padding: var(--space-8) var(--space-12);
+  text-align: center;
+  font-weight: var(--weight-regular);
   color: var(--color-text-primary);
-  text-decoration: none;
 }
 
-.itemName:hover {
-  color: var(--color-primary);
-}
-
-.itemCode {
-  margin-left: var(--space-8);
+.stockTable thead th {
   font-size: var(--text-micro);
   font-weight: var(--weight-medium);
   color: var(--color-text-tertiary);
+  border-bottom: 1px solid var(--color-border);
 }
 
-.itemReturn {
-  font-size: var(--text-caption);
-  font-weight: var(--weight-bold);
+.stockTable tbody tr + tr th,
+.stockTable tbody tr + tr td {
+  border-top: 1px solid var(--color-border);
 }
 
-.itemReturnEmpty {
-  font-size: var(--text-caption);
+/* 종목명 sticky — 스크롤 시 뒤 열이 비치지 않도록 배경을 깐다 */
+.stickyName {
+  position: sticky;
+  left: 0;
+  background-color: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+}
+
+.stockTable .stickyName {
+  text-align: left;
+  font-weight: var(--weight-medium);
+}
+
+/* 숫자 값 — 자릿수 비교 위해 우측 정렬 */
+.stockTable .numCell {
+  text-align: right;
+}
+
+/* 수익률 — 이 화면의 정렬 기준이자 핵심 지표라 굵게 (색은 방향 클래스가 입힌다) */
+.stockTable .returnCell {
+  font-weight: var(--weight-semibold);
+}
+
+/* 값이 없는 셀 — 관심종목 행의 보유 전용 열("-"), 시세 없음 */
+.stockTable .emptyCell {
   color: var(--color-text-tertiary);
 }
 
-.itemStats {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--space-8);
-  margin-bottom: var(--space-12);
+.emptyMark {
+  color: var(--color-text-tertiary);
 }
 
-@media (max-width: 640px) {
-  .itemStats {
+/* 종목명 = 펼침 토글 버튼 — 버튼 기본 스타일을 걷어내 셀 텍스트처럼 보이게 */
+.nameButton {
+  display: inline-flex;
+  align-items: baseline;
+  max-width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.nameButton:hover .nameText,
+.nameButton:focus-visible .nameText {
+  color: var(--color-primary);
+  text-decoration: underline;
+}
+
+/* "모두" 탭에서 보유종목 행 구분 — 종목명 글자색만 바꾼다(사용자 확정).
+   등락·수익 색(빨강/파랑)이 붙는 값 열과 겹치지 않게 이 열에만 적용 */
+.holdingName .nameText {
+  color: var(--color-holding-name);
+}
+
+/* 종목명 텍스트 — 초과분 ellipsis(전체 이름은 셀 title) */
+.nameText {
+  display: inline-block;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+/* 펼침 표시 삼각형 — 펼치면 90° 회전 */
+.expandIcon {
+  flex-shrink: 0;
+  margin-right: 4px;
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+  transition: transform 0.15s ease;
+}
+
+.expandIcon[data-expanded="true"] {
+  transform: rotate(90deg);
+}
+
+/* 스크린리더 전용 텍스트 — 보유/관심 구분이 색만으로 전달되지 않게 한다 */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* 펼침 상세 행 — 배경을 페이지색으로 낮춰 본문 행과 구분 */
+.detailCell {
+  padding: var(--space-12);
+  text-align: left;
+  white-space: normal;
+  background-color: var(--color-bg);
+}
+
+.detailList {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-8) var(--space-16);
+}
+
+@media (max-width: 480px) {
+  .detailList {
     grid-template-columns: 1fr;
   }
 }
 
-.itemStat {
+.detailItem {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
   gap: var(--space-8);
 }
 
-.itemStat dt {
+.detailItem dt {
   font-size: var(--text-micro);
   color: var(--color-text-tertiary);
 }
 
-.itemStat dd {
+.detailItem dd {
   font-size: var(--text-micro);
   font-weight: var(--weight-semibold);
   color: var(--color-text-primary);
 }
 
-.itemActions {
+/* 52주 최고·최저 옆 현재가 대비 괴리율 */
+.detailSub {
+  margin-left: 4px;
+  font-weight: var(--weight-regular);
+  color: var(--color-text-tertiary);
+}
+
+/* 관심종목 펼침의 기준일 변경·삭제 (Phase 23의 ?edit=1 폼을 대체) */
+.detailActions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-8);
+  margin-top: var(--space-12);
 }
 
 .editForm {
@@ -304,8 +406,10 @@
   border-color: var(--color-rise);
 }
 
+/* 펼침 상세 맨 아래 상세 페이지 이동 */
 .detailLink {
-  margin-left: auto;
+  display: inline-block;
+  margin-top: var(--space-12);
   font-size: var(--text-micro);
   font-weight: var(--weight-medium);
   color: var(--color-text-tertiary);
