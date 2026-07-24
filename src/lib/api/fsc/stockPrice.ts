@@ -99,23 +99,37 @@ export async function fetchStockCloseAsOf(
       cache: "no-store",
       signal: AbortSignal.timeout(FSC_FETCH_TIMEOUT_MS),
     });
-  } catch {
+  } catch (err) {
+    console.error(`[fsc] fetch failed for ${symbolCode}:`, err);
     return null;
   }
 
   if (!response.ok) {
+    console.error(`[fsc] HTTP ${response.status} for ${symbolCode}`);
     return null;
   }
 
+  // 인증 오류 등은 resultType=json이어도 XML 에러 봉투로 오기도 해, 먼저 text로 받아
+  // 파싱 실패·비정상 resultCode를 로그로 남긴다(무슨 이유로 종가가 비는지 진단용).
+  const text = await response.text();
   let data: FscStockPriceResponse;
   try {
-    data = (await response.json()) as FscStockPriceResponse;
+    data = JSON.parse(text) as FscStockPriceResponse;
   } catch {
+    console.error(
+      `[fsc] non-JSON response for ${symbolCode}: ${text.slice(0, 300)}`
+    );
     return null;
   }
 
+  const header = data.response?.header;
   const body = data.response?.body;
-  if (data.response?.header?.resultCode !== "00" || !body) {
+  if (header?.resultCode !== "00" || !body) {
+    console.error(
+      `[fsc] resultCode ${header?.resultCode ?? "?"} (${
+        header?.resultMsg ?? "no msg"
+      }) for ${symbolCode}`
+    );
     return null;
   }
 
@@ -142,6 +156,12 @@ export async function fetchStockCloseAsOf(
         basisDate: `${basDt.slice(0, 4)}-${basDt.slice(4, 6)}-${basDt.slice(6, 8)}`,
       };
     }
+  }
+
+  if (best === null) {
+    console.error(
+      `[fsc] no matching close for ${symbolCode} (items=${items.length})`
+    );
   }
 
   return best;
