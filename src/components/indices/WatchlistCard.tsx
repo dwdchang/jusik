@@ -21,7 +21,7 @@ export function WatchlistCard({
   staleness: StalenessLevel | null;
 }) {
   return (
-    <Link href="/watchlist" className={styles.card}>
+    <Link href="/stocks" className={styles.card}>
       {staleness !== null ? (
         <span
           className={`${styles.badge} ${
@@ -34,9 +34,10 @@ export function WatchlistCard({
           !
         </span>
       ) : null}
-      {/* 카드 제목은 §57에서 "관심종목"→"내 종목" — 이동 대상 화면(/watchlist)이
-          보유·관심을 함께 담는 3탭 화면이 됐다. 카드 본문은 여전히 관심종목
-          수익률 상위 4종목(보유는 별도 카드) */}
+      {/* 카드 제목은 §57에서 "관심종목"→"내 종목" — 이동 대상 화면(§58에서
+          `/watchlist`→`/stocks`)이 보유·관심·잔고를 함께 담는 4탭 화면이 됐다.
+          카드 본문은 여전히 관심종목 수익률 상위 4종목(§58에서 보유종목 카드는
+          삭제됐고, 보유 요약은 「잔고」 탭에서 본다) */}
       <h2 className={styles.title}>내 종목</h2>
       {summary !== null && summary.top4.length > 0 ? (
         <>

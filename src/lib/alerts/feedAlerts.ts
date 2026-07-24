@@ -318,8 +318,8 @@ export async function evaluateFeedAlerts(context: {
           title: `시장경보 — ${nameOf(event.symbolCode)}`,
           body: event.changes.join(" · "),
           url: held.has(event.symbolCode)
-            ? `/holdings/${event.symbolCode}`
-            : `/watchlist/${event.symbolCode}`,
+            ? `/stocks/${event.symbolCode}?kind=holding`
+            : `/stocks/${event.symbolCode}?kind=watch`,
           tag: `marketwarn-${event.symbolCode}`,
         });
         if (sendReport.sent > 0) {

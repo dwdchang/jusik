@@ -35,7 +35,7 @@ function formatMonthLabel(month: string): string {
 /**
  * 일별 기록 목록 — 접힘 기본 `<details>` + 월 단위 페이지네이션 (plan.md §29).
  * 서버가 내려준 전체 히스토리를 받아 기록이 있는 달만 이전/다음 버튼으로 넘겨본다.
- * 보유종목 홈(`/holdings`)·종목 상세(`/holdings/[symbolCode]`) 공용.
+ * 잔고 탭(`/stocks?mode=balance`)·종목 상세(`/stocks/[symbolCode]`) 공용 (§58).
  */
 export function DailyHistoryList({
   rows,

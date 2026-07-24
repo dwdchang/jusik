@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { HoldingsOverview } from "@/components/holdings/HoldingsOverview";
 import { NavIconLink } from "@/components/nav/NavIconLink";
 import { StockSearchInput } from "@/components/stocks/StockSearchInput";
 import { ensureAllowedSession } from "@/lib/auth/ensureAllowedSession";
@@ -10,7 +11,6 @@ import { getHoldings } from "@/lib/holdings/store";
 import { getPortfolioValuation } from "@/lib/holdings/valuation";
 import { getLastRefreshRecord, getStockSnapshots } from "@/lib/market/store";
 import { getWatchlist } from "@/lib/watchlist/store";
-import { addHoldingAction } from "../holdings/actions";
 import { addWatchItemAction } from "./actions";
 import {
   buildHoldingRows,
@@ -23,7 +23,7 @@ import styles from "./page.module.css";
 
 export const metadata: Metadata = {
   title: "내 종목 — jusik",
-  description: "보유종목·관심종목 수익률 목록",
+  description: "보유종목·관심종목 수익률 목록과 잔고",
 };
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -37,34 +37,37 @@ const ERROR_MESSAGES: Record<string, string> = {
   not_found: "대상 종목을 찾지 못했습니다. 새로고침 후 다시 시도해주세요.",
 };
 
-/** 탭 — 모두 / 보유종목 / 관심종목 (§56). 핫종목·배당 페이지와 동형인 서버 탭 */
-type Mode = "all" | "holdings" | "watchlist";
+/** 탭 — 모두 / 보유종목 / 관심종목 (§56) + 잔고 (§58). 핫종목·배당과 동형인 서버 탭 */
+type Mode = "all" | "holdings" | "watchlist" | "balance";
 
 const TABS: ReadonlyArray<{ key: Mode; label: string; href: string }> = [
-  { key: "all", label: "모두", href: "/watchlist" },
-  { key: "holdings", label: "보유종목", href: "/watchlist?mode=holdings" },
-  { key: "watchlist", label: "관심종목", href: "/watchlist?mode=watchlist" },
+  { key: "all", label: "모두", href: "/stocks" },
+  { key: "holdings", label: "보유종목", href: "/stocks?mode=holdings" },
+  { key: "watchlist", label: "관심종목", href: "/stocks?mode=watchlist" },
+  { key: "balance", label: "잔고", href: "/stocks?mode=balance" },
 ];
 
 /** ?mode 값 검증 — 알 수 없는 값은 기본 탭(모두)으로 (§14.5 관례) */
 function resolveMode(mode: string | undefined): Mode {
-  return mode === "holdings" || mode === "watchlist" ? mode : "all";
+  return mode === "holdings" || mode === "watchlist" || mode === "balance"
+    ? mode
+    : "all";
 }
 
 /** 탭별 열 구성 — 관심종목 탭만 4열(현재가·등락률·수익률·기준일) */
-const COLUMNS: Record<Mode, RowColumns> = {
+const COLUMNS: Record<"all" | "holdings" | "watchlist", RowColumns> = {
   all: "full",
   holdings: "full",
   watchlist: "watch",
 };
 
-const EMPTY_NOTICE: Record<Mode, string> = {
-  all: "등록된 종목이 없습니다. 보유종목·관심종목 탭에서 추가해보세요.",
-  holdings: "등록된 보유종목이 없습니다. 아래에서 종목을 추가해보세요.",
+const EMPTY_NOTICE: Record<"all" | "holdings" | "watchlist", string> = {
+  all: "등록된 종목이 없습니다. 잔고·관심종목 탭에서 추가해보세요.",
+  holdings: "등록된 보유종목이 없습니다. 잔고 탭에서 추가해보세요.",
   watchlist: "등록된 관심종목이 없습니다. 아래에서 종목을 추가해보세요.",
 };
 
-export default async function WatchlistPage({
+export default async function StocksPage({
   searchParams,
 }: {
   searchParams: Promise<{ error?: string; mode?: string }>;
@@ -80,9 +83,12 @@ export default async function WatchlistPage({
   const errorMessage = error ? (ERROR_MESSAGES[error] ?? null) : null;
   const activeMode = resolveMode(mode);
   const today = todayKstDate();
+  const isBalance = activeMode === "balance";
 
-  const needsHoldings = activeMode !== "watchlist";
-  const needsWatchlist = activeMode !== "holdings";
+  // 잔고 탭은 표가 아니라 포트폴리오 본문이라 목록·시세를 읽지 않는다
+  // (필요한 데이터는 HoldingsOverview가 직접 읽는다, §58)
+  const needsHoldings = !isBalance && activeMode !== "watchlist";
+  const needsWatchlist = !isBalance && activeMode !== "holdings";
 
   // 활성 탭에 필요한 목록만 읽는다 (배당 페이지 3탭과 같은 관례)
   const [holdings, watchItems, lastRefresh] = await Promise.all([
@@ -102,7 +108,7 @@ export default async function WatchlistPage({
       ]),
     ]);
   } catch (err) {
-    console.error("[WatchlistPage] getStockSnapshots failed:", err);
+    console.error("[StocksPage] getStockSnapshots failed:", err);
     snapshots = new Map();
   }
 
@@ -114,7 +120,7 @@ export default async function WatchlistPage({
       const valuation = await getPortfolioValuation(holdings);
       rows.push(...buildHoldingRows(valuation.items, snapshots));
     } catch (err) {
-      console.error("[WatchlistPage] getPortfolioValuation failed:", err);
+      console.error("[StocksPage] getPortfolioValuation failed:", err);
       valuationError =
         "보유종목 평가에 실패했습니다. 잠시 후 다시 시도해주세요.";
     }
@@ -125,7 +131,7 @@ export default async function WatchlistPage({
   }
 
   const sortedRows = sortRowsByReturnRate(rows);
-  const columns = COLUMNS[activeMode];
+  const tableMode = isBalance ? null : activeMode;
 
   return (
     <main className={styles.page}>
@@ -168,92 +174,56 @@ export default async function WatchlistPage({
           </p>
         ) : null}
 
-        {sortedRows.length === 0 ? (
-          <p className={styles.emptyNotice}>{EMPTY_NOTICE[activeMode]}</p>
-        ) : (
-          <div className={styles.tableScroll}>
-            <table className={styles.stockTable}>
-              <thead>
-                <tr>
-                  <th>종목명</th>
-                  <th>현재가</th>
-                  <th>등락률</th>
-                  <th>수익률</th>
-                  {columns === "full" ? (
-                    <>
-                      <th>수익금</th>
-                      <th>평균단가</th>
-                      <th>총 매입금액</th>
-                    </>
-                  ) : (
-                    <th>기준일</th>
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {sortedRows.map((row) => (
-                  <StockRowItem
-                    key={row.key}
-                    row={row}
-                    columns={columns}
-                    highlightHolding={activeMode === "all"}
-                    mode={activeMode}
-                    today={today}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        {/* 잔고 탭 — 구 `/holdings` 화면 본문 그대로 (§58) */}
+        {isBalance ? (
+          <HoldingsOverview email={email} openAddForm={errorMessage !== null} />
+        ) : null}
 
-        {activeMode === "holdings" ? (
-          <section className={styles.section} aria-label="보유종목 추가">
-            {/* 폼 검증 실패로 돌아온 경우엔 펼친 상태로 렌더 — 재입력 동선 유지 */}
-            <details className={styles.addDetails} open={errorMessage !== null}>
-              {/* 열림 상태에서 summary가 취소 버튼 역할 (§17.12) */}
-              <summary className={styles.addToggle}>
-                <span className={styles.addToggleOpenLabel}>
-                  + 보유종목 추가
-                </span>
-                <span className={styles.addToggleCloseLabel}>✕ 취소</span>
-              </summary>
-              <form action={addHoldingAction} className={styles.addForm}>
-                {/* 이 폼은 /holdings가 아니라 이 화면에서 왔음을 알린다 (§56) */}
-                <input type="hidden" name="from" value="watchlist" />
-                <StockSearchInput />
-                <input
-                  name="quantity"
-                  className={styles.input}
-                  placeholder="수량"
-                  type="number"
-                  min={1}
-                  step={1}
-                  required
-                />
-                <input
-                  name="totalCost"
-                  className={styles.input}
-                  placeholder="총 매입금액(원)"
-                  type="number"
-                  min={1}
-                  step="any"
-                  required
-                />
-                <button type="submit" className={styles.primaryButton}>
-                  추가
-                </button>
-              </form>
-              <p className={styles.formHint}>
-                종목명으로 검색해 선택하세요. 시세는 다음 갱신 회차(평일
-                09:00~15:30 KST, 10분 간격)에 자동으로 채워집니다.
-              </p>
-            </details>
-          </section>
+        {tableMode !== null ? (
+          sortedRows.length === 0 ? (
+            <p className={styles.emptyNotice}>{EMPTY_NOTICE[tableMode]}</p>
+          ) : (
+            <div className={styles.tableScroll}>
+              <table className={styles.stockTable}>
+                <thead>
+                  <tr>
+                    <th>종목명</th>
+                    <th>현재가</th>
+                    <th>등락률</th>
+                    <th>수익률</th>
+                    {COLUMNS[tableMode] === "full" ? (
+                      <>
+                        <th>수익금</th>
+                        <th>평균단가</th>
+                        <th>총 매입금액</th>
+                      </>
+                    ) : (
+                      <th>기준일</th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {sortedRows.map((row) => (
+                    <StockRowItem
+                      key={row.key}
+                      row={row}
+                      columns={COLUMNS[tableMode]}
+                      highlightHolding={activeMode === "all"}
+                      mode={activeMode}
+                      today={today}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
         ) : null}
 
         {activeMode === "watchlist" ? (
           <section className={styles.section} aria-label="관심종목 추가">
+            {/* 폼 검증 실패로 돌아온 경우엔 펼친 상태로 렌더 — 재입력 동선 유지 */}
             <details className={styles.addDetails} open={errorMessage !== null}>
+              {/* 열림 상태에서 summary가 취소 버튼 역할 (§17.12) */}
               <summary className={styles.addToggle}>
                 <span className={styles.addToggleOpenLabel}>
                   + 관심종목 추가
@@ -285,14 +255,22 @@ export default async function WatchlistPage({
         ) : null}
 
         <footer className={styles.footer}>
-          <p className={styles.notice}>
-            종목명을 누르면 상세가 펼쳐집니다. 수익률은 보유종목이 평균 매입가
-            대비, 관심종목이 등록 기준일 종가 대비이며 수익금·평균단가·총
-            매입금액은 보유종목에만 해당합니다. 목록은 수익률 내림차순이고,
-            시세나 기준가가 아직 없는 종목은 맨 뒤에 놓입니다. 현재가는
-            한국투자증권 OpenAPI 기준으로 갱신 회차(평일 09:00~15:30 KST, 10분
-            간격)에 저장된 값입니다.
-          </p>
+          {isBalance ? (
+            <p className={styles.notice}>
+              현재가는 한국투자증권 OpenAPI 기준으로 평일 09:00~15:30(KST) 10분
+              간격 갱신 회차에 저장된 값입니다. 일별 기록은 장중 갱신되고
+              15:40·18:15 회차에서 확정됩니다.
+            </p>
+          ) : (
+            <p className={styles.notice}>
+              종목명을 누르면 상세가 펼쳐집니다. 수익률은 보유종목이 평균 매입가
+              대비, 관심종목이 등록 기준일 종가 대비이며 수익금·평균단가·총
+              매입금액은 보유종목에만 해당합니다. 목록은 수익률 내림차순이고,
+              시세나 기준가가 아직 없는 종목은 맨 뒤에 놓입니다. 현재가는
+              한국투자증권 OpenAPI 기준으로 갱신 회차(평일 09:00~15:30 KST, 10분
+              간격)에 저장된 값입니다.
+            </p>
+          )}
         </footer>
       </div>
     </main>

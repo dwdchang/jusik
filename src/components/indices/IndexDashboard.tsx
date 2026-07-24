@@ -2,11 +2,7 @@ import { HeaderMenu } from "@/components/nav/HeaderMenu";
 import { NavIconLink } from "@/components/nav/NavIconLink";
 import type { DividendCardSummary } from "@/lib/dividends/summary";
 import type { TodayFeedCounts } from "@/lib/feeds/homeFeed";
-import {
-  formatChange,
-  formatChangeRate,
-  formatPercentPoint,
-} from "@/lib/format/change";
+import { formatChange, formatPercentPoint } from "@/lib/format/change";
 import { formatIndex } from "@/lib/format/index";
 import type { DailyHotCardSummary } from "@/lib/hotstocks/dailyCard";
 import { formatKstTime } from "@/lib/format/datetime";
@@ -16,7 +12,6 @@ import type {
   StalenessLevel,
 } from "@/lib/market/staleness";
 import type { WatchlistCardSummary } from "@/lib/watchlist/summary";
-import type { HoldingsCardSummary } from "@/types/holdings";
 import type {
   IndexDashboardData,
   IndexSnapshot,
@@ -39,7 +34,6 @@ export type DashboardStaleness = Record<
   | "kosdaq"
   | "usdkrw"
   | "market"
-  | "holdings"
   | "volatility"
   | "watchlist"
   | "dividends",
@@ -97,7 +91,6 @@ function indexSummaryProps(
 
 export function IndexDashboard({
   data,
-  holdingsSummary,
   volatilitySummary,
   hotStocksSummary,
   watchlistSummary,
@@ -107,7 +100,6 @@ export function IndexDashboard({
   feedCounts,
 }: {
   data: IndexDashboardData;
-  holdingsSummary: HoldingsCardSummary | null;
   volatilitySummary: VolatilityCardSummary | null;
   hotStocksSummary: DailyHotCardSummary | null;
   watchlistSummary: WatchlistCardSummary | null;
@@ -173,33 +165,6 @@ export function IndexDashboard({
           btcUsd={data.btcUsd}
           staleness={staleness.market}
         />
-        {holdingsSummary !== null ? (
-          <SummaryCard
-            title="보유종목 수익률"
-            href="/holdings"
-            staleness={staleness.holdings}
-            value={formatChangeRate(holdingsSummary.totalReturnRate)}
-            valueDirection={resolveDirection(holdingsSummary.totalReturnRate)}
-            change={
-              holdingsSummary.dailyChangeRate !== null
-                ? {
-                  text: `전일 대비 ${formatChangeRate(
-                    holdingsSummary.dailyChangeRate
-                  )}`,
-                  direction: resolveDirection(
-                    holdingsSummary.dailyChangeRate
-                  ),
-                }
-                : undefined
-            }
-          />
-        ) : (
-          <SummaryCard
-            title="보유종목 수익률"
-            href="/holdings"
-            placeholder="종목을 등록해보세요"
-          />
-        )}
         {volatilitySummary !== null ? (
           <SummaryCard
             title="코스피 변동성 지수"

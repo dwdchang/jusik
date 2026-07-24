@@ -96,7 +96,7 @@ export function collectAlertTargets(
         totalCost: holding.totalCost,
         quantity: holding.quantity,
       },
-      url: "/holdings",
+      url: "/stocks?mode=balance",
     });
   }
 
@@ -111,7 +111,7 @@ export function collectAlertTargets(
         item.priceAtRegistration !== null && item.priceAtRegistration > 0
           ? { kind: "registration", price: item.priceAtRegistration }
           : null,
-      url: "/watchlist",
+      url: "/stocks?mode=watchlist",
     });
   }
 

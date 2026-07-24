@@ -141,7 +141,7 @@ export default async function DividendsPage({
               <p className={styles.emptyNotice}>
                 표시할 배당 일정이 없습니다. 보유종목의 확정 배당(최근 1년)이
                 다음 갱신 회차에 수집되면 여기에 표시됩니다.{" "}
-                <Link href="/holdings" className={styles.emptyLink}>
+                <Link href="/stocks?mode=balance" className={styles.emptyLink}>
                   보유종목 관리 →
                 </Link>
               </p>

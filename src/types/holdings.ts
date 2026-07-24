@@ -58,10 +58,3 @@ export interface PortfolioValuation {
   /** 시세 스냅샷이 없어 합계에서 제외된 종목코드 */
   missingPriceSymbols: string[];
 }
-
-/** 홈 화면 보유종목 카드 요약 */
-export interface HoldingsCardSummary {
-  totalReturnRate: number;
-  /** 전일 기록이 없으면 null */
-  dailyChangeRate: number | null;
-}

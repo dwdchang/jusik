@@ -49,11 +49,45 @@
   color: var(--color-rise);
 }
 
+/* 보유 상세는 6지표라 2열, 관심 상세는 3지표라 3열(`.summaryTriple`) — §58에서
+   두 상세를 한 라우트로 합치면서 요약 그리드만 변형으로 나눴다 */
 .summary {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: var(--space-12);
   margin-bottom: var(--space-16);
+}
+
+.summaryTriple {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+@media (max-width: 640px) {
+  .summaryTriple {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 같은 종목이 보유·관심 양쪽에 있을 때만 뜨는 상세 전환 줄 (§58) */
+.kindSwitch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+  margin-bottom: var(--space-16);
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+}
+
+.kindSwitchLink {
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.kindSwitchLink:hover {
+  text-decoration: underline;
 }
 
 .stat {
@@ -82,6 +116,7 @@
   margin-left: var(--space-8);
   font-size: var(--text-micro);
   font-weight: var(--weight-medium);
+  color: var(--color-text-tertiary);
 }
 
 .statEmpty {
@@ -101,12 +136,28 @@
   margin-bottom: var(--space-8);
 }
 
+.sectionHead .sectionTitle {
+  margin-bottom: 0;
+}
+
 .sectionTitle {
   font-size: var(--text-caption);
   font-weight: var(--weight-semibold);
   color: var(--color-text-secondary);
+  margin-bottom: var(--space-8);
 }
 
+.emptyNotice {
+  padding: var(--card-padding);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-caption);
+  color: var(--color-text-tertiary);
+  line-height: 1.5;
+}
+
+/* 보유 내역 수정 폼 (보유 상세 전용) */
 .editToggle {
   font-size: var(--text-caption);
   font-weight: var(--weight-medium);
@@ -199,16 +250,6 @@
 
 .dangerButton:hover {
   background-color: var(--color-surface);
-}
-
-.emptyNotice {
-  padding: var(--card-padding);
-  background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  font-size: var(--text-caption);
-  color: var(--color-text-tertiary);
-  line-height: 1.5;
 }
 
 .rise {

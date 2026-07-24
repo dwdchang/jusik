@@ -1,5 +1,5 @@
 /**
- * 종목 목록 화면(§56) 행 모델 — 보유종목·관심종목을 한 표에서 렌더하기 위한 공통 형태.
+ * 내 종목 화면(§56·§58) 행 모델 — 보유종목·관심종목을 한 표에서 렌더하기 위한 공통 형태.
  *
  * 서버(page.tsx)에서 조립하고 클라이언트 행 컴포넌트(StockRowItem)는 이 형태만 본다 —
  * KIS 원본(`snapshot.raw`) 파싱은 전부 여기서 끝낸다. 계산은 순수 함수라 Redis·KIS
@@ -37,7 +37,7 @@ export interface StockRow {
   kind: "holding" | "watch";
   symbolCode: string;
   name: string;
-  /** 상세 페이지 경로 — 보유는 /holdings/…, 관심은 /watchlist/… */
+  /** 상세 페이지 경로 — 통합 상세 `/stocks/{code}`에 `?kind`로 종류를 실어 보낸다 (§58) */
   detailHref: string;
   currentPrice: number | null;
   /** 전일 대비 등락률(%) — 스냅샷이 없으면 null */
@@ -125,7 +125,7 @@ export function buildHoldingRows(
       kind: "holding",
       symbolCode: holding.symbolCode,
       name: holding.name || holding.symbolCode,
-      detailHref: `/holdings/${holding.symbolCode}`,
+      detailHref: `/stocks/${holding.symbolCode}?kind=holding`,
       currentPrice: item.currentPrice,
       changeRate,
       returnRate: item.returnRate,
@@ -157,7 +157,7 @@ export function buildWatchRows(
       kind: "watch",
       symbolCode: item.symbolCode,
       name: item.name || item.symbolCode,
-      detailHref: `/watchlist/${item.symbolCode}`,
+      detailHref: `/stocks/${item.symbolCode}?kind=watch`,
       currentPrice,
       changeRate: snapshot?.changeRate ?? null,
       returnRate: computeWatchReturnRate(currentPrice, item),
