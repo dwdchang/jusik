@@ -3,7 +3,11 @@ import {
   fetchKisFinancialRatio,
   fetchKisIncomeStatement,
 } from "@/lib/api/kis/client";
-import { DIVIDEND_LOOKBACK_DAYS } from "@/lib/api/kis/constants";
+import {
+  DIVIDEND_BASIS_LOOKBACK_DAYS,
+  DIVIDEND_LOOKBACK_DAYS,
+} from "@/lib/api/kis/constants";
+import { computeDividendBasis } from "@/lib/dividends/basis";
 import type {
   KisDividendRow,
   KisFinancialRatioRow,
@@ -34,9 +38,11 @@ export interface StockMarketCapInfo {
 export interface StockDividendInfo {
   /** 최근 확정 배당의 종류 — "분기" | "결산" | "중간" 등 */
   kindLabel: string | null;
-  /** 최근 1년 확정 주당배당금 합계(원) — 확정 배당이 없으면 0 */
+  /** 배당 basis 주당배당금 합계(원) — 직전 사업연도 합(폴백 시 최근 1년), 없으면 0 (Phase 60) */
   annualDividendPerShare: number;
-  /** 시가배당률(%) = 최근 1년 주당배당금 합계 ÷ 현재가 — 현재가 없으면 null */
+  /** basis 귀속 사업연도 "YYYY" — 폴백(TTM)이면 null/미존재 (Phase 60) */
+  basisYear?: string | null;
+  /** 시가배당률(%) = basis 주당배당금 합계 ÷ 현재가 — 현재가 없으면 null */
   yieldRate: number | null;
   /** 최근 현금배당 지급일 "YYYY-MM-DD" — 미정이면 null */
   lastPayDate: string | null;
@@ -121,18 +127,42 @@ function kstYyyyMmDd(daysAgo: number): string {
 
 // ---------- 쓰기 경로 (갱신 잡 전용 — KIS 호출 포함) ----------
 
+/** 배당 기준일 정규화 "YYYYMMDD" — 슬래시 포맷 포함, 8자리 아니면 null */
+function toYmd(raw: string | undefined): string | null {
+  const digits = raw?.replace(/\D/g, "") ?? "";
+  return /^\d{8}$/.test(digits) ? digits : null;
+}
+
 function buildDividendBlock(
-  rows: KisDividendRow[]
+  rows: KisDividendRow[],
+  today: string,
+  oneYearAgo: string
 ): StoredStockInfoBlocks["dividend"] {
   // 주당배당금 0원은 미확정 회차 — 확정분만 집계 (plan.md §13.4 실측)
   const confirmed = rows.filter(
     (row) => (toNumber(row.per_sto_divi_amt) ?? 0) > 0
   );
 
-  const annualDividendPerShare = confirmed.reduce(
-    (sum, row) => sum + (toNumber(row.per_sto_divi_amt) ?? 0),
-    0
+  // 시가배당률 분자 — 직전 사업연도 확정 배당 합(폴백 시 최근 1년) (Phase 60).
+  // 결산(divi_kind==="결산") 회차로 사업연도를 구분해, 12개월 롤링이 중간배당 기준일
+  // 이동으로 같은 배당을 이중계상하거나 작년 말+올해 초를 섞던 문제를 없앤다.
+  // fund 구분값은 넘기지 않는다 — 배당상품(리츠·ETF)은 결산 회차가 없어 자연히 폴백된다.
+  const basisRounds = confirmed
+    .map((row) => ({
+      ymd: toYmd(row.record_date),
+      perShare: toNumber(row.per_sto_divi_amt) ?? 0,
+      kind: row.divi_kind?.trim() || null,
+    }))
+    .filter((r): r is { ymd: string; perShare: number; kind: string | null } =>
+      r.ymd !== null
+    );
+  const { basisRounds: basis, basisYear } = computeDividendBasis(
+    basisRounds,
+    false,
+    oneYearAgo,
+    today
   );
+  const annualDividendPerShare = basis.reduce((sum, r) => sum + r.perShare, 0);
 
   const latest = [...confirmed].sort((a, b) =>
     (b.record_date ?? "").localeCompare(a.record_date ?? "")
@@ -147,9 +177,15 @@ function buildDividendBlock(
       .at(-1) ?? null;
 
   // 확정 회차 원본 행 — 배당 일정 화면·지급일 알림이 읽는다 (Phase 25).
+  // basis 창은 ≈2년이지만 rounds는 최근 1년으로 다시 잘라 "내 배당" 표시 범위를
+  // Phase 60 이전과 동일하게 유지한다(기준일 정규화 YYYYMMDD ≥ oneYearAgo).
   // 지급일 미정(빈 문자열)은 null로 저장했다가 예탁원 데이터가 공시를 반영하면
   // 이후 갱신 회차의 SET 덮어쓰기로 자연히 채워진다.
   const rounds: DividendRound[] = confirmed
+    .filter((row) => {
+      const ymd = toYmd(row.record_date);
+      return ymd !== null && ymd >= oneYearAgo;
+    })
     .map((row) => ({
       recordDate: toIsoDate(row.record_date),
       kind: row.divi_kind?.trim() || null,
@@ -162,6 +198,7 @@ function buildDividendBlock(
   return {
     kindLabel: latest?.divi_kind?.trim() || null,
     annualDividendPerShare,
+    basisYear,
     lastPayDate,
     rounds,
   };
@@ -268,7 +305,9 @@ export async function fetchStockInfoBlocks(
   const [dividendResult, incomeResult, ratioResult] = await Promise.allSettled([
     fetchKisDividends(
       symbolCode,
-      kstYyyyMmDd(DIVIDEND_LOOKBACK_DAYS),
+      // 사업연도 귀속 계산엔 결산 2회가 필요해 basis 창(≈2년)을 조회한다 (Phase 60).
+      // 회차 표시(rounds)는 buildDividendBlock에서 최근 1년으로 다시 잘린다.
+      kstYyyyMmDd(DIVIDEND_BASIS_LOOKBACK_DAYS),
       kstYyyyMmDd(0)
     ),
     fetchKisIncomeStatement(symbolCode),
@@ -299,7 +338,11 @@ export async function fetchStockInfoBlocks(
     rankLabel: resolveRankLabel(ranking, symbolCode),
     dividend:
       dividendResult.status === "fulfilled"
-        ? buildDividendBlock(dividendResult.value)
+        ? buildDividendBlock(
+            dividendResult.value,
+            kstYyyyMmDd(0),
+            kstYyyyMmDd(DIVIDEND_LOOKBACK_DAYS)
+          )
         : null,
     earnings:
       incomeResult.status === "fulfilled"

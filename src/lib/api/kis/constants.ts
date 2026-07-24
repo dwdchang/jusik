@@ -67,8 +67,18 @@ export const KIS_TR_ID = {
  */
 export const KIS_FLUCTUATION_RANKING_SIZE = 30;
 
-/** 배당 정보 집계 범위 — 최근 1년 주당배당금 합계로 시가배당률을 계산 */
+/**
+ * per-종목 배당 회차 표시 범위 — "내 배당" 일정·지급일 알림이 읽는 rounds를 최근 1년으로
+ * 자른다. 시가배당률 분자는 아래 DIVIDEND_BASIS_LOOKBACK_DAYS 창으로 별도 계산한다 (Phase 60).
+ */
 export const DIVIDEND_LOOKBACK_DAYS = 365;
+
+/**
+ * per-종목 시가배당률 분자(사업연도 귀속, Phase 60) 계산용 조회 범위 — 결산 2회를 봐야
+ * 사업연도 경계((직전 결산, 이 결산])를 잡을 수 있어 2사업연도+선배당후기준일 이동 버퍼를
+ * 준다. 배당 조회는 종목당 1콜이라 날짜 범위만 넓히는 것으로 콜 수는 늘지 않는다.
+ */
+export const DIVIDEND_BASIS_LOOKBACK_DAYS = 800;
 
 /** 멀티시세 1콜 종목 수 상한 — FID_COND_MRKT_DIV_CODE_1~30 (Phase 43) */
 export const KIS_MULTI_PRICE_BATCH_SIZE = 30;

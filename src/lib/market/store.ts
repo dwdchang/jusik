@@ -106,7 +106,10 @@ export interface StoredStockInfoBlocks {
   /** 배당 — 시가배당률은 읽기 시 현재가로 계산 */
   dividend: {
     kindLabel: string | null;
+    /** 시가배당률 분자 — 직전 사업연도 확정 배당 합(폴백 시 최근 1년) (Phase 60) */
     annualDividendPerShare: number;
+    /** basis 귀속 사업연도 "YYYY" — 폴백(TTM)이면 null/미존재 (Phase 60, 구 스냅샷 폴백) */
+    basisYear?: string | null;
     lastPayDate: string | null;
     /** 확정 회차별 원본 행 — 필드 추가(Phase 25) 이전 스냅샷에는 없으므로 optional */
     rounds?: DividendRound[];

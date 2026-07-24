@@ -57,14 +57,25 @@ export function StockInfoBlocks({ info }: { info: StockInfo }) {
                 </dd>
               </div>
               <div className={styles.infoRow}>
-                <dt>최근 1년 주당배당금</dt>
+                <dt>
+                  {dividend.basisYear != null
+                    ? `${dividend.basisYear} 사업연도 주당배당금`
+                    : "최근 1년 주당배당금"}
+                </dt>
                 <dd className="numeric">
                   {formatKrw(dividend.annualDividendPerShare)}
                 </dd>
               </div>
               <div className={styles.infoRow}>
                 <dt>시가배당률</dt>
-                <dd className="numeric">
+                <dd
+                  className="numeric"
+                  title={
+                    dividend.basisYear != null
+                      ? `${dividend.basisYear} 사업연도 확정 배당금 합 ÷ 현재가`
+                      : "최근 1년 확정 배당금 합 ÷ 현재가"
+                  }
+                >
                   {dividend.yieldRate !== null
                     ? `${formatRatio(dividend.yieldRate)}%`
                     : "-"}
