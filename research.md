@@ -147,7 +147,7 @@
 | `holdings/store.ts` | 보유종목·포트폴리오 히스토리 store — 암호화, 레거시 평문/`avgPrice` 읽기 하위호환 |
 | `holdings/valuation.ts` | 포트폴리오 평가(스냅샷 MGET) — 시세 없는 종목 null 격리·합계 제외. 일일 등락률(`totalDailyChangeRate`)은 종목별 `changeRate`로 전일 평가액을 역산·가중(히스토리 불필요·항상 가용) |
 | `holdings/stockHistory.ts` | 종목별 2년 종가 히스토리 `stock:{code}:history` — 백필(최대 8콜 페이징)/일별 갱신/upsert |
-| `holdings/stockInfo.ts` | 정보 블록 4종 — 쓰기(잡 전용 `fetchStockInfoBlocks`: 배당·손익·재무비율 병렬)와 읽기(`getStockInfo`: Redis 조합만) 경로가 한 파일에 명시 구분. 배당 블록에 확정 회차별 행 `rounds`(기준일·종류·주당배당금·지급일, §25)도 저장 — 기존 요약 필드는 무변경. **날짜 파싱 `toIsoDate`는 구분자를 걷어낸 뒤 8자리 판정**(Phase 47) — 예탁원이 같은 응답에서 `record_date`="20260331"·`divi_pay_dt`="2026/05/29"로 포맷을 섞어 보내, 구 `/^\d{8}$/` 매칭은 슬래시 지급일을 전부 놓쳐 확정 지급일까지 "미정"으로 떨어뜨렸음(2026-07-20 실측·수정). `lastPayDate`도 같은 정규화로 산출. 투자지표 파서 `buildStockIndicators`(PER/PBR/EPS/BPS·52주)는 종목 목록 펼침(`stocks/rows.ts`)과 공용이라 export (Phase 56) |
+| `holdings/stockInfo.ts` | 정보 블록 4종 — 쓰기(잡 전용 `fetchStockInfoBlocks`: 배당·손익·재무비율 병렬)와 읽기(`getStockInfo`: Redis 조합만) 경로가 한 파일에 명시 구분. **배당 블록 시가배당률 분자는 직전 사업연도 확정 배당 합**(Phase 60, `buildDividendBlock`→공용 `dividends/basis.ts` `computeDividendBasis`, 순위 잡과 동일 로직) — 12개월 롤링(TTM)이 작년 말 결산+올해 초 분기를 섞거나 이동한 중간배당을 이중계상하던 문제 해소. per-종목 배당 조회를 `DIVIDEND_BASIS_LOOKBACK_DAYS(800)`로 넓혀 결산 2회를 확보(콜 수 불변·날짜만 확장), 폴백(결산 없음·오래됨·리츠/ETF)은 최근 1년. 표시 회차 `rounds`는 `DIVIDEND_LOOKBACK_DAYS(365)`로 다시 잘라 "내 배당" 일정·지급일 알림 범위 불변. `basisYear?`(귀속 사업연도)를 블록에 저장(구 스냅샷 폴백). 배당 블록에 확정 회차별 행 `rounds`(기준일·종류·주당배당금·지급일, §25)도 저장. **날짜 파싱 `toIsoDate`는 구분자를 걷어낸 뒤 8자리 판정**(Phase 47) — 예탁원이 같은 응답에서 `record_date`="20260331"·`divi_pay_dt`="2026/05/29"로 포맷을 섞어 보내, 구 `/^\d{8}$/` 매칭은 슬래시 지급일을 전부 놓쳐 확정 지급일까지 "미정"으로 떨어뜨렸음(2026-07-20 실측·수정). `lastPayDate`도 같은 정규화로 산출. 투자지표 파서 `buildStockIndicators`(PER/PBR/EPS/BPS·52주)는 종목 목록 펼침(`stocks/rows.ts`)과 공용이라 export (Phase 56) |
 | `hotstocks/store.ts` | 핫종목 store — `market:hotStocks` + `:progress` 커서, 구간 4종 정의·라벨 |
 | `hotstocks/months.ts` | 월 문자열("YYYY-MM") 계산 — `baseMonthKst`(전월)/`addMonths`/월초·월말/표시 포맷 |
 | `hotstocks/universe.ts` | KIS 종목 마스터 zip 다운로드·EUC-KR 고정폭 파싱 — 스팩 제외·코드 오름차순. 내부 `fetchUniverse(groups)`(그룹 파라미터화)를 공개 2종이 감싼다: **`fetchHotStockUniverse`(ST-only, 불변)** — 핫종목 잡 + 종목명 검색(`market:stockMaster`) 공용이라 ST 필터를 바꾸면 두 곳이 오염됨 · **`fetchDividendRankingUniverse`(ST+EF+RT+IF, Phase 46)** — 배당률 순위 잡 전용, 한 번의 다운로드로 일반종목+배당상품을 함께 받아 레코드 `group`으로 분류. `UniverseStock.group`(`ST/EF/RT/IF`)·`DIVIDEND_PRODUCT_GROUPS`(EF/RT/IF) 노출. ETN(`EN`)은 채무증권이라 제외(2026-07-20 실측: 롯데리츠=`RT`, 맥쿼리인프라=`IF`, ACE 리츠부동산인프라액티브(0153P0)=`EF`) |
@@ -165,6 +165,7 @@
 | `alerts/feedAlerts.ts` | 공시·시장경보 알림 판정·발송 (Phase 10 3단계) — `evaluateFeedAlerts`(feeds 잡 훅 전용): 공시 8유형 키워드 분류기 `matchDisclosureCategories`(회사채는 "파생결합" 제외)·경보 상태 추출 `extractMarketWarnState`·diff `diffMarketWarnStates` 분리. 커서·상태는 발송 결과와 무관하게 전진(중복 방지 우선), 쿨다운 없음 |
 | `alerts/dividendAlerts.ts` | 배당 지급일 당일 알림 (§25) — `evaluateDividendAlerts`(feeds 잡 훅 전용): 보유종목 union(**관심종목 제외**)의 `rounds`에서 지급일=KST 오늘·주당배당금>0 회차 추출(같은 날 여러 회차는 합산) → 종목×지급일 전역 마커로 중복 차단(발송 전 기록 — 중복 방지 우선) → 보유 사용자에게만 발송(음소거 공유·이메일 단위 실패 격리). KIS 추가 호출 0 |
 | `dividends/summary.ts` | 배당 일정 리더 (§25) — **보유종목만**(`getHoldings` 기반, 관심종목 제외) `getStockInfoBlocksMap`으로 `rounds` 병합. `getDividendSchedule`(상세 목록 — 예상 지급액=주당배당금×보유수량 읽기 시 계산, 지급일 미정 먼저→미래→과거 내림차순)·`getDividendCardSummary`(홈 카드 — 지급일 ≥ KST 오늘 오름차순 상위 4, 실패 시 null) |
+| `dividends/basis.ts` | 시가배당률 분자(사업연도 귀속) 공용 순수 로직 (Phase 60, Redis·KIS 무의존) — `computeDividendBasis<T extends BasisRound>(rounds, fund, oneYearAgo, today)`: 결산(kind=="결산") 회차를 사업연도 종점으로 보고 (직전 결산, 이 결산] 창 합=basis, `basisYear`(귀속 연도)·`priorFyTotals`(폭배 대조) 반환. 폴백(결산 없음·최신 결산 400일 초과·fund)은 [oneYearAgo, today] TTM. 헬퍼 `dayDiff`·`ymdDaysBefore`·`fiscalYearLabel`·상수 2종(FISCAL_YEAR_RECENCY/WINDOW_DAYS) 함께 export. `refreshDividendRanking`(순위)·`holdings/stockInfo`(per-종목) 공용 — 규칙 분기 방지 |
 | `push/store.ts` | 웹 푸시 구독 store (Phase 10) — `push:subs:{email}` `secureJson` 암호화(endpoint가 곧 발송 권한), endpoint 기준 dedup 등록/해지/`prunePushSubscriptions`(발송 경로 전용) |
 | `push/send.ts` | 웹 푸시 발송 공용 유틸 (Phase 10) — `sendPushToEmail(email, payload)`: VAPID env 검증, 구독별 실패 격리, 410/404 자동 정리. 페이로드 계약 `{title, body, url?, tag?}`는 `public/sw.js`와 동기화 필수. 잡 훅(2·3단계)·테스트 발송 액션 공유 |
 | `watchlist/store.ts` | 관심종목 store — 암호화 (신규 키라 평문 하위호환 없음) |
@@ -333,7 +334,7 @@ QStash 스케줄 (월 1회 권장) → POST /api/jobs/refresh-dividend-ranking
       → market:dividendRanking:progress 있으면 커서 + 두 버퍼 + 가격 스냅샷 이어받기
          (Phase 46: productEntries 없는 구 progress는 무효 → 처음부터)
       → 종목별 buildEntry: 예탁원 배당일정 1콜(최근 10년) → **직전 사업연도 확정 배당 합**
-         (Phase 59, computeDividendBasis)으로 시가배당률. 결산(divi_kind=="결산") 기준일을
+         (Phase 59·60, 공용 `dividends/basis.ts` computeDividendBasis)으로 시가배당률. 결산(divi_kind=="결산") 기준일을
          사업연도 종점으로 보고 (직전 결산, 이 결산] 창의 중간·분기 배당을 합산 —
          12개월 롤링이 기준일 미세 이동으로 같은 중간배당을 이중계상하거나 서로 다른
          사업연도를 섞던 문제 해소(조선내화·CR홀딩스 실측). 폴백(basisYear=null)=최근 1년
@@ -510,7 +511,7 @@ QStash 스케줄 (매일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 * * *) → POST /a
 |---|---|---|---|---|
 | `market:detail:{kospi\|kosdaq\|usdkrw\|us10y\|oil\|gold\|dxy\|btcKrw\|btcUsd}` | `StoredMarketDetail` (snapshot+history+dailyRows+fetchedAt). dxy는 환율 6종 합성 파생 지표(§28), gold는 KIS N/GOLDLNPM, btcKrw·btcUsd는 업비트 외부 지표(§30) | ✕ | 시세 잡 | 홈·지표 상세·시장 |
 | `market:stock:{code}` | `StoredStockSnapshot` (price·changeRate·marketName·raw 전체·fetchedAt) | ✕ | 시세 잡 | 평가·관심종목·상세 |
-| `market:stockInfo:{code}` | `StoredStockInfoBlocks` (순위·배당·실적 + 배당 확정 회차 `rounds` — optional, 구 스냅샷 호환, §25) | ✕ | 시세 잡(확정 회차/신규) | `getStockInfo`·배당 일정 리더·배당 알림 훅 |
+| `market:stockInfo:{code}` | `StoredStockInfoBlocks` (순위·배당·실적 + 배당 확정 회차 `rounds` — optional, 구 스냅샷 호환, §25; 배당 `annualDividendPerShare`=직전 사업연도 합·`basisYear?` Phase 60) | ✕ | 시세 잡(확정 회차/신규) | `getStockInfo`·배당 일정 리더·배당 알림 훅 |
 | `market:lastRefreshAt` | `LastRefreshRecord` (at·trigger·ok) | ✕ | 시세 잡(전부 성공 시) | 홈 배지·각 페이지 「마지막 갱신」 |
 | `stock:{code}:history` | `StockDailyPrice[]` 2년 (날짜 오름차순) | ✕ | 시세 잡(백필/확정 갱신) | 상세 차트·기준가 확정 |
 | `kospiVolatility:history` | `KospiVolatilityRecord[]` | ✕ | 시세 잡 | 변동성 카드·상세 |

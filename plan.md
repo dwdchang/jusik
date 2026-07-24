@@ -3199,6 +3199,30 @@ interface WatchItem {
 
 ---
 
+### Phase 60 — per-종목 배당 블록도 사업연도 귀속으로 전환 (`stockInfo.ts` TTM 잔존분) (2026-07-24, 구현 완료)
+
+- **요청 근거**: 사용자 확인 — Phase 59에서 **순위 목록**만 사업연도 귀속으로 고쳤는데, 내 종목/관심 상세의 **per-종목 배당 블록**(`StockInfoBlocks` 주당배당금·시가배당률)은 여전히 TTM(최근 12개월 롤링)이라 같은 혼합·이중계상 버그가 남아 있었다. TTM = "작년 말 결산배당 + 올해 초·중 분기·중간배당"을 사업연도 구분 없이 합산하는 방식임을 재확인.
+- **현행(버그) 경로**(전):
+  - `constants.ts` `DIVIDEND_LOOKBACK_DAYS = 365` → `stockInfo.ts` `fetchKisDividends(code, kstYyyyMmDd(365), kstYyyyMmDd(0))`(오늘~365일 전)
+  - `buildDividendBlock`이 창 안 확정 회차를 **전부 합산**해 `annualDividendPerShare` → `yieldRate = annualDividendPerShare / currentPrice × 100`
+  - 표시: `components/stocks/StockInfoBlocks.tsx`(주당배당금·시가배당률). Phase 59 순위와 동일한 근본 원인·미수정 잔존분.
+- **정책(사용자 확정 — 권장안=공용 모듈 추출)**:
+  - **Phase 59 `computeDividendBasis`를 공용 모듈 `lib/dividends/basis.ts`로 추출**해 순위 잡(`refreshDividendRanking.ts`)과 `stockInfo.ts`가 **같은 사업연도 귀속 로직을 공유** — 규칙 분기 방지. 순위 잡은 10년치를 이미 받으므로 그대로 재사용, `stockInfo`만 창을 넓힌다.
+  - **lookback 확장**: per-종목 배당 조회를 `DIVIDEND_BASIS_LOOKBACK_DAYS = 800`(신설)로 조회(2사업연도 결산 + 선배당후기준일 이동 버퍼). 배당 조회는 종목당 1콜이라 **날짜 범위만 넓히면 콜 수 불변**.
+  - **폴백 동일**: 결산 회차 없음·최신 결산 400일 초과·배당상품은 최근 1년 롤링(Phase 59와 같은 규칙). 리츠·ETF는 결산 회차가 없어 자연히 폴백.
+- **구현**:
+  - `lib/dividends/basis.ts` 신설 — `computeDividendBasis`(제네릭 `<T extends BasisRound>`로 순위의 `ConfirmedRound`·stockInfo의 회차 둘 다 수용)·`dayDiff`·`ymdDaysBefore`·`fiscalYearLabel`·상수 2종을 Phase 59의 `refreshDividendRanking.ts`에서 이관. Redis·KIS 의존 없는 순수 모듈.
+  - `refreshDividendRanking.ts` — 위 함수·헬퍼·상수의 로컬 정의 삭제하고 basis 모듈 import(동작 불변). `dayDiff`는 `derivePayoutCycle`이 계속 쓰므로 import 유지.
+  - `constants.ts` — `DIVIDEND_BASIS_LOOKBACK_DAYS = 800` 신설. `DIVIDEND_LOOKBACK_DAYS = 365`는 이제 **회차 표시(rounds) 창**으로 역할 명시.
+  - `stockInfo.ts` `buildDividendBlock(rows, today, oneYearAgo)` — 확정 회차를 `{ymd,perShare,kind}`로 매핑해 `computeDividendBasis(…, fund=false, oneYearAgo, today)`로 basis 합 산출(전: 창 안 전량 합산). **`rounds`는 최근 1년(`ymd ≥ oneYearAgo`)으로 다시 잘라** "내 배당" 표시 범위·지급일 알림을 Phase 60 이전과 동일하게 유지. `basisYear`를 블록에 저장.
+  - 타입 — `store.ts` 저장 블록·`stockInfo.ts` `StockDividendInfo`에 `basisYear?` 추가(구 스냅샷 폴백), 주석 갱신. 읽기 경로는 `{...blocks.dividend}` 스프레드라 자동 전달.
+  - `StockInfoBlocks.tsx` — "최근 1년 주당배당금" 라벨을 `basisYear`가 있으면 "N 사업연도 주당배당금"으로, 시가배당률에 basis 근거 `title` 추가.
+- **회귀 점검(확인 완료)**: `getDividendSchedule`(내 배당 탭)은 저장된 `rounds`를 그대로 나열 → rounds를 최근 1년으로 잘라 표시 범위 불변. `dividendAlerts`는 `payDate===today`만 필터 → 무관. `annualDividendPerShare` 합산 소비자는 상세 블록 1곳뿐. 순위 잡은 로직 이관만이라 산출 불변.
+- **아키텍처 준수**: 잡 6종·KIS 호출 경로·Redis 키·Server Action 시그니처 불변. 스냅샷(`market:stockInfo:{code}`) 스키마는 선택 필드 `basisYear?` 1개 추가. **KIS 콜 수 불변**(날짜 범위만 확장). 실데이터 정정은 다음 `refresh-market-data` 회차부터.
+- **상태**: **구현 완료(2026-07-24)**. build·lint·tsc 통과.
+
+---
+
 ## 7. PR 분리 권장 (선택)
 
 | PR | Phase | 리뷰 포인트 |
