@@ -65,20 +65,17 @@
 | 경로 | 역할 |
 |---|---|
 | `layout.tsx` | 루트 레이아웃. Geist 폰트, `tokens.css`+`globals.css` import, 테마 FOUC 방지 인라인 스크립트(`data-theme` 선결정) |
-| `page.tsx` | 홈 대시보드. 세션 검사 → 허용 외 이메일이면 access-denied 화면 → 카드 8종 데이터 병렬 조회(`Promise.all`) → `IndexDashboard` 렌더. staleness 배지 판정도 여기서 수행. **갱신 지연 인시던트**(`resolveRefreshIncident`, §52)가 있으면 per-card 배지를 전부 억제하고 헤더 상태 표시로 통합(`incident` prop 전달) |
+| `page.tsx` | 홈 대시보드. 세션 검사 → 허용 외 이메일이면 access-denied 화면 → 카드 7종 데이터 병렬 조회(§58에서 보유종목 카드 삭제)(`Promise.all`) → `IndexDashboard` 렌더. staleness 배지 판정도 여기서 수행. **갱신 지연 인시던트**(`resolveRefreshIncident`, §52)가 있으면 per-card 배지를 전부 억제하고 헤더 상태 표시로 통합(`incident` prop 전달) |
 | `login/page.tsx` | Google 로그인 버튼 (Server Action으로 `signIn("google")`). 세션 있으면 `/` redirect, 인라인 `GoogleIcon` SVG 로컬 정의 |
 | `indices/kospi` `kosdaq` `usdkrw/page.tsx` | 지표 상세 3종 — 전부 `ensureAllowedSession()` 후 `<IndexDetailScreen market=…>` 한 줄 위임(제목 `<h1>`도 §36에서 공용 컴포넌트에 들어가 3화면 동시 적용). usdkrw만 children으로 `<DollarIndexSection>`(달러 인덱스, §28) 추가. us10y·oil·gold·btc 개별 상세는 §31에서 제거(시장 카드 접힘 목록으로 대체) |
 | `indices/market/page.tsx` | 글로벌 지표 요약(§37에서 표시명 `시장`→`글로벌 지표` — 라우트·컴포넌트명·Redis 키는 `market` 유지). 금리·유가·금 미니 카드 3종 + 비트코인 커스텀 카드 — 원/달러는 §28에서 홈 카드로 분리, 수출입 카드는 §30에서 제거). `getMarketDetails` MGET 1회(5키). 카드마다 "일별 기록" `<details>` 접힘 목록(§31 — KIS 3종은 `IndexDailyList` 재사용, 비트코인은 원화 목록 인라인)·개별 상세 링크 없음. 비트코인 카드는 원화 대표값+달러 병기 |
 | `indices/trade/[yyyymm]/page.tsx` | 수출입 상세(Phase 17-5) — 월 합계 3지표 + 품목별(국가 무관, HS 4단위 상위 15+기타) + 국가별(상위 8+기타, 클릭 시 품목 팝업). `getTradeDetailView` 1회. `/feeds` 수출입 탭의 월 링크로 진입 |
 | `indices/kospi-volatility/page.tsx` | 변동성 상세 — 월별 평균 막대 차트 + 당월 일별 기록 목록 |
-| `holdings/page.tsx` | 보유종목 목록·요약·연초 이후 추이·일별 기록(`DailyHistoryList` 접힘 목록, §29)·종목 추가 폼(`<details>` 토글, 종목명 검색 `<StockSearchInput>`) |
-| `holdings/[symbolCode]/page.tsx` | 보유종목 상세 — 평가 요약·수정/삭제(`?edit=1`)·2년 추이·일별 기록(`DailyHistoryList` 접힘 목록+종가 열, §29)·정보 블록 4종 + 인라인 알림 토글(`AlertToggleButton`) |
-| `holdings/actions.ts` | Server Actions: add/update/delete. **형식 검증만** 하고 KIS 호출 없음 (§6.4). `addHoldingAction`은 폼의 `from=watchlist` 불리언 히든값이 있으면 `/watchlist?mode=holdings`로 복귀(Phase 56 — 종목 목록 화면 보유 탭에도 같은 추가 폼이 있음, 경로는 서버가 조립). 3종 모두 `/watchlist`도 함께 `revalidatePath` |
-| `watchlist/page.tsx` | **내 종목 목록**(Phase 56 — 제목 `내 종목`, 홈 "관심종목" 카드에서 진입) — **3탭 단일 구조**(`?mode=all\|holdings\|watchlist` 서버 탭 `TABS`, 기본 `all`, 핫종목·배당과 동형). 표 폼은 배당률 순위 표 관례(`.tableScroll`+`.stockTable`, **종목명 열 sticky** 가로 스크롤, 값 숫자 열 우측 `.numCell`). **모두·보유종목 탭 = 종목명+6열**(현재가·등락률(전일 대비)·수익률·수익금·평균단가·총 매입금액), **관심종목 탭 = 종목명+4열**(현재가·등락률·수익률·기준일). 모두 탭의 관심종목 행은 보유 전용 3열이 `-`. **전 탭 수익률 내림차순**(`sortRowsByReturnRate`, 수익률 null은 맨 뒤·그들끼리 종목명순). 보유·관심에 같은 종목이 있으면 **2행으로 따로** 표시(합치지 않음 — 사용자 확정). 모두 탭에서만 보유종목 **종목명 글자색** 강조(`--color-holding-name`, 라이트/다크 2벌 — 등락 색과 겹치지 않게 종목명 열에만). 데이터는 활성 탭 것만 로드(`getHoldings`+`getPortfolioValuation` / `getWatchlist`)하고 시세는 두 목록 합집합 `getStockSnapshots` 1회(+평가 내부 MGET 1회) — KIS 직접 호출 없음. 추가 폼은 탭별 고유(보유 탭 `+ 보유종목 추가`=수량·총 매입금액 → `addHoldingAction`에 `from=watchlist` 히든값 / 관심 탭 `+ 관심종목 추가`=기준일 → `addWatchItemAction`), 모두 탭엔 없음. 종목명 클릭 시 펼침(`StockRowItem`, 아래) |
-| `watchlist/rows.ts` | 표 행 모델 `StockRow`(kind=holding\|watch, 보유 전용·관심 전용 필드는 반대쪽에서 null) + `buildHoldingRows`/`buildWatchRows`/`sortRowsByReturnRate` (Phase 56). 펼침 지표(52주 최고·최저+현재가 대비 괴리율·PER/PBR·시가총액)는 스냅샷 `raw`에서 여기서만 뽑아 행에 실어, 클라이언트가 KIS 원본 타입을 몰라도 되게 한다(`buildStockIndicators` 재사용 + `parseNum`). 오늘 손익은 평가금액을 전일 대비 등락률로 역산해 계산 |
-| `watchlist/StockRowItem.tsx` | Client — 표 1행 + 펼침 상세 행(`colSpan`, 배당률 순위 `DividendRankRow`와 같은 패턴, 클릭 시 추가 조회 0). 공통=52주 최고/최저·PER/PBR·시가총액, 보유=수량·평가금액·오늘 손익, 관심=기준가(직전 거래일 잠정 표기)·등록 기준일·등록 후 경과일 + **수정·삭제**(Phase 23의 `?edit=1` 편집 모드를 대체) + 상세 보기 링크. 기준일 편집은 **2단계**(Phase 57 A안) — 평상시 `수정`/`삭제` 버튼만, `수정`을 눌러야 기준일 입력+`저장`/`취소`가 열리고 행을 접으면 편집 상태 초기화 |
-| `watchlist/[symbolCode]/page.tsx` | 관심종목 상세 — 등록일 이후 추이·정보 블록 + 인라인 알림 토글 (보유종목 상세와 구조 동일) |
-| `watchlist/actions.ts` | Server Actions: add/update(기준일 변경 시 기준가 null 리셋)/delete. 3종 모두 폼의 `mode` 히든값을 `watchlistPath()`가 화이트리스트(`holdings`\|`watchlist`)로 검사해 **경로를 서버가 조립**한 뒤 그 탭으로 성공·실패 redirect(Phase 56 — 입력값을 경로에 넣지 않아 오픈 리다이렉트 없음, `fail()`이 `?`/`&` 분기 결합). Phase 23의 `?edit=1` 편집 모드는 폐지 |
+| `stocks/page.tsx` | **내 종목 목록**(Phase 56, Phase 58에서 `/watchlist`→`/stocks`로 개명·통합 — 제목 `내 종목`, 홈 "내 종목" 카드에서 진입) — **4탭 단일 구조**(`?mode=all\|holdings\|watchlist\|balance` 서버 탭 `TABS`, 기본 `all`, 핫종목·배당과 동형). 표 폼은 배당률 순위 표 관례(`.tableScroll`+`.stockTable`, **종목명 열 sticky** 가로 스크롤, 값 숫자 열 우측 `.numCell`). **모두·보유종목 탭 = 종목명+6열**(현재가·등락률(전일 대비)·수익률·수익금·평균단가·총 매입금액), **관심종목 탭 = 종목명+4열**(현재가·등락률·수익률·기준일), **잔고 탭 = 표가 아니라 `<HoldingsOverview>`**(구 `/holdings` 화면 본문 통째, §58). 모두 탭의 관심종목 행은 보유 전용 3열이 `-`. **전 탭 수익률 내림차순**(`sortRowsByReturnRate`, 수익률 null은 맨 뒤·그들끼리 종목명순). 보유·관심에 같은 종목이 있으면 **2행으로 따로** 표시(합치지 않음 — 사용자 확정). 모두 탭에서만 보유종목 **종목명 글자색** 강조(`--color-holding-name`, 라이트/다크 2벌). 데이터는 활성 탭 것만 로드(`getHoldings`+`getPortfolioValuation` / `getWatchlist`, **잔고 탭은 목록·시세를 읽지 않고 `HoldingsOverview`가 직접 읽는다**)하고 시세는 두 목록 합집합 `getStockSnapshots` 1회(+평가 내부 MGET 1회) — KIS 직접 호출 없음. 추가 폼은 **관심종목 탭(기준일 → `addWatchItemAction`)과 잔고 탭(수량·총 매입금액 → `addHoldingAction`)에만**(§58에서 보유종목 탭 추가 폼 제거 — 보유 등록 동선은 잔고 탭 하나), 모두·보유 탭엔 없음. 종목명 클릭 시 펼침(`StockRowItem`, 아래) |
+| `stocks/[symbolCode]/page.tsx` | **종목 상세 통합 라우트**(Phase 58 — 구 `holdings/[symbolCode]`+`watchlist/[symbolCode]`). 같은 종목이 보유·관심에 동시에 있을 수 있어 **`?kind=holding\|watch`로 어느 쪽 상세인지 가른다**(A안). kind가 없거나 그쪽 목록에 없으면 **보유 → 관심 순 폴백**, 둘 다 없으면 `/stocks` redirect. 보유=평가 요약 6지표·보유 내역 수정/삭제(`?kind=holding&edit=1`)·2년 평가금액 추이·일별 기록(`DailyHistoryList`+종가 열, §29) / 관심=현재가·기준일·기준가·등록 기준 수익률 3지표·등록일 이후 기준가 대비 추이. 공통=정보 블록 4종 + 인라인 알림 토글(`AlertToggleButton`) + 양쪽에 다 있을 때만 뜨는 반대쪽 상세 전환 줄 |
+| `stocks/rows.ts` | 표 행 모델 `StockRow`(kind=holding\|watch, 보유 전용·관심 전용 필드는 반대쪽에서 null) + `buildHoldingRows`/`buildWatchRows`/`sortRowsByReturnRate` (Phase 56). `detailHref`는 §58에서 `/stocks/{code}?kind=…`. 펼침 지표(52주 최고·최저+현재가 대비 괴리율·PER/PBR·시가총액)는 스냅샷 `raw`에서 여기서만 뽑아 행에 실어, 클라이언트가 KIS 원본 타입을 몰라도 되게 한다(`buildStockIndicators` 재사용 + `parseNum`). 오늘 손익은 평가금액을 전일 대비 등락률로 역산해 계산 |
+| `stocks/StockRowItem.tsx` | Client — 표 1행 + 펼침 상세 행(`colSpan`, 배당률 순위 `DividendRankRow`와 같은 패턴, 클릭 시 추가 조회 0). 공통=52주 최고/최저·PER/PBR·시가총액, 보유=수량·평가금액·오늘 손익, 관심=기준가(직전 거래일 잠정 표기)·등록 기준일·등록 후 경과일 + **수정·삭제**(Phase 23의 `?edit=1` 편집 모드를 대체) + 상세 보기 링크. 기준일 편집은 **2단계**(Phase 57 A안) — 평상시 `수정`/`삭제` 버튼만, `수정`을 눌러야 기준일 입력+`저장`/`취소`가 열리고 행을 접으면 편집 상태 초기화 |
+| `stocks/actions.ts` | Server Actions 6종(Phase 58에서 구 `holdings/actions.ts`+`watchlist/actions.ts` 병합) — 보유 add/update/delete + 관심 add/update/delete. **형식 검증만** 하고 KIS 호출 없음 (§6.4). 폼의 `mode` 히든값을 화이트리스트(`holdings\|watchlist\|balance`)로 검사해 **경로를 서버가 조립**(`stocksPath()`)한 뒤 그 탭으로 성공·실패 redirect — 입력값을 경로에 넣지 않아 오픈 리다이렉트 없음. 보유 상세 경로는 `/stocks/{code}?kind=holding`, 보유 삭제 후에는 `?mode=balance`로 복귀. `revalidatePath`는 `/stocks`(+상세) |
 | `hot-stocks/page.tsx` | 핫종목 — 서버 모드 탭 `[당일 등락률(기본) \| 주간 등락률 \| 월간 핫종목]`(`?mode=weekly\|monthly`). 당일/주간: `market:dailyFluctuation`/`market:weeklyFluctuation` 상위 30을 월간과 동일한 6열 폼(순위/종목명+ᴷ·ᴰ 위첨자/종목코드 열/등락률/기준 종가/현재가, §20)으로 표시+`resolveStaleness` 배지 — 공용 `FluctuationView`(variant별 데이터 소스·문구만 교체). 위첨자는 `market:stockMaster`를 읽어 코드→시장 매핑(`loadMarketByCode`, 실패·미등재 시 생략), 기준 종가 없는 구 스냅샷은 "—". 기준 문구는 전 탭 월간 형식: "… 상위 30종목 · 기준: {전일\|5거래일 전} 종가 · 대상 전체시장 · 갱신: …". 월간: 구간 수익률 TOP 100(`?period=1m\|3m\|6m\|12m`, 구간 링크는 `?mode=monthly&period=…` — mode 유지, §20 회귀 수정). 뷰는 async 서버 서브컴포넌트(`FluctuationView`/`MonthlyView`) |
 | `feeds/page.tsx` | 뉴스·공시 상세 (Phase 17-2b) — `ensureAllowedSession` + `getDisclosureBoard`·`getNewsBoard`·`getTradeStatsView`(17-4) + `FeedTabsClient`(뉴스/공시/수출입 탭+게시판+아코디언). 홈 "뉴스·공시" 요약 카드에서 이동 |
 | `dividends/page.tsx` | 배당 상세 (Phase 25·43·44·45·47) — **3탭 단일 구조**(Phase 47, `?mode=stock\|product\|schedule` 서버 탭 `DIVIDEND_TABS`, 기본 stock). 헤더 아래 탭 바 하나로 통합 — 활성 탭에 필요한 데이터만 로드하고 각주도 탭별로 갈린다. ① **일반종목**·② **배당상품** = **배당률 순위** 표(Phase 43·46, `getDividendRankingView(category)`·순위 메타 `RANK_META`): 시가배당률 TOP 100, 8열(순위·종목명·현재가·배당률·주당배당금·지급주기·연속배당·비고) 공용. 배당상품(ETF·리츠·인프라펀드) 탭은 우선주·폭배·주식배당·액면분할 보정이 없어 비고 항상 "—". 순위·종목명 2열 sticky 가로 스크롤. **종목명 클릭 시 지난 배당 기록 펼침**(Phase 51, `DividendRankRow` 클라이언트 — 데이터 행 + colSpan 상세 행으로 `entry.history`를 회차 표(기준일·주당배당금·**실배당률**·지급일·**지급 주기**)로 렌더, 추가 조회 0·구 스키마는 "기록 준비 중" 폴백). **회차 실배당률**(Phase 55, `formatRoundYield`)은 그 회차 주당배당금을 **현재가(`entry.price`)로 나눈 실측값**(연 환산 없음) — 회차 합이 헤더 시가배당률과 자연히 맞아떨어져 합산 착시 제거(Phase 53 연 환산은 반기 종목 두 회차를 실제의 2배로 오해시켜 폐기). **"지급 주기" 열**(Phase 55)은 예탁원 `divi_kind`(결산/중간, 주기 아님) 대신 메인 표와 같은 `entry.payoutCycle`(간격 중앙값 판정, `formatPayoutCycle`)을 표시 — 종목 단위 단일값이라 회차마다 같은 값 반복(`round.kind`는 스냅샷엔 남되 화면 미사용). **배당률 옆 괄호**(Phase 54·55 B안, `roundYearOrdinals(history, payoutCycle)`): `recordDate` 연도별로 묶어 관측 배당을 기준일 오름차순으로 세어 `순번/그해개수`(1/2·2/2), 그해 1회뿐이면 폐기(중간 회차 누락 시 분모 과소 가능은 사용자 판단·확정). 단 **`payoutCycle==="연"`이면 회차마다 "(연)"** 표기(그해 관측 회차 수가 아닌 간격 중앙값 기준이라, 데이터 누락으로 1회만 잡힌 분기·반기가 "(연)"으로 오표기되지 않음). 상세 행은 **빈 순위 셀(`.stickyRank`) 1 + colSpan(COLUMN_COUNT-1)**로 순위 열을 비운 채 열 그리드를 유지하고 종목명 열부터 시작(Phase 54, `.detailCell` 좌측 패딩=종목명 패딩만). 표시 포매터는 `ranking/format.ts`(클라이언트 안전, `summary.ts`에서 분리)에서 서버·클라이언트 공용. 비고 = 우/현+주N%/폭배(DART 딥링크)·배당률 `*`=액면분할 보정(Phase 44). **폼은 핫종목 표 스타일과 통일**(Phase 45): 헤더 가운데·micro 톤, 값 숫자 열 우측(`.numCell`)·종목명 좌측, 종목명 뒤 ᴷ/ᴰ 시장 위첨자(`entry.market` 직접 사용)·링크 없음. ③ **내 배당** = **보유종목 확정 배당** 목록(`getDividendSchedule`, **보유종목만**) 한 줄씩(종목명(**링크 없음**, Phase 47 오터치 방지)·배당종류·기준일·지급일(미정 표기)·주당배당금×보유수량·예상 지급액). 각주: 순위 탭 2건(시가배당률 정의·`+` 연수, 비고 우·현+주·폭배·`*` 분할 보정), 내 배당 탭 1건(예상액=현재 보유수량/세전 15.4%). 홈 "배당" 카드에서 이동 |
@@ -104,11 +101,10 @@
 
 | 파일 | 커버 범위 | 변형 |
 |---|---|---|
-| `app/loading.tsx` | 홈 + 자기 `loading.tsx` 없는 하위 라우트 폴백 | dashboard, 카드 8 |
+| `app/loading.tsx` | 홈 + 자기 `loading.tsx` 없는 하위 라우트 폴백 | dashboard, 카드 7 |
 | `app/login/loading.tsx` | 로그인 (홈 그리드 상속 차단용) | detail, 1 |
 | `app/indices/loading.tsx` | kospi·kosdaq·usdkrw·market·kospi-volatility·trade/[yyyymm] **6종** | detail+chart, 6 |
-| `app/holdings/loading.tsx` | 목록 + `[symbolCode]` 상세 | detail+chart, 5 |
-| `app/watchlist/loading.tsx` | 목록 + `[symbolCode]` 상세 | detail+chart, 5 |
+| `app/stocks/loading.tsx` | 내 종목 목록(4탭) + `[symbolCode]` 상세 | detail+chart, 5 |
 | `app/hot-stocks` · `feeds` · `dividends` · `alerts` · `dlq` `/loading.tsx` | 각 1화면 | detail, 5~10 |
 
 새 라우트를 추가할 때 위 디렉터리 아래면 `loading.tsx`가 자동 상속되고, 새 최상위 섹션이면
@@ -150,9 +146,8 @@
 | `market/staleness.ts` | KST 시간창 가드(`isWithinKisCallWindow` 09:00~18:40) + **스케줄 인지형 배지 판정** `resolveStaleness` — 시세 잡 스케줄 상수(`SCHEDULE_MINUTES`: 09:00~15:30 10분 + 15:40 + 18:15)로 "이미 완료됐어야 할 최근 슬롯(`lastDueRefreshMs`, 유예 20분)"을 구해, fetchedAt이 그보다 오래됐을 때만 배지(정상 휴지 구간엔 안 뜸). 지연 경과로 warn/critical. `SCHEDULE_MINUTES`는 외부 QStash 등록과 동기화 필수. **`resolveRefreshIncident`**(§52) — `market:lastRefreshAt` 레코드(`at`=마지막 성공, `attemptedAt`=마지막 실행 시작)로 홈 전반 갱신 지연 인시던트 판정: 예정 슬롯을 놓쳤고 `attemptedAt`도 그 이전이면 `stalled`(잡 미실행=QStash 미발화 추정), `attemptedAt`은 그 이후면 `failing`(실행됐으나 실패). `since`(멈춘 시각)·`missedSlots`(`countMissedSlots`)·`nextSlotMs`(`nextScheduledRefreshMs`) 동반 |
 | `holdings/store.ts` | 보유종목·포트폴리오 히스토리 store — 암호화, 레거시 평문/`avgPrice` 읽기 하위호환 |
 | `holdings/valuation.ts` | 포트폴리오 평가(스냅샷 MGET) — 시세 없는 종목 null 격리·합계 제외. 일일 등락률(`totalDailyChangeRate`)은 종목별 `changeRate`로 전일 평가액을 역산·가중(히스토리 불필요·항상 가용) |
-| `holdings/summary.ts` | 홈 보유종목 카드 요약 (실패 시 null) |
 | `holdings/stockHistory.ts` | 종목별 2년 종가 히스토리 `stock:{code}:history` — 백필(최대 8콜 페이징)/일별 갱신/upsert |
-| `holdings/stockInfo.ts` | 정보 블록 4종 — 쓰기(잡 전용 `fetchStockInfoBlocks`: 배당·손익·재무비율 병렬)와 읽기(`getStockInfo`: Redis 조합만) 경로가 한 파일에 명시 구분. 배당 블록에 확정 회차별 행 `rounds`(기준일·종류·주당배당금·지급일, §25)도 저장 — 기존 요약 필드는 무변경. **날짜 파싱 `toIsoDate`는 구분자를 걷어낸 뒤 8자리 판정**(Phase 47) — 예탁원이 같은 응답에서 `record_date`="20260331"·`divi_pay_dt`="2026/05/29"로 포맷을 섞어 보내, 구 `/^\d{8}$/` 매칭은 슬래시 지급일을 전부 놓쳐 확정 지급일까지 "미정"으로 떨어뜨렸음(2026-07-20 실측·수정). `lastPayDate`도 같은 정규화로 산출. 투자지표 파서 `buildStockIndicators`(PER/PBR/EPS/BPS·52주)는 종목 목록 펼침(`watchlist/rows.ts`)과 공용이라 export (Phase 56) |
+| `holdings/stockInfo.ts` | 정보 블록 4종 — 쓰기(잡 전용 `fetchStockInfoBlocks`: 배당·손익·재무비율 병렬)와 읽기(`getStockInfo`: Redis 조합만) 경로가 한 파일에 명시 구분. 배당 블록에 확정 회차별 행 `rounds`(기준일·종류·주당배당금·지급일, §25)도 저장 — 기존 요약 필드는 무변경. **날짜 파싱 `toIsoDate`는 구분자를 걷어낸 뒤 8자리 판정**(Phase 47) — 예탁원이 같은 응답에서 `record_date`="20260331"·`divi_pay_dt`="2026/05/29"로 포맷을 섞어 보내, 구 `/^\d{8}$/` 매칭은 슬래시 지급일을 전부 놓쳐 확정 지급일까지 "미정"으로 떨어뜨렸음(2026-07-20 실측·수정). `lastPayDate`도 같은 정규화로 산출. 투자지표 파서 `buildStockIndicators`(PER/PBR/EPS/BPS·52주)는 종목 목록 펼침(`stocks/rows.ts`)과 공용이라 export (Phase 56) |
 | `hotstocks/store.ts` | 핫종목 store — `market:hotStocks` + `:progress` 커서, 구간 4종 정의·라벨 |
 | `hotstocks/months.ts` | 월 문자열("YYYY-MM") 계산 — `baseMonthKst`(전월)/`addMonths`/월초·월말/표시 포맷 |
 | `hotstocks/universe.ts` | KIS 종목 마스터 zip 다운로드·EUC-KR 고정폭 파싱 — 스팩 제외·코드 오름차순. 내부 `fetchUniverse(groups)`(그룹 파라미터화)를 공개 2종이 감싼다: **`fetchHotStockUniverse`(ST-only, 불변)** — 핫종목 잡 + 종목명 검색(`market:stockMaster`) 공용이라 ST 필터를 바꾸면 두 곳이 오염됨 · **`fetchDividendRankingUniverse`(ST+EF+RT+IF, Phase 46)** — 배당률 순위 잡 전용, 한 번의 다운로드로 일반종목+배당상품을 함께 받아 레코드 `group`으로 분류. `UniverseStock.group`(`ST/EF/RT/IF`)·`DIVIDEND_PRODUCT_GROUPS`(EF/RT/IF) 노출. ETN(`EN`)은 채무증권이라 제외(2026-07-20 실측: 롯데리츠=`RT`, 맥쿼리인프라=`IF`, ACE 리츠부동산인프라액티브(0153P0)=`EF`) |
@@ -184,7 +179,7 @@
 | `indices/SummaryCard` | Server | **홈 요약 카드 공용 프리미티브** — value/change/placeholder/staleness 배지(§35에서 `footnote` prop 폐지 — 홈 각주 전면 제거). 카드 전체가 Link |
 | `indices/MarketCard` | Server | 「글로벌 지표」 전용 카드 (§33, 제목은 §37에서 `시장`→`글로벌 지표`) — 금리·유가·금·비트코인(USD) 4행 동등 목록, 행마다 지표명·값·등락률. 지표명은 §34에서 축약(`美 금리`·`WTI`·`GOLD`·`BTC`) — 4행 모두 값 열은 숫자만(전부 USD 기준이라 §37에서 BTC의 `($)`도 제거, 통화 안내는 상세 화면 각주에만). 각주는 §35에서 제거, 등락률만 `--text-caption-sm`(12px)로 1pt 축소. §30 추가 지표는 null이면 행 생략. 골격·배지는 SummaryCard composes, 리스트 폼은 WatchlistCard와 동일 관례, 카드 전체 `/indices/market` 링크 |
 | `indices/HotStocksCard` | Server | 핫종목 전용 카드 — 당일 등락률 TOP 4 리스트 (§33에서 4행 통일, SummaryCard 미사용) |
-| `indices/WatchlistCard` | Server | 홈 **「내 종목」** 카드 (§24, 제목은 §57에서 `관심종목`→`내 종목` — 이동 대상 `/watchlist`가 보유·관심 3탭 화면이 됐다. **본문은 여전히 관심종목만**, 보유는 별도 카드) — 수익률 상위 4종목 리스트(§33), 행마다 등록 기준일 대비 수익률 + 전일 등락률(§35에서 괄호 제거 — `.daily` 11px로 구분). 골격·staleness 배지는 SummaryCard composes(`STALENESS_LABELS` export 재사용), 리스트 폼은 HotStocksCard와 동일 |
+| `indices/WatchlistCard` | Server | 홈 **「내 종목」** 카드 (§24, 제목은 §57에서 `관심종목`→`내 종목` — 이동 대상은 §58에서 `/watchlist`→`/stocks`(보유·관심·잔고 4탭). **본문은 여전히 관심종목만**이고, §58에서 홈 보유종목 카드가 삭제돼 보유 요약은 잔고 탭에서 본다) — 수익률 상위 4종목 리스트(§33), 행마다 등록 기준일 대비 수익률 + 전일 등락률(§35에서 괄호 제거 — `.daily` 11px로 구분). 골격·staleness 배지는 SummaryCard composes(`STALENESS_LABELS` export 재사용), 리스트 폼은 HotStocksCard와 동일 |
 | `indices/DividendCard` | Server | 배당 일정 전용 카드 (§25) — 다가오는 지급일 상위 4행(§33, 종목명·지급일 MM/DD·주당배당금), **보유종목 기준**. 골격·배지·리스트 폼은 WatchlistCard와 동일 관례, 카드 전체 `/dividends` 링크 |
 | `indices/IndexDetailScreen` | Server(async) | **지표 상세 3종(코스피·코스닥·원달러) 공용 화면** — `getIndexDetail`/`getOverseasDetail` 분기, 헤더(홈 아이콘 + 지표명 `<h1>`(§36) + 마지막 갱신)+카드+차트+일별 리스트+푸터. `children` 슬롯(일별 시세와 푸터 사이 — usdkrw의 달러 인덱스 섹션용, §28) |
 | `indices/DollarIndexSection` | Server(async) | 원/달러 상세 하단 달러 인덱스 섹션 (§28) — `getOverseasDetail("DXY")` → IndexCard+차트+근사치 각주. 첫 갱신 전엔 준비 중 문구 |
@@ -194,8 +189,9 @@
 | `indices/IndexChartClient` → `IndexLineChart` | Client | Recharts 래핑 패턴: Client 셸이 `dynamic(…, { ssr: false })` + 스켈레톤 → 실제 차트. 국내 지수는 `ComposedChart`로 지수 선 + 거래량/거래대금 막대 토글(§50) |
 | `indices/BtcChartClient` → `BtcLineChart` | Client | 동일 패턴, 비트코인 전용 (§30) — `currency` prop으로 축·툴팁 포맷 분기(원화 M/B 축약, 달러 소수 2자리). 호출부는 시장 카드뿐(비트코인 개별 상세·`BtcDetailSection`은 §31에서 제거) |
 | `indices/VolatilityChartClient` → `VolatilityChart` | Client | 동일 패턴, BarChart |
-| `holdings/HoldingsChartClient` → `HoldingsChart` | Client | 동일 패턴, LineChart + 수익률%↔원단위 토글. **보유종목 홈/상세·관심종목 상세 3곳 공용** (관심종목에선 totalValue 자리에 종가를 넣어 재활용) |
-| `holdings/DailyHistoryList` | Client | 일별 기록 목록 (§29) — 접힘 기본 `<details>`(네이티브, JS 무관) + 월 단위 페이지네이션(`useState` 월 인덱스, 기록 있는 달만 이전/다음, 양 끝 disabled). 서버가 히스토리 전체를 props로 주입. 보유종목 홈/상세 2곳 공용 — 상세만 `close` 종가 열 추가. rise/fall 판정은 로컬 사본(`resolveDirection`을 클라이언트 번들에 안 넣기 위함) |
+| `holdings/HoldingsChartClient` → `HoldingsChart` | Client | 동일 패턴, LineChart + 수익률%↔원단위 토글. **잔고 탭·종목 상세(보유/관심) 공용** (관심종목에선 totalValue 자리에 종가를 넣어 재활용) |
+| `holdings/DailyHistoryList` | Client | 일별 기록 목록 (§29) — 접힘 기본 `<details>`(네이티브, JS 무관) + 월 단위 페이지네이션(`useState` 월 인덱스, 기록 있는 달만 이전/다음, 양 끝 disabled). 서버가 히스토리 전체를 props로 주입. 잔고 탭·종목 상세(보유) 2곳 공용 — 상세만 `close` 종가 열 추가. rise/fall 판정은 로컬 사본(`resolveDirection`을 클라이언트 번들에 안 넣기 위함) |
+| `holdings/HoldingsOverview` | Server | **잔고 탭 본문**(Phase 58) — 구 `/holdings` 목록 화면의 본문(요약 4지표·연초 이후 추이 차트·일별 기록·종목 추가 폼·보유종목 카드 목록)을 그대로 옮긴 async 서버 컴포넌트. `email`만 받아 `getHoldings`+`getPortfolioHistory`+`getPortfolioValuation`을 스스로 읽고(전부 Redis), 평가 실패는 내부 배너로 격리한다. 화면 껍데기(page·container·header·footer)는 품는 쪽(`app/stocks/page.tsx`)이 담당 |
 | `stocks/StockInfoBlocks` | Server | 정보 블록 4종(시총·배당·실적·투자지표) — 보유·관심 상세 공용, `formatRatio` export |
 | `stocks/StockSearchInput` | Client | 등록 폼 종목명 검색 입력 — 디바운스 250ms→`searchStocks` 액션, 결과 드롭다운(키보드 ↑↓/Enter/Esc), 선택 시 hidden `symbolCode` 채우고 배지 표시. 보유·관심 추가 폼 공용 |
 | `feeds/FeedTabsClient` | **Client** | 뉴스/공시/수출입 3탭 + 게시판 + 아코디언 (Phase 17-2/17-3/17-4). 데이터는 Server가 props로 주입, Client는 탭 선택·아코디언 open/close만. 3탭 모두 실동작(공시=제출인·접수일+DART 원문, 뉴스=출처·발행일+원문 새 탭 / 기본 선택 뉴스, 수출입=`TradeBoard` 최신월 3지표+YoY 요약 + 최근 13개월 표, 아코디언 없음). **17-2b에서 홈 전체폭→`/feeds/page.tsx`로 렌더 위치만 이동**. ~~`stocks/StockDisclosures`~~는 A안 철회로 **삭제** |
@@ -457,22 +453,23 @@ QStash 스케줄 (매일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 * * *) → POST /a
 페이지가 부르는 내부 REST API는 없다 — Route Handler는 auth·잡 2종뿐이고, 모든
 페이지는 Server Component에서 lib 함수를 직접 호출한다.
 
-- **홈** `app/page.tsx`: `getDashboardData`(detail 7종 MGET) + 카드 요약 5종(보유·
-  변동성·핫종목·관심종목·배당) + `getLastRefreshRecord` 병렬 → staleness 배지 판정 →
+- **홈** `app/page.tsx`: `getDashboardData`(detail 7종 MGET) + 카드 요약 4종(변동성·
+  핫종목·관심종목·배당 — §58에서 보유종목 카드·요약 삭제) + `getLastRefreshRecord` 병렬 → staleness 배지 판정 →
   `IndexDashboard`.
 - **지표 상세**: `IndexDetailScreen` → `getIndexDetail`/`getOverseasDetail` → detail 1건.
   usdkrw는 children `DollarIndexSection`이 `market:detail:dxy` 1건 추가 조회 (§28).
   글로벌 지표(`/indices/market`)는 금리·유가·금·비트코인 2키를 합쳐 MGET 1회(5키) — 카드별
   일별 기록도 이 `dailyRows`를 그대로 접힘 목록으로 렌더(추가 페치 없음, §31).
-- **보유종목**: `getHoldings`(복호화) → `getPortfolioValuation`(`market:stock:*` MGET) +
-  `getPortfolioHistory`. 상세는 + `getStockInfo`(스냅샷+정보 블록 조합) + `getStockHistory`.
-  일별 기록 목록(`DailyHistoryList`)은 홈=`getPortfolioHistory`·상세=`getStockHistory`
-  결과를 그대로 재사용 — 추가 페치 없음 (§29).
-- **내 종목 목록(`/watchlist`)**: 활성 탭에 따라 `getWatchlist` / `getHoldings`+
-  `getPortfolioValuation`을 읽고, 시세는 두 목록 합집합 `getStockSnapshots` 1회로
-  받아 `buildWatchRows`(`computeWatchReturnRate`)·`buildHoldingRows`로 행을 만든 뒤
-  수익률 내림차순 정렬 (Phase 56). 관심종목 상세는 보유종목 상세와 동일 구성에
-  기준가 대비 차트.
+- **잔고 탭(`/stocks?mode=balance`, §58)**: `HoldingsOverview`가 `getHoldings`(복호화) →
+  `getPortfolioValuation`(`market:stock:*` MGET) + `getPortfolioHistory`. 일별 기록
+  목록(`DailyHistoryList`)은 이 `getPortfolioHistory` 결과를 그대로 재사용 — 추가 페치 없음 (§29).
+- **내 종목 목록(`/stocks`)**: 활성 탭에 따라 `getWatchlist` / `getHoldings`+
+  `getPortfolioValuation`을 읽고(잔고 탭은 둘 다 읽지 않는다 — 위 항목), 시세는 두 목록
+  합집합 `getStockSnapshots` 1회로 받아 `buildWatchRows`(`computeWatchReturnRate`)·
+  `buildHoldingRows`로 행을 만든 뒤 수익률 내림차순 정렬 (Phase 56).
+- **종목 상세(`/stocks/[symbolCode]`, §58)**: `getHoldings`+`getWatchlist`로 `?kind` 해석 →
+  `getStockInfo`(스냅샷+정보 블록 조합) + `getStockHistory` + `getMutedSymbols`.
+  보유는 수량 반영 평가금액 추이·일별 기록, 관심은 기준가 대비 추이.
 - **홈 "뉴스·공시" 카드**: `getTodayFeedCounts(email)`(feeds/homeFeed) — 오늘 공시·뉴스 건수
   집계 → `FeedSummaryCard`. 홈 `Promise.all`에 `.catch(() => 기본 0)` 격리로 합류.
 - **배당 일정(`/dividends`, §25)**: `getDividendSchedule(email)` — `getHoldings`(보유종목만) →
@@ -490,7 +487,7 @@ QStash 스케줄 (매일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 * * *) → POST /a
 
 ### 4.4 사용자 쓰기 경로 (Server Actions)
 
-- `holdings/actions.ts`·`watchlist/actions.ts`: `requireEmail`(세션+허용 검사, 실패
+- `stocks/actions.ts`(§58에서 보유·관심 액션 6종 병합): `requireEmail`(세션+허용 검사, 실패
   redirect `/login`) → 형식 검증(실패 시 `?error=코드` redirect, page의 ERROR_MESSAGES
   맵이 표시) → store 저장(암호화) → `revalidatePath` → redirect.
 - 검증 규칙: 종목코드 `^\d{6}$` · 수량 양의 정수 · 총 매입금액 > 0 · 관심종목 기준일은
@@ -589,7 +586,7 @@ QStash 스케줄 (매일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 * * *) → POST /a
   `IndexSnapshot`/`IndexSeries`/`IndexDailyRow`/`IndexDetailData`/`IndexDashboardData`,
   `PriceDirection`, 변동성 3종, `KIS_DATA_NOTICE`, `INDICATOR_NAMES`.
 - `types/holdings.ts` — `Holding`(totalCost 모델), `PortfolioDailyRecord`,
-  `HoldingValuation`/`PortfolioValuation`, `HoldingsCardSummary`.
+  `HoldingValuation`/`PortfolioValuation`. (`HoldingsCardSummary`는 §58 홈 보유종목 카드 삭제와 함께 제거)
 - `types/watchlist.ts` — `WatchItem` (priceAtRegistration/priceBasisDate 잠정·확정 모델).
 - store별 Stored* 타입은 각 store 파일에서 export (market/store, hotstocks/store).
 
@@ -668,14 +665,15 @@ QStash 스케줄 (매일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 * * *) → POST /a
 3. **"YYYYMMDD"→"YYYY-MM-DD" 변환(`toIsoDate`) 3벌** — `stockInfo.ts`(형식 검사 포함),
    `volatility.ts`(검사 없음), `stockHistory.parseChartRows` 인라인.
 4. **날짜 더하기 헬퍼 2벌** — `stockHistory.addDaysYyyyMmDd`(YYYYMMDD)와
-   `watchlist/actions.addDaysIsoDate`(ISO). 같은 목적, 포맷만 다름.
+   `stocks/actions.addDaysIsoDate`(ISO). 같은 목적, 포맷만 다름.
 5. **전월 계산 2벌** — `volatility.previousMonth`는 `hotstocks/months.addMonths(m, -1)`과
    동일 기능. `stockInfo.previousQuarterYymm`도 유사 계열(분기 단위).
 6. **수익률 계산식 `(현재-기준)/기준*100` 인라인 반복** — `valuation.ts`(정본),
-   holdings page 일별 리스트·chartPoints, holdings 상세 chartPoints, watchlist 상세
-   chartPoints, `computeWatchReturnRate`. 산식 정책이 바뀌면 전부 손봐야 한다.
-7. **Server Action 보일러플레이트 중복** — `requireEmail`/`fail`이 holdings·watchlist
-   actions.ts에 각각 정의. ERROR_MESSAGES 맵도 page마다 부분 중복.
+   `HoldingsOverview`의 일별 리스트·chartPoints, 종목 상세의 보유·관심 chartPoints,
+   `computeWatchReturnRate`. 산식 정책이 바뀌면 전부 손봐야 한다.
+7. ~~**Server Action 보일러플레이트 중복**~~ — §58에서 `stocks/actions.ts` 한 파일로
+   합치며 `requireEmail`/`fail`/경로 조립이 1벌로 정리됐다. ERROR_MESSAGES 맵은 여전히
+   목록 page와 상세 page에 부분 중복.
 8. **`getIndexDetail`과 `getOverseasDetail`이 사실상 동일 코드** — 타입 시그니처만 다름.
    `INDICATOR_TO_DETAIL_KEY`가 이미 IndicatorId 전체를 커버하므로 통합 가능.
 9. **`normalizeEmail` 2벌** (holdings/store, watchlist/store), **`sleep` 3벌**
@@ -686,8 +684,8 @@ QStash 스케줄 (매일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 * * *) → POST /a
     staleness 판정 자체도 홈 `resolveStaleness`(장중 시간창)와 핫종목
     `isHotStocksStale`(기준월)로 이원화되어 있다.
 11. **관심종목 잠정 기준가 판정식 `priceBasisDate < registeredAt` 3곳** —
-    `fillRegistrationPrices`(needsFill), `watchlist/rows.ts`(buildWatchRows),
-    watchlist 상세 page.
+    `fillRegistrationPrices`(needsFill), `stocks/rows.ts`(buildWatchRows),
+    종목 상세 page(관심 분기).
 12. **차트 축·그리드·툴팁 Recharts 설정** — IndexLineChart/VolatilityChart/HoldingsChart
     3곳에 유사 코드 (tick 스타일·margin 등). 디자인 변경 시 3곳 동시 수정.
 13. **잡 라우트 신설 시 2곳 동기화** — 새 `/api/jobs/*`는 ① `verifyJobRequest`
@@ -699,8 +697,8 @@ QStash 스케줄 (매일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 * * *) → POST /a
     하나씩 열거하다 신설 라우트를 빠뜨려 307→/login으로 새는 사고가 실제로 나서,
     `api/jobs/` 접두사 하나로 묶었다 (잡은 전부 스스로 인증하므로 안전).
 14. **chartPoints 매핑 3벌** — `{ fullDate, date: slice(5).replace("-","/"), totalValue,
-    returnRate }` 변환이 holdings 목록·상세, watchlist 상세에서 거의 동일하게 반복 —
-    새 차트 화면 추가 시 4번째 사본이 생기기 쉽다 (§8.6 수익률 산식 반복과 같은 지점).
+    returnRate }` 변환이 `HoldingsOverview`와 종목 상세의 보유·관심 분기에서 거의 동일하게
+    반복 — 새 차트 화면 추가 시 4번째 사본이 생기기 쉽다 (§8.6 수익률 산식 반복과 같은 지점).
 
 ---
 

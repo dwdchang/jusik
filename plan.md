@@ -3153,6 +3153,27 @@ interface WatchItem {
 - **아키텍처 준수**: 표시 로직·스타일만 변경. Server Action 시그니처(`updateWatchItemAction`의 `id`·`mode`·`registeredAt`)·잡 6종·Redis 키 전부 불변.
 - **상태**: **구현 완료(2026-07-24)**. build·lint·tsc 통과.
 
+### Phase 58 — 잔고 탭 추가 + 보유/관심 경로 통합(`/stocks`) + 홈 보유종목 카드 삭제 (2026-07-24, 구현 완료)
+
+- **요청 근거**: 사용자 요청 — ① 내 종목 화면에 **잔고 탭**을 더하고, 그 안에 홈 "보유종목" 카드의 상세화면(`/holdings`) 본문을 그대로 넣는다 ② **홈 보유종목 카드는 삭제** ③ 리다이렉트가 아니라 **새 경로를 만들어 보유·관심 경로를 하나로 합친다** ④ 보유종목 탭의 추가 버튼 제거.
+- **정책(사용자 확정)**:
+  - **새 경로 `/stocks`**: 구 `/holdings`·`/watchlist`(목록·상세 4개 라우트)를 `/stocks`(4탭 목록) + `/stocks/[symbolCode]`(통합 상세)로 합친다. **구 경로는 리다이렉트 스텁 없이 삭제**(사용자 확정) — 북마크·기존 푸시 알림의 구 링크는 404가 된다.
+  - **상세는 A안(`?kind=holding|watch`)**: 같은 종목을 보유·관심에 동시에 담을 수 있어 `/stocks/{code}` 하나로는 어느 쪽 상세인지 정해지지 않는다. kind 없거나 그쪽 목록에 없으면 **보유 → 관심 순 폴백**, 둘 다 없으면 `/stocks` redirect. 보유=평가금액(수량 반영) 2년 추이, 관심=등록일 이후 기준가 대비 추이로 **차트 의미가 섞이지 않는다**(B안=한 페이지에 둘 다 표시는 차트 기준을 새로 정해야 해 배제).
+  - **잔고 탭은 통째 복사**: 요약 4지표·연초 이후 추이·일별 기록·종목 추가 폼·보유종목 카드 목록 전부. **보유종목 탭과 보유 목록이 두 탭에 중복 표시되는 것은 의도한 대로**(사용자 확정).
+  - **보유 등록 동선은 잔고 탭 하나**: 보유종목 탭의 `+ 보유종목 추가` 폼 제거 → `addHoldingAction`의 `from=watchlist` 불리언 복귀 로직도 폐기하고, 관심종목 쪽과 같은 `mode` 화이트리스트(`holdings|watchlist|balance`) 방식으로 통일.
+  - **탭 순서**: `모두 / 보유종목 / 관심종목 / 잔고`.
+- **구현**:
+  - `app/watchlist/` → `app/stocks/`로 이동(git mv, 히스토리 보존) 후 `page.tsx`에 4번째 탭 `balance` 추가 — 잔고 탭은 표·시세를 읽지 않고 `<HoldingsOverview>`만 렌더(활성 탭 것만 로드하는 기존 관례 유지). 각주(footer)도 탭별로 갈린다.
+  - `components/holdings/HoldingsOverview.tsx`(+`.module.css`) 신설 — 구 `app/holdings/page.tsx` 본문을 옮긴 async 서버 컴포넌트(`email`만 받아 Redis 3종을 스스로 읽고 평가 실패는 내부 배너로 격리). 복붙 대신 컴포넌트로 뽑아 이중 유지보수를 피한다.
+  - `app/stocks/[symbolCode]/page.tsx` — 구 보유·관심 상세 2개를 `?kind` 분기 한 파일로 병합. 양쪽에 다 있는 종목이면 헤더 아래에 **반대쪽 상세 전환 줄** 표시. 보유 편집 링크는 `?kind=holding&edit=1`. CSS는 두 모듈을 합치고 요약 그리드만 `.summary`(보유 2열)/`.summaryTriple`(관심 3열) 변형으로 분리.
+  - `app/stocks/actions.ts` — 보유·관심 Server Action 6종 병합(`requireEmail`/`fail`/경로 조립 1벌). `stocksPath()` 화이트리스트에 `balance` 합류, 보유 삭제 후 복귀는 `?mode=balance`, `revalidatePath`는 `/stocks`(+상세).
+  - 홈 보유종목 카드 삭제 — `IndexDashboard`(카드 블록·`holdingsSummary` prop·`DashboardStaleness.holdings`), `app/page.tsx`(요약 호출·staleness), `app/loading.tsx`(스켈레톤 8→7), `lib/holdings/summary.ts`·`types/holdings.HoldingsCardSummary` 삭제.
+  - 링크 갱신 — `WatchlistCard`(`/stocks`), `dividends/page.tsx` 빈 상태(`/stocks?mode=balance`), **푸시 알림 딥링크** `alerts/evaluate.ts`(`?mode=balance`·`?mode=watchlist`)·`alerts/feedAlerts.ts`(`/stocks/{code}?kind=…`), `rows.ts`의 `detailHref`.
+  - `loading.tsx`는 holdings·watchlist 2개 → `app/stocks/loading.tsx` 1개(새 최상위 섹션이라 없으면 prefetch에서 빠진다, §40).
+  - **부수 수정**: 잔고 탭 보유 카드의 「평가손익」 방향 색이 `.holdingStat dd`(0,1,1) > `.rise`(0,1,0) 특정도에 눌려 죽어 있던 것을 §57과 같은 스코프 선택자로 살렸다.
+- **아키텍처 준수**: 라우트·링크 문자열 이동이 전부다 — **Redis 키·Server Action 시그니처·잡 6종·KIS 호출 경로는 전부 불변**. 잔고 탭 데이터도 Redis 읽기만(§2 대원칙).
+- **상태**: **구현 완료(2026-07-24)**. build·lint·tsc 통과.
+
 ---
 
 ## 7. PR 분리 권장 (선택)
