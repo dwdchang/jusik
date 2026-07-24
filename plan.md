@@ -3236,6 +3236,26 @@ interface WatchItem {
 
 ---
 
+### Phase 62 — 배당상품 배당률 하이브리드(리츠·인프라=직전 캘린더 연도, ETF=TTM) (2026-07-24, 구현 완료)
+
+- **요청 근거**: 사용자 제안 — 배당상품 순위의 NH프라임리츠 배당률이 TTM이라 "올해 초(2026-05-31 결산) + 작년 말(2025-11-30 중간)"을 합산해 시점이 헷갈린다. "작년 한 해"만 합산해 표기하면 명확할 것. Phase 61 검토를 이어 방식 선택.
+- **검토(실데이터 시뮬레이션, 2026-07-24 스냅샷)**:
+  - **리츠**(회차 전부 `divi_kind="결산"`, 반기): 직전 캘린더 연도(2025년) 합이 반기 2회를 온전히 담아 명확·안정 — NH프라임리츠 38.1%→**19.6%**(2026 급증분 837원 제외), 신한글로벌액티브리츠 25.8%→25.5%·KB스타리츠 22.8%→23.4%(안정 배당이라 거의 불변, 부작용 없이 명확성만 획득).
+  - **월배당 ETF**(회차 `divi_kind=null`): 순위 상위 다수가 연속 배당 2~3년차(상장 1~2년) **신규 상품** — 직전 캘린더 연도 방식이면 그해 배당이 부분(6~8회)이라 **과소계상→순위 왜곡**. TTM은 최근 12개월 완전분이라 신규도 정확. → ETF는 TTM 유지가 맞다.
+  - 트레이드오프 = **명확성(캘린더 연도) vs 신규 상품 완전성(TTM)**. 상품 특성이 갈려 단일 규칙이 부적합.
+- **정책(사용자 확정 2026-07-24 — 하이브리드)**:
+  - 일반종목(ST) = 사업연도 귀속(기존 Phase 59) · 리츠·인프라펀드(RT·IF) = **직전 완결 캘린더 연도 배당 합** · 월배당 ETF(EF) = TTM. 유니버스 `group`으로 판정.
+- **구현**:
+  - `basis.ts` — `computeDividendBasis`의 `fund: boolean` 인자를 **`mode: DividendBasisMode`(`"fiscal"|"calendar"|"ttm"`)**로 전환(신규 export 타입). `calendar` 모드 신설 — 직전 완결 캘린더 연도(`today.year-1`) `[0101, 1231]` 기준일 회차 합, 그해 배당 없으면 TTM 폴백. `fiscal`은 기존 로직(폴백 공용 헬퍼 `ttmFallback`로 정리). docstring·폴백 설명 갱신.
+  - `refreshDividendRanking.ts` `buildEntry` — `basisMode = group==="ST"?"fiscal":group==="EF"?"ttm":"calendar"`로 결정해 전달. `fund`(우선주·폭배·분할 스킵)는 그대로. `DividendBasisMode` import.
+  - `stockInfo.ts` `buildDividendBlock` — 두 번째 인자 `false`→`"fiscal"`(동작 불변, per-종목은 그룹 정보 없음). 리츠 per-종목 처리는 백로그 유지.
+  - `DividendRankRow.tsx` — basis 라벨을 `instrumentType==="fund"`면 `"{basisYear}년 배당"`, 아니면 `"{basisYear} 사업연도"`, 폴백이면 `"최근 1년"`으로 분기(헤더 툴팁·펼침 캡션 공용 `basisLabel`로 통일).
+- **회귀 점검**: 일반종목·월배당 ETF 산출 불변(모드 이름만 바뀜, 동작 동일). 리츠·인프라만 캘린더 연도로 변경. `store.ts` 스키마 불변(`dividendBasisYear?` 재사용 — 캘린더면 "YYYY" 저장). per-종목(`stockInfo`)·폭배(`priorFyTotals`) 무영향. build·lint·tsc 통과.
+- **아키텍처 준수**: 잡 6종·KIS 호출 경로·Redis 키·스냅샷 스키마 불변, KIS 콜 수 불변. **실데이터 정정은 다음 `refresh-dividend-ranking` 회차(또는 `?force=true`)부터**.
+- **상태**: **구현 완료(2026-07-24)**. build·lint·tsc 통과.
+
+---
+
 ## 7. PR 분리 권장 (선택)
 
 | PR | Phase | 리뷰 포인트 |

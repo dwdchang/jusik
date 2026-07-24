@@ -73,49 +73,79 @@ export interface BasisRound {
 export interface DividendBasis<T extends BasisRound> {
   /** basis(시가배당률 분자)에 산입되는 회차 — 입력 회차 부분집합(확장 필드 보존) */
   basisRounds: T[];
-  /** 귀속 사업연도 "YYYY" — 사업연도 기준일 때만, 폴백(TTM)이면 null */
+  /** 귀속 사업연도/연도 "YYYY" — 사업연도(fiscal)·캘린더(calendar) 기준일 때만, 폴백(TTM)이면 null */
   basisYear: string | null;
-  /** 직전 사업연도 총액들 — 폭배 판정 대조용(폴백이면 빈 배열) */
+  /** 직전 사업연도 총액들 — 폭배 판정 대조용(폴백·캘린더이면 빈 배열) */
   priorFyTotals: number[];
 }
 
 /**
- * 배당 basis 산출 — 사업연도 귀속(폴백 시 최근 12개월 롤링).
- * 결산(`kind==="결산"`) 회차를 각 사업연도의 종점으로 보고 (직전 결산, 이 결산] 창의
- * 회차(중간·분기 포함)를 합쳐 그 사업연도 배당으로 삼는다. basis = 가장 최근 완결
- * 사업연도.
+ * basis 산출 방식 (Phase 62).
+ * - `"fiscal"` — 사업연도 귀속(결산 종점 창). 일반종목(ST). 조건 불충족 시 TTM 폴백.
+ * - `"calendar"` — 직전 완결 캘린더 연도(작년 한 해) 배당 합. 리츠·인프라펀드(RT·IF) —
+ *   반기·연 결산이 전부 `divi_kind="결산"`이라 사업연도 종점 로직이 반기만 잡는 문제를
+ *   피하고 "작년 한 해"로 시점을 명확히 한다. 그 해 배당이 없으면 TTM 폴백.
+ * - `"ttm"` — 최근 12개월 롤링. 월배당 ETF(EF) — 결산 회차 없음·신규 상품 완전성 우선.
+ */
+export type DividendBasisMode = "fiscal" | "calendar" | "ttm";
+
+/**
+ * 배당 basis 산출 — `mode`별 분기 (Phase 62). 기본은 사업연도 귀속(`fiscal`).
+ * `fiscal`: 결산(`kind==="결산"`) 회차를 각 사업연도의 종점으로 보고 (직전 결산, 이 결산]
+ * 창의 회차(중간·분기 포함)를 합쳐 그 사업연도 배당으로 삼는다. basis = 가장 최근 완결
+ * 사업연도. `calendar`: 직전 완결 캘린더 연도(작년) 배당 합. `ttm`: 최근 12개월 롤링.
  *
- * 폴백(TTM, `basisYear=null`): ⓐ 결산 회차가 없는 종목(중간·분기 배당만) ⓑ 최신 결산이
- * 오늘로부터 FISCAL_YEAR_RECENCY_DAYS 초과(최근 배당 끊김) ⓒ `fund=true`(배당상품 —
- * 월·분기 분배금이라 사업연도 개념이 약함). 폴백 창은 [oneYearAgo, today].
+ * TTM 폴백(`basisYear=null`)이 되는 경우: `fiscal`에서 ⓐ 결산 회차가 없는 종목(중간·분기
+ * 배당만) ⓑ 최신 결산이 오늘로부터 FISCAL_YEAR_RECENCY_DAYS 초과(최근 배당 끊김);
+ * `calendar`에서 작년 배당이 하나도 없음(신규 상장 등); `ttm`은 항상. 폴백 창은
+ * [oneYearAgo, today].
  *
  * @param rounds     확정 회차(YYYYMMDD 오름차순일 필요 없음 — 내부에서 창으로 거른다)
- * @param fund       배당상품 여부(true면 항상 TTM 폴백)
- * @param oneYearAgo 폴백 창 시작 "YYYYMMDD"
+ * @param mode       basis 산출 방식 — "fiscal"(일반종목)·"calendar"(리츠·인프라)·"ttm"(ETF)
+ * @param oneYearAgo TTM 폴백 창 시작 "YYYYMMDD"
  * @param today      기준일(오늘) "YYYYMMDD"
  */
 export function computeDividendBasis<T extends BasisRound>(
   rounds: T[],
-  fund: boolean,
+  mode: DividendBasisMode,
   oneYearAgo: string,
   today: string
 ): DividendBasis<T> {
+  const ttmFallback = (): DividendBasis<T> => ({
+    basisRounds: rounds.filter((r) => r.ymd > oneYearAgo && r.ymd <= today),
+    basisYear: null,
+    priorFyTotals: [],
+  });
+
+  if (mode === "ttm") {
+    return ttmFallback();
+  }
+
+  if (mode === "calendar") {
+    // 직전 완결 캘린더 연도(작년 한 해) 기준일 배당 합 — 리츠·인프라펀드 (Phase 62).
+    // 그 해 배당이 하나도 없으면(신규 상장 등) TTM 폴백.
+    const prevYear = String(Number(today.slice(0, 4)) - 1);
+    const start = `${prevYear}0101`;
+    const end = `${prevYear}1231`;
+    const basisRounds = rounds.filter((r) => r.ymd >= start && r.ymd <= end);
+    if (basisRounds.length === 0) {
+      return ttmFallback();
+    }
+    return { basisRounds, basisYear: prevYear, priorFyTotals: [] };
+  }
+
+  // mode === "fiscal" — 사업연도 귀속(결산 종점 창), 조건 불충족 시 TTM 폴백
   const settlementYmds = rounds
     .filter((r) => r.kind === "결산")
     .map((r) => r.ymd)
     .sort();
   const latestSettlement = settlementYmds[settlementYmds.length - 1];
   const useFiscal =
-    !fund &&
     latestSettlement !== undefined &&
     dayDiff(latestSettlement, today) <= FISCAL_YEAR_RECENCY_DAYS;
 
   if (!useFiscal) {
-    return {
-      basisRounds: rounds.filter((r) => r.ymd > oneYearAgo && r.ymd <= today),
-      basisYear: null,
-      priorFyTotals: [],
-    };
+    return ttmFallback();
   }
 
   // 결산 i를 종점으로 하는 사업연도 창 (직전 결산, 이 결산]. 첫 결산은 직전이 없어

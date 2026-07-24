@@ -146,7 +146,9 @@ function buildDividendBlock(
   // 시가배당률 분자 — 직전 사업연도 확정 배당 합(폴백 시 최근 1년) (Phase 60).
   // 결산(divi_kind==="결산") 회차로 사업연도를 구분해, 12개월 롤링이 중간배당 기준일
   // 이동으로 같은 배당을 이중계상하거나 작년 말+올해 초를 섞던 문제를 없앤다.
-  // fund 구분값은 넘기지 않는다 — 배당상품(리츠·ETF)은 결산 회차가 없어 자연히 폴백된다.
+  // 항상 "fiscal"(사업연도 귀속) — per-종목은 그룹(리츠·ETF) 정보가 없다. 결산 회차 없는
+  // 종목(ETF 등)은 fiscal 내부에서 자연히 TTM 폴백된다. 리츠를 보유·관심에 담을 경우
+  // 반기 과소계상 위험은 순위 잡의 캘린더 모드(Phase 62)와 별개 백로그로 남긴다.
   const basisRounds = confirmed
     .map((row) => ({
       ymd: toYmd(row.record_date),
@@ -158,7 +160,7 @@ function buildDividendBlock(
     );
   const { basisRounds: basis, basisYear } = computeDividendBasis(
     basisRounds,
-    false,
+    "fiscal",
     oneYearAgo,
     today
   );

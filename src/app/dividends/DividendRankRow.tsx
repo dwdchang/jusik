@@ -91,9 +91,15 @@ export function DividendRankRow({ entry }: { entry: DividendRankingEntry }) {
   const roundLabels = roundYearOrdinals(history, entry.payoutCycle);
   const detailId = `dividend-history-${entry.code}`;
   const market = MARKET_SUP[entry.market];
-  // 배당률 basis 근거 — 사업연도 귀속이면 "N 사업연도", 폴백이면 "최근 1년" (Phase 59)
+  // 배당률 basis 근거 — 일반종목은 "N 사업연도", 배당상품(리츠·인프라)은 "N년 배당"(직전
+  // 캘린더 연도, Phase 62), 폴백이면 "최근 1년" (Phase 59)
   const basisYear = entry.dividendBasisYear ?? null;
-  const basisLabel = basisYear !== null ? `${basisYear} 사업연도` : "최근 1년";
+  const basisLabel =
+    basisYear === null
+      ? "최근 1년"
+      : entry.instrumentType === "fund"
+        ? `${basisYear}년 배당`
+        : `${basisYear} 사업연도`;
   const yieldTitle = [
     `배당률 = ${basisLabel} 확정 배당금 합 ÷ 현재가`,
     entry.splitAdjusted
@@ -171,19 +177,11 @@ export function DividendRankRow({ entry }: { entry: DividendRankingEntry }) {
               <table className={styles.historyTable}>
                 <caption className={styles.historyCaption}>
                   {entry.name} 지난 배당 기록 ({history.length}회)
-                  {basisYear !== null ? (
-                    <span className={styles.basisNote}>
-                      {" "}
-                      — 배당률은 <strong>{basisYear} 사업연도</strong>(강조 행)
-                      확정 배당 합 기준
-                    </span>
-                  ) : (
-                    <span className={styles.basisNote}>
-                      {" "}
-                      — 배당률은 <strong>최근 1년</strong>(강조 행) 확정 배당 합
-                      기준
-                    </span>
-                  )}
+                  <span className={styles.basisNote}>
+                    {" "}
+                    — 배당률은 <strong>{basisLabel}</strong>(강조 행) 확정 배당 합
+                    기준
+                  </span>
                 </caption>
                 <thead>
                   <tr>

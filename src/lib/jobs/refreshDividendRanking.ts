@@ -31,7 +31,11 @@ import {
   type UniverseStock,
 } from "@/lib/hotstocks/universe";
 import { parseNum } from "@/lib/indices/kisMapper";
-import { computeDividendBasis, dayDiff } from "@/lib/dividends/basis";
+import {
+  computeDividendBasis,
+  dayDiff,
+  type DividendBasisMode,
+} from "@/lib/dividends/basis";
 
 /**
  * 배당률 순위 갱신 잡 파이프라인 — Phase 43 (plan.md §43).
@@ -322,10 +326,14 @@ function buildEntry(
     }
   }
 
-  // 배당 basis — 사업연도 귀속(폴백 시 최근 1년 롤링) (Phase 59)
+  // 배당 basis 방식 — 그룹별 (Phase 62). 일반종목(ST)=사업연도, 리츠·인프라(RT·IF)=직전
+  // 캘린더 연도(반기 결산이 전부 "결산"이라 사업연도 종점 로직이 반기만 잡는 문제 회피),
+  // 월배당 ETF(EF)=TTM(결산 회차 없음·신규 상품 완전성). fund 폴백은 각 모드 내부에서.
+  const basisMode: DividendBasisMode =
+    stock.group === "ST" ? "fiscal" : stock.group === "EF" ? "ttm" : "calendar";
   const { basisRounds, basisYear, priorFyTotals } = computeDividendBasis(
     confirmedRounds,
-    fund,
+    basisMode,
     oneYearAgo,
     today
   );
