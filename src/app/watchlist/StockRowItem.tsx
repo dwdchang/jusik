@@ -90,6 +90,8 @@ export function StockRowItem({
   today: string;
 }) {
   const [expanded, setExpanded] = useState(false);
+  // 기준일 편집은 "수정"을 눌러야 열린다 (§57) — 행을 접으면 편집 상태도 되돌린다
+  const [editing, setEditing] = useState(false);
   const detailId = `stock-detail-${row.key.replace(":", "-")}`;
   const isHolding = row.kind === "holding";
   const indicators = row.indicators;
@@ -103,7 +105,10 @@ export function StockRowItem({
             className={`${styles.nameButton}${
               highlightHolding && isHolding ? ` ${styles.holdingName}` : ""
             }`}
-            onClick={() => setExpanded((v) => !v)}
+            onClick={() => {
+              setExpanded((v) => !v);
+              setEditing(false);
+            }}
             aria-expanded={expanded}
             aria-controls={detailId}
           >
@@ -258,25 +263,47 @@ export function StockRowItem({
               </DetailItem>
             </dl>
 
-            {/* 관심종목 편집 — Phase 23의 `?edit=1` 인라인 폼을 여기로 옮겼다 (§56) */}
+            {/* 관심종목 편집 — Phase 23의 `?edit=1` 인라인 폼을 펼침으로 옮겼고(§56),
+                날짜 입력 상시 노출은 §57에서 "수정" 버튼 뒤로 한 단계 숨겼다.
+                평상시엔 수정·삭제 버튼만 보이고, 수정을 눌러야 기준일 입력이 열린다 */}
             {!isHolding && row.watchId !== null ? (
               <div className={styles.detailActions}>
-                <form action={updateWatchItemAction} className={styles.editForm}>
-                  <input type="hidden" name="id" value={row.watchId} />
-                  <input type="hidden" name="mode" value={mode} />
-                  <input
-                    name="registeredAt"
-                    className={styles.input}
-                    type="date"
-                    defaultValue={row.registeredAt ?? today}
-                    max={today}
-                    required
-                    aria-label={`${row.name} 등록 기준일`}
-                  />
-                  <button type="submit" className={styles.secondaryButton}>
-                    기준일 변경
+                {editing ? (
+                  <form
+                    action={updateWatchItemAction}
+                    className={styles.editForm}
+                  >
+                    <input type="hidden" name="id" value={row.watchId} />
+                    <input type="hidden" name="mode" value={mode} />
+                    <input
+                      name="registeredAt"
+                      className={styles.input}
+                      type="date"
+                      defaultValue={row.registeredAt ?? today}
+                      max={today}
+                      required
+                      aria-label={`${row.name} 등록 기준일`}
+                    />
+                    <button type="submit" className={styles.secondaryButton}>
+                      저장
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.secondaryButton}
+                      onClick={() => setEditing(false)}
+                    >
+                      취소
+                    </button>
+                  </form>
+                ) : (
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={() => setEditing(true)}
+                  >
+                    수정
                   </button>
-                </form>
+                )}
                 <form action={deleteWatchItemAction}>
                   <input type="hidden" name="id" value={row.watchId} />
                   <input type="hidden" name="mode" value={mode} />

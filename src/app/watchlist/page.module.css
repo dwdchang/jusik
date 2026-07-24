@@ -224,12 +224,13 @@
   border-top: 1px solid var(--color-border);
 }
 
-/* 종목명 sticky — 스크롤 시 뒤 열이 비치지 않도록 배경을 깐다 */
+/* 종목명 sticky — 스크롤 시 뒤 열이 비치지 않도록 배경을 깐다.
+   열 구분선은 두지 않는다(§57 — 핫종목 표와 같은 폼, 종목명과 현재가 사이에
+   세로선이 끼어 보인다는 사용자 요청) */
 .stickyName {
   position: sticky;
   left: 0;
   background-color: var(--color-surface);
-  border-right: 1px solid var(--color-border);
 }
 
 .stockTable .stickyName {
@@ -420,15 +421,25 @@
   color: var(--color-primary);
 }
 
-.rise {
+/* 방향 색(상승 빨강/하락 파랑) — 등락률·수익률·수익금·오늘 손익.
+   표 기본 규칙 `.stockTable td`(0,1,1)와 `.detailItem dd`(0,1,1)가 단독 `.rise`(0,1,0)를
+   이겨 색이 죽으므로, 셀 색을 입히는 쪽은 반드시 상위 클래스로 스코프한다 (§57 회귀 수정 —
+   배당률 순위 표 `.rankTable .rankYield`와 같은 관례) */
+.rise,
+.stockTable .rise,
+.detailCell .rise {
   color: var(--color-rise);
 }
 
-.fall {
+.fall,
+.stockTable .fall,
+.detailCell .fall {
   color: var(--color-fall);
 }
 
-.flat {
+.flat,
+.stockTable .flat,
+.detailCell .flat {
   color: var(--color-flat);
 }
 
