@@ -3,11 +3,30 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
+import { fetchStockCloseAsOf } from "@/lib/api/fsc/stockPrice";
 import { STOCK_HISTORY_WINDOW_DAYS } from "@/lib/api/kis/constants";
 import { isEmailAllowed } from "@/lib/auth/allowedEmails";
 import { todayKstDate } from "@/lib/date/kst";
 import { getHoldings, saveHoldings } from "@/lib/holdings/store";
+import { getStockMaster } from "@/lib/market/store";
 import { getWatchlist, saveWatchlist } from "@/lib/watchlist/store";
+
+/**
+ * 등록 시점에 종목명을 즉시 채운다 — 잡이 채우던 종목명은 이미 잡이 하루 1회
+ * 저장하는 `market:stockMaster`(코드↔종목명, Redis)에 전 종목이 들어 있으므로
+ * 외부 API 호출 없이 여기서 확정할 수 있다 (plan.md §63). 마스터가 없거나 미등재
+ * 종목이면 "" — 기존처럼 다음 갱신 회차에 잡이 KIS로 채운다.
+ */
+async function resolveStockName(symbolCode: string): Promise<string> {
+  try {
+    const master = await getStockMaster();
+    return (
+      master?.items.find((item) => item.code === symbolCode)?.name ?? ""
+    );
+  } catch {
+    return "";
+  }
+}
 
 /**
  * 종목 화면(`/stocks`) Server Actions (§58) — 구 `holdings/actions.ts`와
@@ -90,15 +109,16 @@ export async function addHoldingAction(formData: FormData): Promise<void> {
     fail("duplicate_code", returnPath);
   }
 
-  // KIS 실존 검증·종목명 조회·히스토리 백필은 하지 않는다 — 사용자 액션은 임의 시각에
-  // 발생해 KIS 허용 시간 규칙과 충돌하므로 형식 검증만 수행하고, 종목명·시세·히스토리는
-  // 다음 갱신 회차에서 잡이 채운다. 잘못된 코드는 「시세 없음」으로 표기된다 (§11.10-A4).
+  // 종목명은 stockMaster(Redis)에서 즉시 채운다(§63). 시세·평가금액은 보유 레코드에
+  // 슬롯이 없고 `market:stock` 스냅샷(잡 소유 키) 경유라, 잘못된 코드는 「시세 없음」으로
+  // 표기되고 다음 갱신 회차에서 잡이 채운다 (§11.10-A4).
+  const name = await resolveStockName(symbolCode);
   const now = new Date().toISOString();
 
   holdings.push({
     id: crypto.randomUUID(),
     symbolCode,
-    name: "",
+    name,
     quantity,
     totalCost,
     createdAt: now,
@@ -209,18 +229,25 @@ export async function addWatchItemAction(formData: FormData): Promise<void> {
     fail("duplicate_code", basePath);
   }
 
-  // KIS 실존 검증·종목명 조회·기준가 확정은 하지 않는다 — 사용자 액션은 임의 시각에
-  // 발생해 KIS 허용 시간 규칙과 충돌하므로 형식 검증만 수행하고, 종목명은 잡이
-  // 채우고 기준가는 잡이 stock:{code}:history에서 확정한다 (§15.4, §11.10-A4).
+  // 종목명은 stockMaster(Redis)에서, 기준가는 금융위 주식시세정보 API(시간창 없는
+  // EOD 시세)로 등록 시점에 즉시 채운다 (§63). 둘 다 실패는 격리해 폴백(이름 ""·
+  // 기준가 null)하며, 그때는 기존처럼 다음 갱신 회차에 잡이 stock:{code}:history에서
+  // 재확정한다 (§15.4, §11.10-A4). 금융위는 영업일+1 확정이라 등록 기준일 이하 가장
+  // 최근 종가를 쓴다(직전 거래일일 수 있어 잠정 — 잡이 승격 재확인).
+  const name = await resolveStockName(symbolCode);
+  const close = await fetchStockCloseAsOf(
+    symbolCode,
+    registeredAt.replace(/-/g, "")
+  );
   const now = new Date().toISOString();
 
   items.push({
     id: crypto.randomUUID(),
     symbolCode,
-    name: "",
+    name,
     registeredAt,
-    priceAtRegistration: null,
-    priceBasisDate: null,
+    priceAtRegistration: close?.close ?? null,
+    priceBasisDate: close?.basisDate ?? null,
     createdAt: now,
     updatedAt: now,
   });
