@@ -124,6 +124,11 @@
   color: var(--color-text-tertiary);
 }
 
+/* 등록 시 종가로 폴백한 현재가 — 실시간 값과 구분 (§65, 목록의 .provisionalCell과 동일) */
+.provisionalValue {
+  opacity: var(--opacity-provisional);
+}
+
 .section {
   margin-bottom: var(--space-16);
 }

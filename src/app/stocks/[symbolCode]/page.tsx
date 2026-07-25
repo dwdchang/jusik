@@ -131,15 +131,24 @@ export default async function StockDetailPage({
     profit !== null && totalCost > 0 ? (profit / totalCost) * 100 : null;
 
   // ── 관심 상세 계산
-  const watchReturnRate =
-    watchItem !== undefined
-      ? computeWatchReturnRate(info.currentPrice, watchItem)
-      : null;
   const provisional =
     watchItem !== undefined &&
     watchItem.priceBasisDate !== null &&
     watchItem.priceBasisDate < watchItem.registeredAt;
   const basisPrice = watchItem?.priceAtRegistration ?? null;
+
+  // 스냅샷이 아직 없으면 등록 시 종가로 폴백 — 목록(rows.ts)과 같은 규칙 (§65).
+  // 위 보유 계산(currentValue·profit)에는 쓰지 않는다: 평가금액에 과거 종가가 섞이면
+  // 포트폴리오 총액이 조용히 틀어지므로 관심 표시 전용이다.
+  const provisionalPrice = info.currentPrice === null && basisPrice !== null;
+  const watchPrice = info.currentPrice ?? basisPrice;
+  const watchChangeRate = provisionalPrice
+    ? (watchItem?.changeRateAtRegistration ?? null)
+    : info.changeRate;
+  const watchReturnRate =
+    watchItem !== undefined
+      ? computeWatchReturnRate(watchPrice, watchItem)
+      : null;
 
   // 보유=평가금액(수량 반영) 2년 추이, 관심=등록일 이후 기준가 대비 종가 추이 (§15.3)
   const chartPoints: HoldingsChartPoint[] = isHolding
@@ -216,7 +225,8 @@ export default async function StockDetailPage({
             {errorMessage}
           </p>
         ) : null}
-        {info.currentPrice === null ? (
+        {/* 관심은 등록 시 종가로 폴백해 수익률이 나오므로(§65) 폴백마저 없을 때만 알린다 */}
+        {(isHolding ? info.currentPrice : watchPrice) === null ? (
           <p className={styles.errorBanner} role="alert">
             아직 저장된 시세가 없어 {isHolding ? "평가금액을" : "수익률을"}{" "}
             계산하지 못했습니다. 다음 갱신 회차(평일 09:00~15:30 KST, 10분
@@ -304,16 +314,25 @@ export default async function StockDetailPage({
           >
             <div className={styles.stat}>
               <span className={styles.statLabel}>현재가</span>
-              {info.currentPrice !== null ? (
-                <span className={`${styles.statValue} numeric`}>
-                  {formatKrw(info.currentPrice)}
-                  {info.changeRate !== null ? (
+              {watchPrice !== null ? (
+                <span
+                  className={`${styles.statValue} numeric${
+                    provisionalPrice ? ` ${styles.provisionalValue}` : ""
+                  }`}
+                  title={
+                    provisionalPrice
+                      ? `${watchItem?.priceBasisDate} 종가 · 실시간 갱신 전`
+                      : undefined
+                  }
+                >
+                  {formatKrw(watchPrice)}
+                  {watchChangeRate !== null ? (
                     <span
                       className={`${styles.statSub} numeric ${
-                        styles[resolveDirection(info.changeRate)]
+                        styles[resolveDirection(watchChangeRate)]
                       }`}
                     >
-                      {formatChangeRate(info.changeRate)}
+                      {formatChangeRate(watchChangeRate)}
                     </span>
                   ) : null}
                 </span>

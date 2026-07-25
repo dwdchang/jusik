@@ -42,10 +42,13 @@ function SignedCell({
   value,
   text,
   className,
+  title,
 }: {
   value: number | null;
   text: string;
   className?: string;
+  /** 잠정값일 때 출처를 알리는 툴팁 — 지정하면 흐린 색도 함께 입힌다 (§65) */
+  title?: string;
 }) {
   if (value === null) {
     return (
@@ -56,7 +59,8 @@ function SignedCell({
     <td
       className={`${styles.numCell} numeric ${styles[resolveDirection(value)]}${
         className !== undefined ? ` ${className}` : ""
-      }`}
+      }${title !== undefined ? ` ${styles.provisionalCell}` : ""}`}
+      title={title}
     >
       {text}
     </td>
@@ -95,6 +99,12 @@ export function StockRowItem({
   const detailId = `stock-detail-${row.key.replace(":", "-")}`;
   const isHolding = row.kind === "holding";
   const indicators = row.indicators;
+  // 실시간 스냅샷 대신 등록 시 종가로 폴백한 값의 출처 (§65). 툴팁은 터치 기기에서
+  // 뜨지 않으므로 같은 내용을 아래 펼침 상세에도 한 줄 둔다.
+  const provisionalTitle =
+    row.provisionalPrice && row.priceBasisDate !== null
+      ? `${row.priceBasisDate} 종가 · 실시간 갱신 전`
+      : undefined;
 
   return (
     <>
@@ -128,7 +138,14 @@ export function StockRowItem({
         </th>
 
         {row.currentPrice !== null ? (
-          <td className={`${styles.numCell} numeric`}>
+          <td
+            className={`${styles.numCell} numeric${
+              provisionalTitle !== undefined
+                ? ` ${styles.provisionalCell}`
+                : ""
+            }`}
+            title={provisionalTitle}
+          >
             {formatKrw(row.currentPrice)}
           </td>
         ) : (
@@ -138,11 +155,13 @@ export function StockRowItem({
         <SignedCell
           value={row.changeRate}
           text={row.changeRate !== null ? formatChangeRate(row.changeRate) : ""}
+          title={provisionalTitle}
         />
         <SignedCell
           value={row.returnRate}
           text={row.returnRate !== null ? formatChangeRate(row.returnRate) : ""}
           className={styles.returnCell}
+          title={provisionalTitle}
         />
 
         {columns === "full" ? (
@@ -220,6 +239,11 @@ export function StockRowItem({
                         )}일`
                       : EMPTY}
                   </DetailItem>
+                  {provisionalTitle !== undefined ? (
+                    <DetailItem label="현재가 기준">
+                      {`${row.priceBasisDate} 종가 (실시간 갱신 전)`}
+                    </DetailItem>
+                  ) : null}
                 </>
               )}
 

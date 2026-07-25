@@ -248,6 +248,7 @@ export async function addWatchItemAction(formData: FormData): Promise<void> {
     registeredAt,
     priceAtRegistration: close?.close ?? null,
     priceBasisDate: close?.basisDate ?? null,
+    changeRateAtRegistration: close?.changeRate ?? null,
     createdAt: now,
     updatedAt: now,
   });

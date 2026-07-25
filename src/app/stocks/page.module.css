@@ -253,6 +253,12 @@
   color: var(--color-text-tertiary);
 }
 
+/* 등록 시 종가로 폴백한 현재가·등락률·수익률 — 실시간 값과 구분 (§65).
+   상세는 툴팁(title)에 있고, 터치 기기용으로 행 펼침에도 같은 정보를 둔다. */
+.stockTable .provisionalCell {
+  opacity: var(--opacity-provisional);
+}
+
 .emptyMark {
   color: var(--color-text-tertiary);
 }

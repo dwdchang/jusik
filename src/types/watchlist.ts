@@ -15,6 +15,11 @@ export interface WatchItem {
   priceAtRegistration: number | null;
   /** 실제 사용한 종가의 날짜 — registeredAt보다 과거면 잠정(직전 거래일), 이후 회차에 승격 재확인 */
   priceBasisDate: string | null;
+  /**
+   * 기준가 종가일의 전일 대비 등락률(%) — 시세 스냅샷이 아직 없을 때 등락률 열의
+   * 폴백값으로만 쓴다 (§65). 스냅샷이 생기면 실시간 값이 이기므로 갱신하지 않는다.
+   */
+  changeRateAtRegistration?: number | null;
   createdAt: string;
   updatedAt: string;
 }

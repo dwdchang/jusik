@@ -65,6 +65,14 @@ export interface StockRow {
   priceAtRegistration: number | null;
   /** 기준가가 직전 거래일 종가인 잠정값인지 (§15.4) */
   provisionalBasis: boolean;
+  /**
+   * 현재가·등락률이 실시간 스냅샷이 아니라 등록 시 종가로 폴백된 값인지 (§65).
+   * 장 마감 후·주말 등록 직후 스냅샷이 아직 없는 구간에서만 true — 흐린 색·툴팁으로
+   * 실시간 값과 구분해 표시한다. 폴백의 출처 날짜는 `priceBasisDate`.
+   */
+  provisionalPrice: boolean;
+  /** 폴백 현재가의 출처 종가일 "YYYY-MM-DD" — provisionalPrice일 때만 의미 있다 */
+  priceBasisDate: string | null;
 }
 
 /** 스냅샷 원본 → 펼침 지표. 스냅샷이 없으면 null */
@@ -139,6 +147,9 @@ export function buildHoldingRows(
       registeredAt: null,
       priceAtRegistration: null,
       provisionalBasis: false,
+      // 보유는 현재가가 평가금액·평가손익 계산에 직접 들어가므로 종가를 섞지 않는다 (§65)
+      provisionalPrice: false,
+      priceBasisDate: null,
     };
   });
 }
@@ -150,7 +161,13 @@ export function buildWatchRows(
 ): StockRow[] {
   return items.map((item) => {
     const snapshot = snapshots.get(item.symbolCode);
-    const currentPrice = snapshot?.price ?? null;
+
+    // 갱신 잡은 평일 09:00~18:15만 돌아, 장 마감 후·주말에 등록하면 다음 영업일까지
+    // 스냅샷이 없다. 그 구간에는 등록 시 확보해 둔 종가로 폴백해 「시세 없음」을 피한다
+    // (§65). 스냅샷이 생기면 실시간 값이 이기고 폴백은 저절로 사라진다 — 추가 조회 0.
+    const provisionalPrice =
+      snapshot === undefined && item.priceAtRegistration !== null;
+    const currentPrice = snapshot?.price ?? item.priceAtRegistration;
 
     return {
       key: `watch:${item.id}`,
@@ -159,7 +176,11 @@ export function buildWatchRows(
       name: item.name || item.symbolCode,
       detailHref: `/stocks/${item.symbolCode}?kind=watch`,
       currentPrice,
-      changeRate: snapshot?.changeRate ?? null,
+      changeRate:
+        snapshot?.changeRate ??
+        (provisionalPrice ? (item.changeRateAtRegistration ?? null) : null),
+      // 폴백 현재가는 기준가와 같은 값이라 수익률이 정확히 0%가 된다. 등록 직후에만
+      // 걸리는 구간이고 실제 수익률도 0% 근처라 정렬에 그대로 참여시킨다 (사용자 확정).
       returnRate: computeWatchReturnRate(currentPrice, item),
       indicators: buildIndicators(snapshot),
       profit: null,
@@ -173,6 +194,8 @@ export function buildWatchRows(
       // 기준가가 등록일보다 과거 종가면 직전 거래일 잠정값 (§15.4)
       provisionalBasis:
         item.priceBasisDate !== null && item.priceBasisDate < item.registeredAt,
+      provisionalPrice,
+      priceBasisDate: item.priceBasisDate,
     };
   });
 }

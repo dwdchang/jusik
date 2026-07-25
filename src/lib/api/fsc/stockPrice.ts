@@ -39,6 +39,8 @@ interface FscStockPriceItem {
   itmsNm?: string;
   /** 종가(원) */
   clpr?: string;
+  /** 전일 대비 등락률(%) — 예 "9.34", 하락은 "-3.21" */
+  fltRt?: string;
   [key: string]: unknown;
 }
 
@@ -68,6 +70,8 @@ export interface FscClose {
   close: number;
   /** 그 종가의 기준일 "YYYY-MM-DD" */
   basisDate: string;
+  /** 그 종가일의 전일 대비 등락률(%) — 응답에 없거나 파싱 불가면 null */
+  changeRate: number | null;
 }
 
 /**
@@ -151,9 +155,14 @@ export async function fetchStockCloseAsOf(
       continue;
     }
     if (best === null || basDt > best.basisDate.replace(/-/g, "")) {
+      // 등락률은 부가 정보라 파싱 실패해도 종가는 살린다 (Phase 65 폴백 표시용).
+      // 빈 문자열은 Number("")===0이라 0%로 오인되므로 먼저 걸러낸다.
+      const rawRate = item.fltRt?.replace(/,/g, "").trim() ?? "";
+      const rate = rawRate === "" ? Number.NaN : Number(rawRate);
       best = {
         close,
         basisDate: `${basDt.slice(0, 4)}-${basDt.slice(4, 6)}-${basDt.slice(6, 8)}`,
+        changeRate: Number.isFinite(rate) ? rate : null,
       };
     }
   }

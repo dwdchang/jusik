@@ -59,11 +59,19 @@ export async function getWatchlistCardSummary(
 
     const entries = items.map((item): WatchlistCardEntry => {
       const snapshot = snapshots.get(item.symbolCode);
+      // 스냅샷이 아직 없으면 등록 시 종가로 폴백 — 내 종목 목록과 같은 규칙 (§65).
+      // 두 화면이 어긋나면(카드는 「-」, 목록은 0%) 같은 종목이 달라 보인다.
+      const provisional = snapshot === undefined;
       return {
         name: item.name || item.symbolCode,
         symbolCode: item.symbolCode,
-        returnRate: computeWatchReturnRate(snapshot?.price ?? null, item),
-        dailyChangeRate: snapshot?.changeRate ?? null,
+        returnRate: computeWatchReturnRate(
+          snapshot?.price ?? item.priceAtRegistration,
+          item
+        ),
+        dailyChangeRate: provisional
+          ? (item.changeRateAtRegistration ?? null)
+          : snapshot.changeRate,
       };
     });
 
