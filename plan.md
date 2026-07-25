@@ -3283,6 +3283,39 @@ interface WatchItem {
 - **아키텍처 준수**: 잡 6종·KIS 경로 불변. `/analysis`는 일반 페이지(proxy 세션 검사+`ensureAllowedSession`), 잡 라우트 아니라 matcher 변경 불필요.
 - **상태**: **구현 완료(2026-07-24)**. tsc·eslint·build 통과. **실 DART 응답 필드(sj_div·account_nm·idx_val 등) 실측 검증은 배포 후 실종목 열람으로 확인 필요**(파싱은 표준 필드명 기준 작성).
 
+### Phase 65 — 관심종목 현재가·등락률 종가 폴백 (「시세 없음」 해소) (2026-07-25, 구현 완료)
+
+- **요청 근거**: 사용자 — 금요일 밤 관심종목(에코프로 086520)을 등록했더니 목록의 **현재가 열이 「시세 없음」**. Phase 63으로 기준가는 즉시 채워졌는데 현재가만 비어 등록 즉시 확인이 안 된다.
+- **원인 규명(2026-07-25 실측)**: 버그 아님. 현재가는 `market:stock:{code}` 스냅샷에서 오는데 갱신 잡이 **평일 09:00~15:30/15:40/18:15 KST**(QStash 크론 전부 `* * 1-5`)만 돌고, 라우트에도 시간창 가드(`refresh-market-data/route.ts:30` — "outside KIS call window (KST weekday 09:00-18:40)")가 있다. 금요일 22:17 등록이라 그날 마지막 회차(18:15)가 끝난 뒤였고 주말엔 잡이 없어 **다음 스냅샷은 월요일 09:00**. Redis 실조회로 확인: 관심 6종 중 086520만 `market:stock`·`market:stockInfo`·`history` 전부 부재, 나머지 5종은 정상. 기준가는 84,300/2026-07-23으로 **정상 저장**돼 있었다(Phase 63 정상 동작).
+- **해결 방식**: 스냅샷이 없을 때 **등록 시 확보해 둔 종가로 폴백**한다. 금융위 응답에 `fltRt`(등락률)가 함께 오므로 등록 시 같이 저장해 등락률 열도 채운다 — **추가 API 호출 0건**(이미 부르는 `fetchStockCloseAsOf` 응답을 더 쓸 뿐, 새 Redis 키도 없음). 스냅샷이 생기면 실시간 값이 이겨 폴백은 저절로 사라진다.
+- **사양(사용자 확정)**:
+  - **관심종목 전용** — 보유는 `currentPrice`가 평가금액·평가손익·오늘손익 계산에 직접 들어가(`getPortfolioValuation`) 과거 종가가 섞이면 포트폴리오 총액이 조용히 틀어진다. 보유는 매입금액·수량을 사용자가 직접 입력하므로 애초에 이 문제가 없다.
+  - **수익률은 0% 그대로 표시하고 정렬도 그대로** — 폴백 현재가는 기준가와 같은 값이라 수익률이 정확히 0%가 된다. 폴백은 사실상 등록 직후 구간에만 걸리고 그때 실제 수익률도 0% 근처라 순위 왜곡이 없다(검토 과정에서 제안했던 `provisionalPrice` 정렬 분리는 사용자 지적으로 **철회** — 잡이 장기 실패하면 전 종목이 동시에 폴백되어 상대 순서가 유지되고, Phase 52 인시던트 배지가 따로 경고한다).
+  - **구분 표시** = 색을 바꾸지 않고 투명도만 낮춘다(`--opacity-provisional: 0.55`) — 등락률·수익률의 방향 색(빨강/파랑)이 의미를 잃지 않은 채 함께 흐려진다. 툴팁 `{기준일} 종가 · 실시간 갱신 전`.
+  - **PWA 보완** — `title` 툴팁은 터치 기기에서 뜨지 않으므로, 행 펼침에 `현재가 기준: {날짜} 종가 (실시간 갱신 전)` 한 줄을 같이 둔다.
+- **구현**:
+  - `lib/api/fsc/stockPrice.ts` — `FscStockPriceItem.fltRt` 추가, `FscClose`에 `changeRate: number|null`. 빈 문자열은 `Number("")===0`이라 0%로 오인되므로 먼저 걸러낸다(부가 정보라 파싱 실패해도 종가는 살린다).
+  - `types/watchlist.ts` — `changeRateAtRegistration?: number|null` (**optional** — 기존 저장 레코드에 필드가 없어도 복호화·타입이 깨지지 않는다).
+  - `app/stocks/actions.ts` — `addWatchItemAction`이 `close?.changeRate`를 함께 저장.
+  - `app/stocks/rows.ts` — `StockRow`에 `provisionalPrice`·`priceBasisDate` 추가. `buildWatchRows`가 `snapshot?.price ?? item.priceAtRegistration`로 폴백(등락률도 동일 규칙). `buildHoldingRows`는 `provisionalPrice: false` 고정.
+  - `app/stocks/StockRowItem.tsx` — 현재가 셀·`SignedCell`(등락률·수익률)에 `title`+흐리기, 펼침에 「현재가 기준」 항목.
+  - `app/stocks/[symbolCode]/page.tsx` — 관심 상세도 같은 폴백(`watchPrice`/`watchChangeRate`/`provisionalPrice`). **보유 계산(`currentValue`·`profit`)에는 쓰지 않는다.** 「저장된 시세 없음」 배너는 관심의 경우 폴백마저 없을 때만 뜨도록 조건 분리.
+  - `lib/watchlist/summary.ts` — 홈 관심종목 카드도 같은 폴백(카드는 「-」, 목록은 0%로 어긋나면 같은 종목이 달라 보인다).
+  - `styles/tokens.css`(`--opacity-provisional`)·`app/stocks/page.module.css`(`.provisionalCell`)·`app/stocks/[symbolCode]/page.module.css`(`.provisionalValue`).
+- **기존 레코드 호환**: Phase 65 이전 등록분은 `changeRateAtRegistration`이 없어 **현재가만 폴백되고 등락률은 「-」**로 남는다(에코프로가 이 경우). 의도된 열화.
+- **상태**: **구현 완료(2026-07-25)**. tsc·eslint·build 통과.
+
+### Phase 66 — 토요일 기준가 승격 잡 (금요일 등록분 공백 단축) (2026-07-25, 실측 대기)
+
+- **요청 근거**: 사용자 — 월~목 비갱신 시간대 등록분은 다음 날 09:00에 갱신되는데, **금요일 등록분만 월요일 09:00까지 이틀 반** 기다린다. 금융위가 토요일에 금요일 종가를 준다면 그 사이에 한 번 더 갱신할 수 있지 않나.
+- **착안**: 폴백 현재가 = 기준가이므로 **기준가만 승격하면 현재가가 자동 최신화**된다(§65). 승격 조건은 기존 `fillRegistrationPrices`(`lib/jobs/refreshMarketData.ts:500-548`)의 `priceBasisDate < registeredAt`과 동일하고 **소스만 `stock:{code}:history`(KIS 잡이 채움) 대신 금융위**를 쓴다. 토요일에 승격해 두면 월요일 잡은 `needsFill=false`로 건너뛰어 **멱등하게 맞물린다**.
+- **설계**: 신규 잡 라우트 1개(**잡 6종→7종, 사용자 승인 2026-07-25 — AGENTS.md §3 개정 대상**). watchlist에서 `priceAtRegistration === null || priceBasisDate < registeredAt`인 항목만 금융위로 조회해 기준가·등락률 승격. **KIS 미호출**이라 `isWithinKisCallWindow` 가드 없음(`cleanup-orphan-stocks`와 동일 성격), 인증은 공용 `verifyJobRequest`. 대상 0건이면 즉시 종료. 크론 `CRON_TZ=Asia/Seoul` 토요일 1회(일요일은 새 데이터 없음, 평일은 09:00 갱신이 더 빠름).
+- **선결 실측(진행 중)**: 코드 주석(`stockPrice.ts:5`)의 "영업일+1 오후 1시"가 **달력 다음날**인지 **다음 영업일**인지 미확인. 2026-07-25(토) 10:54·11:07 확인 시 최신은 여전히 `20260723`으로 금요일 종가 미공개 → 13:00 전후 재확인 중.
+  - **달력 다음날이면** 크론 시각을 실측 확정 시각 뒤(13:30 등)로 잡고 진행.
+  - **다음 영업일이면** 금요일 종가가 월요일 13:00에야 나오는데 KIS 갱신(월 09:00)이 더 빠르므로 **Phase 66은 폐기**한다(주말에 가져올 데이터 자체가 없어 대안도 없음). Phase 65만으로 「등록 즉시 확인」 목적은 달성된다.
+- **한계**: 금~월 연휴 등 긴 휴장은 부분 해소(토요일 1회라 그 뒤 일·월 공백은 남음 — 비용 대비 합리적이라 수용).
+- **상태**: **실측 대기**. 실측 결과에 따라 착수 또는 폐기.
+
 ---
 
 ## 7. PR 분리 권장 (선택)

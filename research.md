@@ -72,9 +72,9 @@
 | `indices/trade/[yyyymm]/page.tsx` | 수출입 상세(Phase 17-5) — 월 합계 3지표 + 품목별(국가 무관, HS 4단위 상위 15+기타) + 국가별(상위 8+기타, 클릭 시 품목 팝업). `getTradeDetailView` 1회. `/feeds` 수출입 탭의 월 링크로 진입 |
 | `indices/kospi-volatility/page.tsx` | 변동성 상세 — 월별 평균 막대 차트 + 당월 일별 기록 목록 |
 | `stocks/page.tsx` | **내 종목 목록**(Phase 56, Phase 58에서 `/watchlist`→`/stocks`로 개명·통합 — 제목 `내 종목`, 홈 "내 종목" 카드에서 진입) — **4탭 단일 구조**(`?mode=all\|holdings\|watchlist\|balance` 서버 탭 `TABS`, 기본 `all`, 핫종목·배당과 동형). 표 폼은 배당률 순위 표 관례(`.tableScroll`+`.stockTable`, **종목명 열 sticky** 가로 스크롤, 값 숫자 열 우측 `.numCell`). **모두·보유종목 탭 = 종목명+6열**(현재가·등락률(전일 대비)·수익률·수익금·평균단가·총 매입금액), **관심종목 탭 = 종목명+4열**(현재가·등락률·수익률·기준일), **잔고 탭 = 표가 아니라 `<HoldingsOverview>`**(구 `/holdings` 화면 본문 통째, §58). 모두 탭의 관심종목 행은 보유 전용 3열이 `-`. **전 탭 수익률 내림차순**(`sortRowsByReturnRate`, 수익률 null은 맨 뒤·그들끼리 종목명순). 보유·관심에 같은 종목이 있으면 **2행으로 따로** 표시(합치지 않음 — 사용자 확정). 모두 탭에서만 보유종목 **종목명 글자색** 강조(`--color-holding-name`, 라이트/다크 2벌). 데이터는 활성 탭 것만 로드(`getHoldings`+`getPortfolioValuation` / `getWatchlist`, **잔고 탭은 목록·시세를 읽지 않고 `HoldingsOverview`가 직접 읽는다**)하고 시세는 두 목록 합집합 `getStockSnapshots` 1회(+평가 내부 MGET 1회) — KIS 직접 호출 없음. 추가 폼은 **관심종목 탭(기준일 → `addWatchItemAction`)과 잔고 탭(수량·총 매입금액 → `addHoldingAction`)에만**(§58에서 보유종목 탭 추가 폼 제거 — 보유 등록 동선은 잔고 탭 하나), 모두·보유 탭엔 없음. 종목명 클릭 시 펼침(`StockRowItem`, 아래) |
-| `stocks/[symbolCode]/page.tsx` | **종목 상세 통합 라우트**(Phase 58 — 구 `holdings/[symbolCode]`+`watchlist/[symbolCode]`). 같은 종목이 보유·관심에 동시에 있을 수 있어 **`?kind=holding\|watch`로 어느 쪽 상세인지 가른다**(A안). kind가 없거나 그쪽 목록에 없으면 **보유 → 관심 순 폴백**, 둘 다 없으면 `/stocks` redirect. 보유=평가 요약 6지표·보유 내역 수정/삭제(`?kind=holding&edit=1`)·2년 평가금액 추이·일별 기록(`DailyHistoryList`+종가 열, §29) / 관심=현재가·기준일·기준가·등록 기준 수익률 3지표·등록일 이후 기준가 대비 추이. 공통=정보 블록 4종 + 인라인 알림 토글(`AlertToggleButton`) + 양쪽에 다 있을 때만 뜨는 반대쪽 상세 전환 줄 |
-| `stocks/rows.ts` | 표 행 모델 `StockRow`(kind=holding\|watch, 보유 전용·관심 전용 필드는 반대쪽에서 null) + `buildHoldingRows`/`buildWatchRows`/`sortRowsByReturnRate` (Phase 56). `detailHref`는 §58에서 `/stocks/{code}?kind=…`. 펼침 지표(52주 최고·최저+현재가 대비 괴리율·PER/PBR·시가총액)는 스냅샷 `raw`에서 여기서만 뽑아 행에 실어, 클라이언트가 KIS 원본 타입을 몰라도 되게 한다(`buildStockIndicators` 재사용 + `parseNum`). 오늘 손익은 평가금액을 전일 대비 등락률로 역산해 계산 |
-| `stocks/StockRowItem.tsx` | Client — 표 1행 + 펼침 상세 행(`colSpan`, 배당률 순위 `DividendRankRow`와 같은 패턴, 클릭 시 추가 조회 0). 공통=52주 최고/최저·PER/PBR·시가총액, 보유=수량·평가금액·오늘 손익, 관심=기준가(직전 거래일 잠정 표기)·등록 기준일·등록 후 경과일 + **수정·삭제**(Phase 23의 `?edit=1` 편집 모드를 대체) + 상세 보기 링크. 기준일 편집은 **2단계**(Phase 57 A안) — 평상시 `수정`/`삭제` 버튼만, `수정`을 눌러야 기준일 입력+`저장`/`취소`가 열리고 행을 접으면 편집 상태 초기화 |
+| `stocks/[symbolCode]/page.tsx` | **종목 상세 통합 라우트**(Phase 58 — 구 `holdings/[symbolCode]`+`watchlist/[symbolCode]`). 같은 종목이 보유·관심에 동시에 있을 수 있어 **`?kind=holding\|watch`로 어느 쪽 상세인지 가른다**(A안). kind가 없거나 그쪽 목록에 없으면 **보유 → 관심 순 폴백**, 둘 다 없으면 `/stocks` redirect. 보유=평가 요약 6지표·보유 내역 수정/삭제(`?kind=holding&edit=1`)·2년 평가금액 추이·일별 기록(`DailyHistoryList`+종가 열, §29) / 관심=현재가·기준일·기준가·등록 기준 수익률 3지표·등록일 이후 기준가 대비 추이(현재가·등락률·수익률은 스냅샷이 없으면 목록과 같은 종가 폴백을 흐린 값으로 표시하고, 보유 계산 `currentValue`·`profit`에는 쓰지 않는다 — Phase 65. 「저장된 시세 없음」 배너도 관심은 폴백마저 없을 때만). 공통=정보 블록 4종 + 인라인 알림 토글(`AlertToggleButton`) + 양쪽에 다 있을 때만 뜨는 반대쪽 상세 전환 줄 |
+| `stocks/rows.ts` | 표 행 모델 `StockRow`(kind=holding\|watch, 보유 전용·관심 전용 필드는 반대쪽에서 null) + `buildHoldingRows`/`buildWatchRows`/`sortRowsByReturnRate` (Phase 56). `detailHref`는 §58에서 `/stocks/{code}?kind=…`. 펼침 지표(52주 최고·최저+현재가 대비 괴리율·PER/PBR·시가총액)는 스냅샷 `raw`에서 여기서만 뽑아 행에 실어, 클라이언트가 KIS 원본 타입을 몰라도 되게 한다(`buildStockIndicators` 재사용 + `parseNum`). 오늘 손익은 평가금액을 전일 대비 등락률로 역산해 계산. **관심 행은 스냅샷이 없으면 등록 시 종가로 폴백**(`snapshot?.price ?? item.priceAtRegistration`, 등락률은 `changeRateAtRegistration`) — `provisionalPrice`·`priceBasisDate`를 행에 실어 화면이 흐리게 표시한다(Phase 65). 보유는 `provisionalPrice: false` 고정(평가금액 계산 오염 방지). 정렬은 불변(폴백 수익률 0%가 그대로 참여) |
+| `stocks/StockRowItem.tsx` | Client — 표 1행 + 펼침 상세 행(`colSpan`, 배당률 순위 `DividendRankRow`와 같은 패턴, 클릭 시 추가 조회 0). 공통=52주 최고/최저·PER/PBR·시가총액, 보유=수량·평가금액·오늘 손익, 관심=기준가(직전 거래일 잠정 표기)·등록 기준일·등록 후 경과일 + **수정·삭제**(Phase 23의 `?edit=1` 편집 모드를 대체) + 상세 보기 링크. 기준일 편집은 **2단계**(Phase 57 A안) — 평상시 `수정`/`삭제` 버튼만, `수정`을 눌러야 기준일 입력+`저장`/`취소`가 열리고 행을 접으면 편집 상태 초기화. 폴백값(현재가·등락률·수익률)은 `--opacity-provisional`로 흐리고 툴팁 `{기준일} 종가 · 실시간 갱신 전`, 툴팁이 안 뜨는 터치 기기용으로 펼침에 「현재가 기준」 한 줄(Phase 65) |
 | `stocks/actions.ts` | Server Actions 6종(Phase 58에서 구 `holdings/actions.ts`+`watchlist/actions.ts` 병합) — 보유 add/update/delete + 관심 add/update/delete. **형식 검증만** 하고 KIS 호출 없음 (§6.4). 폼의 `mode` 히든값을 화이트리스트(`holdings\|watchlist\|balance`)로 검사해 **경로를 서버가 조립**(`stocksPath()`)한 뒤 그 탭으로 성공·실패 redirect — 입력값을 경로에 넣지 않아 오픈 리다이렉트 없음. 보유 상세 경로는 `/stocks/{code}?kind=holding`, 보유 삭제 후에는 `?mode=balance`로 복귀. `revalidatePath`는 `/stocks`(+상세). **등록 시 종목명·기준가 즉시 채움(Phase 63)**: `resolveStockName`(=`market:stockMaster` Redis 리더, 외부호출 0)으로 add 시 종목명을 바로 채우고(보유·관심 공통, 비갱신 시간대에도 코드 대신 이름 표기), **관심 add는 추가로 `fetchStockCloseAsOf`(금융위 시세)로 `priceAtRegistration`/`priceBasisDate` 확정** — 보유는 가격 슬롯이 없어(스냅샷 경유) 종가는 잡 백필. 둘 다 실패는 격리(이름 ""·기준가 null → 다음 회차 잡이 재확정). ⚠️ 관심 add의 금융위 호출은 §3 「잡 경유」 예외(시간창 없는 EOD, 등록 시점 기준가 확정용) |
 | `hot-stocks/page.tsx` | 핫종목 — 서버 모드 탭 `[당일 등락률(기본) \| 주간 등락률 \| 월간 핫종목]`(`?mode=weekly\|monthly`). 당일/주간: `market:dailyFluctuation`/`market:weeklyFluctuation` 상위 30을 월간과 동일한 6열 폼(순위/종목명+ᴷ·ᴰ 위첨자/종목코드 열/등락률/기준 종가/현재가, §20)으로 표시+`resolveStaleness` 배지 — 공용 `FluctuationView`(variant별 데이터 소스·문구만 교체). 위첨자는 `market:stockMaster`를 읽어 코드→시장 매핑(`loadMarketByCode`, 실패·미등재 시 생략), 기준 종가 없는 구 스냅샷은 "—". 기준 문구는 전 탭 월간 형식: "… 상위 30종목 · 기준: {전일\|5거래일 전} 종가 · 대상 전체시장 · 갱신: …". 월간: 구간 수익률 TOP 100(`?period=1m\|3m\|6m\|12m`, 구간 링크는 `?mode=monthly&period=…` — mode 유지, §20 회귀 수정). 뷰는 async 서버 서브컴포넌트(`FluctuationView`/`MonthlyView`) |
 | `feeds/page.tsx` | 뉴스·공시 상세 (Phase 17-2b) — `ensureAllowedSession` + `getDisclosureBoard`·`getNewsBoard`·`getTradeStatsView`(17-4) + `FeedTabsClient`(뉴스/공시/수출입 탭+게시판+아코디언). 홈 "뉴스·공시" 요약 카드에서 이동 |
@@ -124,7 +124,7 @@
 | `api/upbit/client.ts` | 업비트 공개 시세 API 클라이언트 (§30) — `fetchUpbitTicker`/`fetchUpbitDayCandles` + `UPBIT_BTC_MARKETS`(KRW-BTC·USDT-BTC). 인증·키 불필요, 15초 타임아웃. 호출 주체는 시세 갱신 잡뿐 |
 | `api/dart/client.ts` | DART OpenAPI 클라이언트 — `corpCode.xml` zip 파싱(fflate, 상장사만 매핑)·공시검색 `list.json`(status 013=빈 결과 정상 처리) |
 | `api/dart/finance.ts` | DART 재무제표·재무지표 클라이언트 (Phase 64, 종목분석) — `fetchDartFinancialStatements`(fnlttSinglAcntAll, 전 계정 당기금액·CFS/OFS)·`fetchDartFinancialIndices`(fnlttSinglIndx, 수익성·안정성·성장성·활동성). status 013=빈 배열, 인증키 공유. **화면(read-through)이 직접 호출**(§3 예외) |
-| `api/fsc/stockPrice.ts` | 금융위원회 주식시세정보(data.go.kr 15094808) 클라이언트 (Phase 63) — `fetchStockCloseAsOf(code, "YYYYMMDD")`→기준일 이하 최신 확정 종가. KRX EOD·**시간창 없음**(영업일+1 확정), `likeSrtnCd`+12일 창, 실패·미상장 null. 호출 주체=관심종목 등록 액션(§3 예외). 인증키 관세청과 공유 |
+| `api/fsc/stockPrice.ts` | 금융위원회 주식시세정보(data.go.kr 15094808) 클라이언트 (Phase 63) — `fetchStockCloseAsOf(code, "YYYYMMDD")`→기준일 이하 최신 확정 종가. KRX EOD·**시간창 없음**(영업일+1 확정), `likeSrtnCd`+12일 창, 실패·미상장 null. 반환에 `changeRate`(응답 `fltRt`, 빈 문자열은 0% 오인 방지로 제외) 포함 — 관심종목 등락률 폴백용(Phase 65). 호출 주체=관심종목 등록 액션(§3 예외). 인증키 관세청과 공유 |
 | `api/naver/client.ts` | 네이버 뉴스 검색 클라이언트 (Phase 17-3) — 종목명 키워드·`sort=date`, `<b>`/엔티티 제거, **제목+요약에 종목명 포함 기사만** 필터(저관련·오탐 제거), pubDate ms 파싱. 상위 10건 |
 | `api/customs/client.ts` | 관세청 수출입총괄(GW) 클라이언트 (Phase 17-4) — `getNewtradeList`(XML), `fetchTradeStats(strt,end)`. `총계`/비정형 year 제외·`year "YYYY.MM"→"YYYYMM"` 정규화·`parseNum` 경유·`resultCode≠00` throw. **조회 범위 최대 12개월(inclusive)** 제약 |
 | `analysis/financials.ts` | 종목분석 재무 read-through 리더 (Phase 64) — `getFinancialAnalysis(code)`: corpCode 매핑(`getCorpCodeMap`)→Redis `analysis:financials:{corpCode}` 히트 반환→미스 시 최근 5개년 DART 조회(연결 우선·`fnlttSinglAcntAll` 연도별 당기금액을 계정×연도 행렬 병합·재무지표 연도×4분류 병합, 동시성 5)→**TTL 30일** 저장. 상태 4종(`ok/not_listed/no_data/error`). ⚠️ §3 예외 2건: DART 직접 호출 + Redis 쓰기(`analysis:*` 별도 네임스페이스=시세 키 무충돌). 평소 호출·갱신 잡 0 |
@@ -175,7 +175,7 @@
 | `push/store.ts` | 웹 푸시 구독 store (Phase 10) — `push:subs:{email}` `secureJson` 암호화(endpoint가 곧 발송 권한), endpoint 기준 dedup 등록/해지/`prunePushSubscriptions`(발송 경로 전용) |
 | `push/send.ts` | 웹 푸시 발송 공용 유틸 (Phase 10) — `sendPushToEmail(email, payload)`: VAPID env 검증, 구독별 실패 격리, 410/404 자동 정리. 페이로드 계약 `{title, body, url?, tag?}`는 `public/sw.js`와 동기화 필수. 잡 훅(2·3단계)·테스트 발송 액션 공유 |
 | `watchlist/store.ts` | 관심종목 store — 암호화 (신규 키라 평문 하위호환 없음) |
-| `watchlist/summary.ts` | `computeWatchReturnRate`(순수 함수) + 홈 카드 요약 `getWatchlistCardSummary` — 수익률 상위 4종목 개별 목록(`top4`: 등록 기준일 대비 수익률 + 전일 등락률, §24·§33) |
+| `watchlist/summary.ts` | `computeWatchReturnRate`(순수 함수) + 홈 카드 요약 `getWatchlistCardSummary` — 수익률 상위 4종목 개별 목록(`top4`: 등록 기준일 대비 수익률 + 전일 등락률, §24·§33). 스냅샷이 없으면 목록 화면과 같은 종가 폴백을 적용해 두 화면이 어긋나지 않게 한다(Phase 65) |
 | `theme.ts` | `THEME_STORAGE_KEY`·`Theme` 타입만 |
 
 ### 2.3 `src/components`
@@ -601,7 +601,7 @@ QStash 스케줄 (매일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 * * *) → POST /a
   `PriceDirection`, 변동성 3종, `KIS_DATA_NOTICE`, `INDICATOR_NAMES`.
 - `types/holdings.ts` — `Holding`(totalCost 모델), `PortfolioDailyRecord`,
   `HoldingValuation`/`PortfolioValuation`. (`HoldingsCardSummary`는 §58 홈 보유종목 카드 삭제와 함께 제거)
-- `types/watchlist.ts` — `WatchItem` (priceAtRegistration/priceBasisDate 잠정·확정 모델).
+- `types/watchlist.ts` — `WatchItem` (priceAtRegistration/priceBasisDate 잠정·확정 모델 + `changeRateAtRegistration?` 등락률 폴백값, Phase 65 — optional이라 구 레코드 호환).
 - store별 Stored* 타입은 각 store 파일에서 export (market/store, hotstocks/store).
 
 ### 6.4 UI 패턴
@@ -699,7 +699,10 @@ QStash 스케줄 (매일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 * * *) → POST /a
     `isHotStocksStale`(기준월)로 이원화되어 있다.
 11. **관심종목 잠정 기준가 판정식 `priceBasisDate < registeredAt` 3곳** —
     `fillRegistrationPrices`(needsFill), `stocks/rows.ts`(buildWatchRows),
-    종목 상세 page(관심 분기).
+    종목 상세 page(관심 분기). Phase 65의 **종가 폴백 판정(스냅샷 부재 시
+    `priceAtRegistration` 사용)도 3곳** — `stocks/rows.ts`(buildWatchRows),
+    종목 상세 page(watchPrice), `watchlist/summary.ts`(홈 카드). 폴백 규칙을
+    바꾸면 세 곳이 어긋나지 않게 함께 고쳐야 한다.
 12. **차트 축·그리드·툴팁 Recharts 설정** — IndexLineChart/VolatilityChart/HoldingsChart
     3곳에 유사 코드 (tick 스타일·margin 등). 디자인 변경 시 3곳 동시 수정.
 13. **잡 라우트 신설 시 2곳 동기화** — 새 `/api/jobs/*`는 ① `verifyJobRequest`
