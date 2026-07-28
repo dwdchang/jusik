@@ -42,6 +42,7 @@ import {
 } from "@/lib/indices/kisMapper";
 import { mapKisInvestorRows } from "@/lib/indices/investorMapper";
 import { mapKisFiRankingRows } from "@/lib/indices/fiRankingMapper";
+import { mapKisMarketCapRows } from "@/lib/indices/marketCapRankingMapper";
 import {
   mapKisOverseasDailyRows,
   mapKisOverseasHistory,
@@ -54,12 +55,16 @@ import {
 } from "@/lib/indices/volatility";
 import {
   INDICATOR_TO_DETAIL_KEY,
+  getMarketCapBaseline,
+  getMarketCapRanking,
   getStockInfoBlocks,
   setDailyFluctuation,
   setFiRanking,
   setInvestorFlows,
   getLastRefreshRecord,
   setLastRefreshRecord,
+  setMarketCapBaseline,
+  setMarketCapRanking,
   setMarketDetail,
   getStockMaster,
   setStockInfoBlocks,
@@ -68,6 +73,7 @@ import {
   setWeeklyFluctuation,
   type DailyFluctuationItem,
   type WeeklyFluctuationItem,
+  type MarketCapBaseline,
   type MarketDetailKey,
   type StockMasterItem,
   type StoredStockSnapshot,
@@ -116,6 +122,8 @@ export interface RefreshMarketDataReport {
   investorFlows: { ok: boolean; count?: number; error?: string };
   /** 종목별 수급 순위(외국인·기관 × 순매수·순매도) 저장 결과 — 부수 데이터, 실패 격리 */
   fiRanking: { ok: boolean; count?: number; error?: string };
+  /** 시총 순위(코스피·코스닥 각 상위 30) 저장 결과 — 부수 데이터, 실패 격리 */
+  marketCapRanking: { ok: boolean; count?: number; error?: string };
   /** 종목 마스터 저장 결과 — 1일 1회, 부수 데이터라 잡 전체 ok에 영향 없음 */
   stockMaster: { ok: boolean; count?: number; skipped?: true; error?: string };
   stocks: Array<{ symbolCode: string; ok: boolean; error?: string }>;
@@ -450,6 +458,64 @@ async function refreshFiRanking(
     return { ok: true, count };
   } catch (error) {
     console.error("[job] fi ranking refresh failed:", error);
+    return { ok: false, error: errorMessage(error) };
+  }
+}
+
+/**
+ * 시가총액 순위 → market:marketCapRanking:{kospi|kosdaq} 저장 (§68).
+ * 시장당 1콜(FHPST01740000)로 실시간 시총 상위 30을 받는다. 전체시장 1콜로는
+ * 코스닥이 한 종목도 안 잡혀(코스닥 1위 < 코스피 30위) 시장별 호출이 필수다.
+ *
+ * 「전일 대비 순위 변동·시총 증감」의 기준선은 **거래일이 바뀐 첫 회차에 승격**한다 —
+ * 저장돼 있던 스냅샷의 tradingDate가 오늘과 다르면 그것이 곧 직전 거래일의 마지막
+ * 회차(18:15 확정)이므로 baseline으로 옮기고, 그 뒤 오늘 값을 저장한다.
+ *
+ * 부수 데이터라 실패해도 잡 전체 ok에 영향 없이 로그만 남긴다 — 다음 회차가 자연
+ * 재시도(멱등, SET 덮어쓰기).
+ */
+async function refreshMarketCapRanking(
+  fetchedAt: string
+): Promise<RefreshMarketDataReport["marketCapRanking"]> {
+  try {
+    const today = todayKstDate();
+    let count = 0;
+
+    for (const market of ["KOSPI", "KOSDAQ"] as const) {
+      const stored = await getMarketCapRanking(market);
+
+      // 거래일이 바뀌었으면 직전 거래일 마지막 스냅샷을 기준선으로 승격
+      if (stored !== null && stored.tradingDate !== today) {
+        const entries: MarketCapBaseline["entries"] = {};
+        for (const row of stored.rows) {
+          entries[row.code] = { rank: row.rank, capEok: row.marketCapEok };
+        }
+        await setMarketCapBaseline({
+          market,
+          tradingDate: stored.tradingDate,
+          entries,
+        });
+      }
+
+      const baseline = await getMarketCapBaseline(market);
+      const rows = mapKisMarketCapRows(
+        await fetchKisMarketCapRanking(market),
+        baseline
+      );
+
+      await setMarketCapRanking({
+        market,
+        tradingDate: today,
+        rows,
+        baseDate: baseline?.tradingDate ?? null,
+        fetchedAt,
+      });
+      count += rows.length;
+    }
+
+    return { ok: true, count };
+  } catch (error) {
+    console.error("[job] market cap ranking refresh failed:", error);
     return { ok: false, error: errorMessage(error) };
   }
 }
@@ -815,6 +881,9 @@ export async function refreshMarketData(
   // 1b'''. 종목별 수급 순위 → market:fiRanking:{kospi|kosdaq} (§50, 부수 데이터·실패 격리)
   const fiRanking = await refreshFiRanking(startedAt);
 
+  // 1b''''. 시총 순위 → market:marketCapRanking:{kospi|kosdaq} (§68, 부수 데이터·실패 격리)
+  const marketCapRanking = await refreshMarketCapRanking(startedAt);
+
   // 1c. 종목 마스터 → market:stockMaster (종목명 검색용, 1일 1회, 실패 격리)
   const stockMaster = await refreshStockMaster(startedAt);
 
@@ -919,6 +988,7 @@ export async function refreshMarketData(
     weeklyFluctuation,
     investorFlows,
     fiRanking,
+    marketCapRanking,
     stockMaster,
     stocks,
     nameFills,

@@ -157,6 +157,44 @@ export interface FiFlowRanking {
   institution: FiFlowDirectionLists;
 }
 
+/**
+ * 시가총액 순위 1종목 (Phase 68) — KIS 시총 상위 30(FHPST01740000).
+ * 시총은 장중 실시간 현재가 × 상장주식수라 회차마다 순위가 실제로 바뀐다.
+ */
+export interface MarketCapStock {
+  /** 순위 (1부터, 30이 상한) */
+  rank: number;
+  /** 종목코드 6자리 */
+  code: string;
+  name: string;
+  /** 현재가(원) */
+  price: number;
+  /** 전일 대비율(%) — 부호 적용 */
+  changeRate: number;
+  direction: PriceDirection;
+  /** 시가총액(억원) */
+  marketCapEok: number;
+  /** 전일 대비 시가총액 증감(억원, 부호 포함) */
+  capChangeEok: number;
+  /**
+   * 전일 확정 회차(18:15) 대비 순위 변동 — 양수면 순위 상승(예: 31위→30위는 +1).
+   * 기준 스냅샷이 없거나(첫 거래일) 전일 30위권 밖이었으면 null.
+   */
+  rankChange: number | null;
+  /** 전일 30위권 밖에서 진입 — 기준 스냅샷은 있으나 그 목록에 없던 종목 */
+  isNew: boolean;
+}
+
+/** 시가총액 순위 (KOSPI/KOSDAQ 각 상위 30, Phase 68) */
+export interface MarketCapRanking {
+  rows: MarketCapStock[];
+  /**
+   * 순위 변동·시총 증감의 기준이 된 직전 거래일 ("YYYY-MM-DD").
+   * 기준 스냅샷이 아직 없으면 null(그 회차는 변동 열이 "—").
+   */
+  baseDate: string | null;
+}
+
 /** 지수 상세 페이지 데이터 (차트 + 일별 리스트) */
 export interface IndexDetailData {
   asOf: string;
@@ -175,6 +213,11 @@ export interface IndexDetailData {
    * 스냅샷이 아직 없으면 생략된다(화면에서 "준비 중" 표시). 해외 지표는 항상 미포함.
    */
   fiRanking?: FiFlowRanking;
+  /**
+   * 시가총액 순위 (KOSPI/KOSDAQ만) — 실시간 시총 상위 30.
+   * 스냅샷이 아직 없으면 생략된다(화면에서 "준비 중" 표시). 해외 지표는 항상 미포함.
+   */
+  marketCapRanking?: MarketCapRanking;
 }
 
 export const KIS_DATA_NOTICE =

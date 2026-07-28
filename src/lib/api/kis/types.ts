@@ -213,6 +213,16 @@ export interface KisMarketCapRankingRow {
   /** 순위 (1부터) */
   data_rank?: string;
   hts_kor_isnm?: string;
+  /** 현재가(원) — 장중 실시간 (Phase 68 실측) */
+  stck_prpr?: string;
+  /** 전일 대비(원) — 부호 내장 (Phase 68 실측) */
+  prdy_vrss?: string;
+  /** 전일 대비 부호 코드 (1~5) */
+  prdy_vrss_sign?: string;
+  /** 전일 대비율(%) */
+  prdy_ctrt?: string;
+  /** 상장주식수(주) — 시총 = 현재가 × 이 값 (Phase 68 실측, 오차 0.0000%) */
+  lstn_stcn?: string;
   /** 시가총액 (억원) */
   stck_avls?: string;
   /** 시장 전체 시총 대비 비중(%) */

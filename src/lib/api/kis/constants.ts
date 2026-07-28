@@ -179,4 +179,24 @@ export const KIS_FI_RANKING_ISCD = {
 /** 외국인/기관 매매상위 1콜 응답 종목 수 — 상위 30건이 상한 (2026-07-23 실측) */
 export const KIS_FI_RANKING_SIZE = 30;
 
+/**
+ * 시가총액 상위 랭킹 조회 시장 코드 (Phase 68, 2026-07-28 실측).
+ * ALL은 종목 정보블록의 「시총 순위」 라벨용(기존 동작), KOSPI/KOSDAQ은 상세 화면
+ * 「시총 순위」 탭용이다. **전체시장 1콜로는 코스닥을 덮을 수 없다** — 코스닥 1위
+ * (알테오젠 15.6조)가 코스피 30위(우리금융지주 23.0조)에 못 미쳐 전체 30위에 코스닥이
+ * 한 종목도 들어오지 않으므로, 시장별로 따로 호출해야 한다.
+ */
+export const KIS_MARKET_CAP_ISCD = {
+  ALL: "0000",
+  KOSPI: "0001",
+  KOSDAQ: "1001",
+} as const;
+
+/**
+ * 시가총액 상위 1콜 응답 종목 수 — 상위 30건이 상한 (2026-07-28 실측).
+ * 응답에 `ctx_area_fk/nk`가 없고 `tr_cont: "N"` 재호출도 같은 1~30위를 반복해
+ * **연속조회로 31위 이하를 받을 수 없다.**
+ */
+export const KIS_MARKET_CAP_RANKING_SIZE = 30;
+
 export const KIS_FETCH_TIMEOUT_MS = 15_000;

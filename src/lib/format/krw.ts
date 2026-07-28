@@ -23,10 +23,11 @@ export function formatAvgPrice(totalCost: number, quantity: number): string {
 /**
  * 억원 단위 금액 (KIS 시가총액·재무제표 단위) — 1조 이상은 조 단위 병기.
  * 예: 3,566,867 → "356조 6,867억원", 5,930 → "5,930억원"
+ * signed=true면 양수 앞에 "+"를 붙인다(전일 대비 시총 증감용, Phase 68). 음수는 항상 "-".
  */
-export function formatEokwon(eokwon: number): string {
+export function formatEokwon(eokwon: number, signed = false): string {
   const rounded = Math.round(eokwon);
-  const sign = rounded < 0 ? "-" : "";
+  const sign = rounded < 0 ? "-" : signed && rounded > 0 ? "+" : "";
   const abs = Math.abs(rounded);
   const jo = Math.floor(abs / 10_000);
   const eok = abs % 10_000;

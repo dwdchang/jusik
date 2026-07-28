@@ -8,6 +8,7 @@ import type {
   IndexSnapshot,
   IndicatorId,
   InvestorFlowRow,
+  MarketCapStock,
   MarketIndex,
 } from "@/types/indices";
 
@@ -70,6 +71,42 @@ export interface StoredFiRanking {
   groups: FiFlowRanking;
   /** 잡이 KIS에서 받아온 시각 (ISO) */
   fetchedAt: string;
+}
+
+/**
+ * market:marketCapRanking:{kospi|kosdaq} — 시가총액 순위 스냅샷 (Phase 68).
+ * 실시간 시총 상위 30. 시세 갱신 잡이 회차당 시장별 1콜로 덮어쓴다.
+ */
+export interface StoredMarketCapRanking {
+  market: MarketIndex;
+  /**
+   * 이 스냅샷이 속한 거래일 "YYYY-MM-DD" (KST). 잡이 다음 거래일 첫 회차에서
+   * 이 날짜가 오늘과 다른 것을 보고 baseline으로 승격한다 — 그래서 baseline은
+   * 언제나 직전 거래일 **마지막 회차(18:15 확정)** 값이 된다.
+   */
+  tradingDate: string;
+  rows: MarketCapStock[];
+  /**
+   * 행의 순위 변동·시총 증감이 기준으로 삼은 직전 거래일 "YYYY-MM-DD".
+   * 기준 스냅샷이 아직 없으면 null(첫 거래일). 화면이 baseline 키를 따로 읽지
+   * 않도록 저장 시점에 함께 굳힌다.
+   */
+  baseDate: string | null;
+  /** 잡이 KIS에서 받아온 시각 (ISO) */
+  fetchedAt: string;
+}
+
+/**
+ * market:marketCapRanking:{kospi|kosdaq}:baseline — 직전 거래일 확정 시총 순위 (Phase 68).
+ * 「전일 대비 순위 변동」·「전일 대비 시총 증감」의 기준. 응답이 30건뿐이라 여기 없는
+ * 종목은 전일 30위권 밖이었다는 뜻(화면에서 `NEW`).
+ */
+export interface MarketCapBaseline {
+  market: MarketIndex;
+  /** 기준이 된 거래일 "YYYY-MM-DD" (KST) */
+  tradingDate: string;
+  /** 종목코드 → 그날 마지막 회차의 순위·시가총액(억원) */
+  entries: Record<string, { rank: number; capEok: number }>;
 }
 
 /** market:stock:{symbolCode} — 종목 현재가 스냅샷 (사용자 무관 공용) */
@@ -206,6 +243,16 @@ function fiRankingKey(market: MarketIndex): string {
   return `market:fiRanking:${market === "KOSPI" ? "kospi" : "kosdaq"}`;
 }
 
+/** market:marketCapRanking:{kospi|kosdaq} 키 조립 (Phase 68) */
+function marketCapRankingKey(market: MarketIndex): string {
+  return `market:marketCapRanking:${market === "KOSPI" ? "kospi" : "kosdaq"}`;
+}
+
+/** market:marketCapRanking:{kospi|kosdaq}:baseline 키 조립 (Phase 68) */
+function marketCapBaselineKey(market: MarketIndex): string {
+  return `${marketCapRankingKey(market)}:baseline`;
+}
+
 /** market:stock:{code} 키 조립 — 고아 키 정리 잡(Phase 49)이 접두사 SCAN·삭제에 공유한다 */
 export function stockKey(symbolCode: string): string {
   return `market:stock:${symbolCode}`;
@@ -269,6 +316,30 @@ export async function getFiRanking(
 
 export async function setFiRanking(value: StoredFiRanking): Promise<void> {
   await getRedis().set(fiRankingKey(value.market), value);
+}
+
+export async function getMarketCapRanking(
+  market: MarketIndex
+): Promise<StoredMarketCapRanking | null> {
+  return getRedis().get<StoredMarketCapRanking>(marketCapRankingKey(market));
+}
+
+export async function setMarketCapRanking(
+  value: StoredMarketCapRanking
+): Promise<void> {
+  await getRedis().set(marketCapRankingKey(value.market), value);
+}
+
+export async function getMarketCapBaseline(
+  market: MarketIndex
+): Promise<MarketCapBaseline | null> {
+  return getRedis().get<MarketCapBaseline>(marketCapBaselineKey(market));
+}
+
+export async function setMarketCapBaseline(
+  value: MarketCapBaseline
+): Promise<void> {
+  await getRedis().set(marketCapBaselineKey(value.market), value);
 }
 
 export async function getStockSnapshot(

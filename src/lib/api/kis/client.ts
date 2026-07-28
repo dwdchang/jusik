@@ -8,6 +8,7 @@ import {
   KIS_FI_RANKING_ISCD,
   KIS_INDEX_CODE,
   KIS_INVESTOR_MARKET_PARAMS,
+  KIS_MARKET_CAP_ISCD,
   KIS_MARKET_DIV_CODE,
   KIS_MULTI_PRICE_BATCH_SIZE,
   KIS_OVERSEAS_INDICATOR,
@@ -247,10 +248,15 @@ export async function fetchKisStockSnapshot(
   return data.output;
 }
 
-/** 시가총액 상위 랭킹 (FHPST01740000) — 상위 30건 (plan.md §13.4 실측) */
-export async function fetchKisMarketCapRanking(): Promise<
-  KisMarketCapRankingRow[]
-> {
+/**
+ * 시가총액 상위 랭킹 (FHPST01740000) — 상위 30건 (plan.md §13.4 실측).
+ * market을 주면 그 시장만(코스피 0001 / 코스닥 1001), 없으면 전체시장(0000).
+ * 시총값은 장중 실시간 현재가 × 상장주식수다 (Phase 68 실측). 1콜 30건이 상한이고
+ * 연속조회가 없어 31위 이하는 조회할 수 없다.
+ */
+export async function fetchKisMarketCapRanking(
+  market?: MarketIndex
+): Promise<KisMarketCapRankingRow[]> {
   const data = await fetchKisJson<KisMarketCapRankingResponse>(
     "market cap ranking",
     KIS_ENDPOINTS.MARKET_CAP_RANKING,
@@ -259,7 +265,9 @@ export async function fetchKisMarketCapRanking(): Promise<
       fid_cond_mrkt_div_code: KIS_STOCK_MARKET_DIV_CODE,
       fid_cond_scr_div_code: "20174",
       fid_div_cls_code: "0",
-      fid_input_iscd: "0000",
+      fid_input_iscd: market
+        ? KIS_MARKET_CAP_ISCD[market]
+        : KIS_MARKET_CAP_ISCD.ALL,
       fid_trgt_cls_code: "0",
       fid_trgt_exls_cls_code: "0",
       fid_input_price_1: "",

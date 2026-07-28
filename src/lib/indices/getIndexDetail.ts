@@ -1,6 +1,7 @@
 import {
   getFiRanking,
   getInvestorFlows,
+  getMarketCapRanking,
   getMarketDetail,
   INDICATOR_TO_DETAIL_KEY,
 } from "@/lib/market/store";
@@ -18,10 +19,11 @@ import {
 export async function getIndexDetail(
   market: MarketIndex
 ): Promise<IndexDetailData> {
-  const [stored, investor, fiRanking] = await Promise.all([
+  const [stored, investor, fiRanking, marketCap] = await Promise.all([
     getMarketDetail(INDICATOR_TO_DETAIL_KEY[market]),
     getInvestorFlows(market),
     getFiRanking(market),
+    getMarketCapRanking(market),
   ]);
 
   if (stored === null) {
@@ -37,5 +39,13 @@ export async function getIndexDetail(
     // 수급·순위 스냅샷은 아직 없을 수 있어(초기 시딩 전) 있을 때만 포함한다.
     ...(investor ? { investorRows: investor.rows } : {}),
     ...(fiRanking ? { fiRanking: fiRanking.groups } : {}),
+    ...(marketCap
+      ? {
+          marketCapRanking: {
+            rows: marketCap.rows,
+            baseDate: marketCap.baseDate ?? null,
+          },
+        }
+      : {}),
   };
 }

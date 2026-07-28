@@ -11,11 +11,12 @@ import { IndexChartClient } from "./IndexChartClient";
 import { IndexDailyList } from "./IndexDailyList";
 import { IndexDailyTable } from "./IndexDailyTable";
 import { InvestorFlowTable } from "./InvestorFlowTable";
+import { MarketCapRankingTable } from "./MarketCapRankingTable";
 import styles from "./IndexDetailScreen.module.css";
 
 /**
- * 국내 지수(코스피/코스닥) 상세의 탭 구성 — 일별 시세 / 일별 수급 / 종목별 순위 (§50).
- * 수급·순위 스냅샷은 초기 시딩 전 없을 수 있어(B안), 없으면 "준비 중"을 보여준다.
+ * 국내 지수(코스피/코스닥) 상세의 탭 구성 — 일별 시세 / 일별 수급 / 종목별 순위 (§50)
+ * / 시총 순위 (§68). 각 스냅샷은 초기 시딩 전 없을 수 있어(B안) 없으면 "준비 중".
  */
 function buildDomesticTabs(data: IndexDetailData): DetailTab[] {
   const emptyPanel = <p className={styles.emptyPanel}>데이터 준비 중입니다.</p>;
@@ -46,6 +47,15 @@ function buildDomesticTabs(data: IndexDetailData): DetailTab[] {
       label: "종목별 순위",
       panel: data.fiRanking ? (
         <FiRankingTable ranking={data.fiRanking} />
+      ) : (
+        emptyPanel
+      ),
+    },
+    {
+      id: "marketCap",
+      label: "시총 순위",
+      panel: data.marketCapRanking ? (
+        <MarketCapRankingTable ranking={data.marketCapRanking} />
       ) : (
         emptyPanel
       ),
