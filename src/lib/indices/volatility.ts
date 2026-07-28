@@ -1,5 +1,5 @@
 import type { KisIndexDailyResponse } from "@/lib/api/kis/types";
-import { todayKstDate } from "@/lib/date/kst";
+import { kstHhmm, todayKstDate } from "@/lib/date/kst";
 import { getRedis } from "@/lib/redis/client";
 import type {
   KospiVolatilityRecord,
@@ -113,25 +113,48 @@ function previousMonth(month: string): string {
   return `${year}-${String(monthNumber - 1).padStart(2, "0")}`;
 }
 
-/** 홈 카드 요약 — 당월 기록이 없거나 조회 실패 시 null (placeholder 표시) */
+/** 정규장 마감 KST 15:30 — 이 시각 전의 당일 기록은 아직 벌어지는 중인 진행 값 (§71) */
+const MARKET_CLOSE_HHMM = "1530";
+
+/**
+ * 홈 카드 요약 — 대표값은 **최신 거래일의 일중 변동폭**, 보조로 당월 평균·전월 대비 (§71).
+ * 기록이 하나도 없거나 조회 실패 시 null (placeholder 표시).
+ * 월 지표는 당월 기록이 없는 달 초에도 카드를 비우지 않도록 각각 null을 허용한다.
+ */
 export async function getVolatilityCardSummary(): Promise<VolatilityCardSummary | null> {
   try {
-    const monthly = aggregateMonthlyAverages(await getVolatilityHistory());
-    const currentMonth = todayKstDate().slice(0, 7);
-    const current = monthly.find((point) => point.month === currentMonth);
+    const records = await getVolatilityHistory();
+    const latest = records.at(-1);
 
-    if (!current) {
+    if (latest === undefined) {
       return null;
     }
 
-    const prev = monthly.find(
+    // 전일 = 기록 배열의 직전 항목 — 휴장일·월 경계와 무관하게 직전 거래일이 잡힌다
+    const previous = records.at(-2);
+
+    const today = todayKstDate();
+    const monthly = aggregateMonthlyAverages(records);
+    const currentMonth = today.slice(0, 7);
+    const current = monthly.find((point) => point.month === currentMonth);
+    const prevMonth = monthly.find(
       (point) => point.month === previousMonth(currentMonth)
     );
 
     return {
-      currentMonthAvg: current.avgGapPercent,
+      latestGapPercent: latest.dailyGapPercent,
+      latestDate: latest.date,
+      dayOverDayDiff:
+        previous !== undefined
+          ? latest.dailyGapPercent - previous.dailyGapPercent
+          : null,
+      latestIntraday:
+        latest.date === today && kstHhmm(Date.now()) < MARKET_CLOSE_HHMM,
+      currentMonthAvg: current?.avgGapPercent ?? null,
       monthOverMonthDiff:
-        prev !== undefined ? current.avgGapPercent - prev.avgGapPercent : null,
+        current !== undefined && prevMonth !== undefined
+          ? current.avgGapPercent - prevMonth.avgGapPercent
+          : null,
     };
   } catch (error) {
     console.error("[getVolatilityCardSummary] failed:", error);

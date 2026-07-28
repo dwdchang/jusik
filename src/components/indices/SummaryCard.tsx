@@ -24,6 +24,7 @@ export function SummaryCard({
   value,
   valueDirection,
   change,
+  note,
   placeholder = "데이터 준비 중",
   staleness = null,
 }: {
@@ -33,6 +34,8 @@ export function SummaryCard({
   /** 지정 시 value에 등락 색상 적용 (보유종목 수익률 등) */
   valueDirection?: PriceDirection;
   change?: SummaryCardChange;
+  /** change 아래 보조 한 줄 — 기준이 다른 부가 지표(변동성 카드의 월평균 등, §71) */
+  note?: string;
   placeholder?: string;
   staleness?: StalenessLevel | null;
 }) {
@@ -66,6 +69,9 @@ export function SummaryCard({
             >
               {change.text}
             </p>
+          ) : null}
+          {note !== undefined ? (
+            <p className={`${styles.note} numeric`}>{note}</p>
           ) : null}
         </>
       ) : (

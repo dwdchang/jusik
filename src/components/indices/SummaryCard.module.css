@@ -62,12 +62,19 @@
 .change {
   font-size: var(--text-caption);
   font-weight: var(--weight-semibold);
-  margin-bottom: var(--space-12);
+  margin-bottom: var(--space-8);
 }
 
 /* 각주 제거 후 등락률이 마지막이면 아래 여백 없음 (§35) */
 .change:last-child {
   margin-bottom: 0;
+}
+
+/* change 아래 보조 한 줄 — 기준이 다른 지표라 색상 없이 낮은 대비로 (§71) */
+.note {
+  font-size: var(--text-caption-sm);
+  color: var(--color-text-tertiary);
+  line-height: 1.4;
 }
 
 .value.rise {

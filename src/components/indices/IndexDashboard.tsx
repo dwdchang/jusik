@@ -89,6 +89,43 @@ function indexSummaryProps(
   };
 }
 
+/**
+ * 변동성 카드 — 대표값은 최신 거래일의 일중 변동폭, 1행 전일 대비(장중이면 진행 중 표시),
+ * 2행은 기준이 다른 월 지표(당월 평균 · 전월 대비)를 한 줄로 (§71).
+ */
+function volatilitySummaryProps(
+  summary: VolatilityCardSummary,
+  href: string,
+  staleness: StalenessLevel | null
+) {
+  const monthParts = [
+    summary.currentMonthAvg !== null
+      ? `월평균 ${summary.currentMonthAvg.toFixed(2)}%`
+      : null,
+    summary.monthOverMonthDiff !== null
+      ? `전월 ${formatPercentPoint(summary.monthOverMonthDiff)}`
+      : null,
+  ].filter((part): part is string => part !== null);
+
+  return {
+    title: "코스피 변동성 지수",
+    href,
+    staleness,
+    value: `${summary.latestGapPercent.toFixed(2)}%`,
+    change:
+      summary.dayOverDayDiff !== null
+        ? {
+          // 장중에는 고가·저가 폭이 아직 벌어지는 중이라 전일 대비가 낮게 나온다
+          text: `${summary.latestIntraday ? "장중 · " : ""}전일 대비 ${formatPercentPoint(
+            summary.dayOverDayDiff
+          )}`,
+          direction: resolveDirection(summary.dayOverDayDiff),
+        }
+        : undefined,
+    note: monthParts.length > 0 ? monthParts.join(" · ") : undefined,
+  };
+}
+
 export function IndexDashboard({
   data,
   volatilitySummary,
@@ -167,22 +204,11 @@ export function IndexDashboard({
         />
         {volatilitySummary !== null ? (
           <SummaryCard
-            title="코스피 변동성 지수"
-            href="/indices/kospi-volatility"
-            staleness={staleness.volatility}
-            value={`${volatilitySummary.currentMonthAvg.toFixed(2)}%`}
-            change={
-              volatilitySummary.monthOverMonthDiff !== null
-                ? {
-                  text: `전월 대비 ${formatPercentPoint(
-                    volatilitySummary.monthOverMonthDiff
-                  )}`,
-                  direction: resolveDirection(
-                    volatilitySummary.monthOverMonthDiff
-                  ),
-                }
-                : undefined
-            }
+            {...volatilitySummaryProps(
+              volatilitySummary,
+              "/indices/kospi-volatility",
+              staleness.volatility
+            )}
           />
         ) : (
           <SummaryCard

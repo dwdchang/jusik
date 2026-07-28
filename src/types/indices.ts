@@ -276,8 +276,19 @@ export interface VolatilityMonthlyPoint {
 
 /** 홈 화면 코스피 변동성 카드 요약 */
 export interface VolatilityCardSummary {
-  /** 당월 평균 변동성(%) — 오늘까지의 진행분 평균 */
-  currentMonthAvg: number;
-  /** 전월 대비 증감(%p), 전월 기록이 없으면 null */
+  /** 최신 기록의 일중 변동폭(%) — 카드 대표값 (§71) */
+  latestGapPercent: number;
+  /** 최신 기록 날짜 "YYYY-MM-DD" */
+  latestDate: string;
+  /** 직전 거래일 대비 증감(%p), 직전 기록이 없으면 null */
+  dayOverDayDiff: number | null;
+  /**
+   * 최신 기록이 아직 확정 전인 당일치인지 — 장중(KST 15:30 이전)에는 고가·저가 폭이
+   * 계속 벌어지는 진행 값이라 전일 대비가 낮게 나온다. 표기로 구분한다 (§71).
+   */
+  latestIntraday: boolean;
+  /** 당월 평균 변동성(%) — 오늘까지의 진행분 평균. 당월 기록이 없으면 null */
+  currentMonthAvg: number | null;
+  /** 전월 대비 증감(%p), 당월·전월 기록이 없으면 null */
   monthOverMonthDiff: number | null;
 }
