@@ -1,0 +1,13 @@
+.skeleton {
+  min-height: var(--chart-height);
+  margin-bottom: var(--space-16);
+  padding: var(--card-padding);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-caption);
+  color: var(--color-text-tertiary);
+}

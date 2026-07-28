@@ -1,0 +1,103 @@
+.section {
+  margin-bottom: var(--space-16);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+  margin-bottom: var(--space-8);
+}
+
+.title {
+  font-size: var(--text-caption);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.tab {
+  padding: 4px 8px;
+  border: none;
+  border-radius: calc(var(--radius-md) - 3px);
+  background-color: transparent;
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+}
+
+.tabActive {
+  background-color: var(--color-bg);
+  color: var(--color-text-primary);
+  font-weight: var(--weight-semibold);
+}
+
+.empty {
+  padding: var(--space-24) var(--space-16);
+  text-align: center;
+  font-size: var(--text-caption);
+  color: var(--color-text-secondary);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.scroll {
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-caption-sm);
+}
+
+.nameHead,
+.nameCell {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  text-align: left;
+  padding: var(--space-8) var(--space-12);
+  background-color: var(--color-surface);
+  color: var(--color-text-primary);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+}
+
+.numHead,
+.numCell {
+  padding: var(--space-8) var(--space-12);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.numHead {
+  color: var(--color-text-tertiary);
+  font-weight: var(--weight-medium);
+}
+
+.numCell {
+  color: var(--color-text-secondary);
+}
+
+.table thead th {
+  border-bottom: 1px solid var(--color-border);
+}
+
+.table tbody tr + tr th,
+.table tbody tr + tr td {
+  border-top: 1px solid var(--color-border);
+}

@@ -58,26 +58,6 @@
   border-radius: var(--radius-md);
 }
 
-/* 재무제표 전문(`/statements`) 진입 버튼 — 통합지표 화면의 마지막 행동 */
-.detailLink {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-12);
-  background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
-  font-size: var(--text-caption);
-  font-weight: var(--weight-medium);
-  color: var(--color-primary);
-  text-decoration: none;
-}
-
-.detailLink:active {
-  background-color: var(--color-bg);
-}
-
 .note {
   margin-top: var(--space-16);
   font-size: var(--text-micro);

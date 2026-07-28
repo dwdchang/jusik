@@ -21,11 +21,12 @@ import { getRedis } from "@/lib/redis/client";
  */
 
 const ANALYSIS_TTL_SECONDS = 30 * 24 * 60 * 60; // 30일
-const ANALYSIS_KEY_PREFIX = "analysis:financials:";
-/** 조회할 최근 사업연도 수 */
-const ANALYSIS_YEARS = 5;
+/** v2 = 조회 연수를 5→6으로 넓힌 판 (Phase 72). 구 키는 손대지 않고 자연 만료시킨다 */
+const ANALYSIS_KEY_PREFIX = "analysis:financials:v2:";
+/** 조회할 최근 사업연도 수 — 통합지표(`overview.ts`)와 동일하게 6개년 (Phase 72) */
+const ANALYSIS_YEARS = 6;
 /** DART 동시 호출 상한 — 첫 열람 응답을 앞당기되 과도한 동시성은 피한다 */
-const DART_CONCURRENCY = 5;
+export const DART_CONCURRENCY = 5;
 
 // ── 뷰 모델 ──────────────────────────────────────────────
 
@@ -85,13 +86,13 @@ const SJ_ORDER: Record<string, number> = {
   SCE: 4,
 };
 
-/** KST 기준 올해 연도 */
-function currentKstYear(): number {
+/** KST 기준 올해 연도 (통합지표 리더 `overview.ts`와 공용) */
+export function currentKstYear(): number {
   return new Date(Date.now() + 9 * 60 * 60 * 1000).getUTCFullYear();
 }
 
-/** 동시성 제한 map — items를 limit개씩 병렬 처리 */
-async function mapLimit<T, R>(
+/** 동시성 제한 map — items를 limit개씩 병렬 처리 (통합지표 리더 `overview.ts`와 공용) */
+export async function mapLimit<T, R>(
   items: T[],
   limit: number,
   fn: (item: T) => Promise<R>

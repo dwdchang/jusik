@@ -1,35 +1,31 @@
 import type { Metadata } from "next";
-import { FinancialSection } from "@/components/analysis/FinancialSection";
+import Link from "next/link";
+import { AnalysisChartsClient } from "@/components/analysis/AnalysisChartsClient";
+import { InvestmentIndicators } from "@/components/analysis/InvestmentIndicators";
+import { KeyMetricsTable } from "@/components/analysis/KeyMetricsTable";
 import { NavIconLink } from "@/components/nav/NavIconLink";
-import { getFinancialAnalysis } from "@/lib/analysis/financials";
+import { getAnalysisOverview } from "@/lib/analysis/overview";
+import { getAnalysisQuote } from "@/lib/analysis/quote";
+import {
+  buildInvestmentIndicators,
+  withAnnualValuation,
+  withQuarterValuation,
+  withTtmValuation,
+} from "@/lib/analysis/view";
 import { ensureAllowedSession } from "@/lib/auth/ensureAllowedSession";
 import { getStockMaster } from "@/lib/market/store";
 import styles from "./page.module.css";
 
 /**
- * 종목분석 상세 (Phase 64, plan.md §64) — 사용자가 이 화면을 열 때만 DART를
- * 조회한다(read-through 캐시). 최근 5개년 재무제표(재무상태표·손익계산서·현금흐름표
- * 등)와 재무지표(수익성·안정성·성장성·활동성)를 표로 보여준다.
+ * 종목분석 상세 — 통합지표 (Phase 72, plan.md §72).
+ *
+ * 화면 순서(사용자 확정): 투자지표 → 주가 변동률 → 차트 6종 → 주요 재무지표 표 →
+ * 재무제표 전문 진입 버튼. 계정 전체를 늘어놓던 기존 화면은 `/statements`로 옮겼다.
+ *
+ * 데이터는 캐시 주기가 다른 둘을 병렬로 읽는다 — 재무(`overview`, TTL 30일)와
+ * 시세(`quote`, TTL 6시간). 첫 열람은 DART·금융위를 실제로 부르므로 느릴 수 있고,
+ * 그 뒤로는 캐시에서 나온다.
  */
-
-/** 재무제표 금액(원) → 조/억/원 축약 (계정마다 규모가 달라 단위를 유동적으로) */
-function formatAmount(won: number): string {
-  const abs = Math.abs(won);
-  if (abs >= 1e12) {
-    return `${(won / 1e12).toLocaleString("ko-KR", {
-      maximumFractionDigits: 1,
-    })}조`;
-  }
-  if (abs >= 1e8) {
-    return `${Math.round(won / 1e8).toLocaleString("ko-KR")}억`;
-  }
-  return won.toLocaleString("ko-KR");
-}
-
-/** 재무지표 값 — 비율/배수라 소수 둘째 자리까지 */
-function formatIndexValue(value: number): string {
-  return value.toLocaleString("ko-KR", { maximumFractionDigits: 2 });
-}
 
 async function resolveName(symbolCode: string): Promise<string | null> {
   try {
@@ -55,9 +51,8 @@ export async function generateMetadata({
 const STATUS_MESSAGE: Record<string, string> = {
   not_listed:
     "DART에 등록된 상장기업이 아니거나 고유번호 매핑이 아직 준비되지 않았습니다.",
-  no_data: "이 종목의 재무제표를 DART에서 찾지 못했습니다.",
-  error:
-    "재무 정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.",
+  no_data: "이 종목의 재무 자료를 DART에서 찾지 못했습니다.",
+  error: "재무 정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.",
 };
 
 export default async function AnalysisDetailPage({
@@ -68,10 +63,21 @@ export default async function AnalysisDetailPage({
   await ensureAllowedSession();
   const { symbolCode } = await params;
 
-  const [name, result] = await Promise.all([
+  const [name, result, quote] = await Promise.all([
     resolveName(symbolCode),
-    getFinancialAnalysis(symbolCode),
+    getAnalysisOverview(symbolCode),
+    getAnalysisQuote(symbolCode),
   ]);
+
+  // 차트와 표가 같은 시리즈를 쓴다 — 조립은 한 번만
+  const series =
+    result.status === "ok"
+      ? {
+          ttm: withTtmValuation(result.overview.ttm, quote),
+          annual: withAnnualValuation(result.overview.annual, quote),
+          quarter: withQuarterValuation(result.overview.quarter),
+        }
+      : null;
 
   return (
     <div className={styles.page}>
@@ -84,39 +90,42 @@ export default async function AnalysisDetailPage({
           </div>
         </header>
 
-        {result.status !== "ok" ? (
+        {result.status !== "ok" || series === null ? (
           <p className={styles.empty}>{STATUS_MESSAGE[result.status]}</p>
         ) : (
           <>
             <p className={styles.meta}>
-              {result.analysis.basis}재무제표 · 사업보고서(연간) 기준 ·{" "}
-              {result.analysis.years.length}개년 · 출처 DART
+              {result.overview.basis}재무제표 기준 · 최근{" "}
+              {result.overview.annual.length}개년 · 출처 DART
+              {quote !== null ? " · 시세 금융위원회" : ""}
             </p>
 
-            {result.analysis.statements.map((statement) => (
-              <FinancialSection
-                key={statement.division}
-                title={statement.title}
-                years={result.analysis.years}
-                rows={statement.rows}
-                format={formatAmount}
-                unitNote="단위: 원(조·억 축약)"
-              />
-            ))}
+            <InvestmentIndicators
+              indicators={buildInvestmentIndicators(result.overview, quote)}
+              basisDate={quote?.basisDate ?? null}
+            />
 
-            {result.analysis.indices.map((group) => (
-              <FinancialSection
-                key={group.category}
-                title={group.category}
-                years={result.analysis.years}
-                rows={group.rows}
-                format={formatIndexValue}
-              />
-            ))}
+            <AnalysisChartsClient
+              changes={quote?.changes ?? []}
+              series={series}
+            />
+
+            <KeyMetricsTable series={series} />
+
+            <Link
+              href={`/analysis/${symbolCode}/statements`}
+              className={styles.detailLink}
+              prefetch={false}
+            >
+              재무제표 상세보기
+            </Link>
 
             <p className={styles.note}>
-              재무 데이터는 금융감독원 전자공시(DART) 사업보고서 기준이며, 최초
-              조회 후 30일간 캐시됩니다.
+              재무 데이터는 금융감독원 전자공시(DART) 기준이며 최초 조회 후 30일간
+              캐시됩니다. 시세는 금융위원회 주식시세정보의 직전 영업일 확정 종가
+              기준이라 장중 실시간 값과 다릅니다. PER·PBR은 연간에서는 각 연도 말
+              종가로, 연환산에서는 각 분기말 종가로 계산하며, 분기 탭에서는 3개월
+              실적이라 배수를 매기지 않습니다.
             </p>
           </>
         )}
