@@ -1,0 +1,125 @@
+/* 홈 "내 종목" 카드 — 골격은 SummaryCard, 행 폼은 구 WatchlistCard 승계 (§67) */
+.card {
+  composes: card from "./SummaryCard.module.css";
+  /* 보유·관심 2열을 담으려면 전폭이어야 한다 — 반폭(열당 94px)에서는 종목명이
+     잘린다(§67 폭 계산). 홈 그리드 전용 카드라 여기에 둔다. */
+  grid-column: 1 / -1;
+}
+
+.badge {
+  composes: badge from "./SummaryCard.module.css";
+}
+
+.badgeWarn {
+  composes: badgeWarn from "./SummaryCard.module.css";
+}
+
+.badgeCritical {
+  composes: badgeCritical from "./SummaryCard.module.css";
+}
+
+.placeholder {
+  composes: placeholder from "./SummaryCard.module.css";
+}
+
+/* 제목 + 보유 전체 수익률·전일 대비. 우측 padding은 staleness 배지
+   (absolute; top/right: 8px) 자리를 비워 수치와 겹치지 않게 한다 */
+.titleRow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-8);
+  padding-right: var(--space-24);
+  margin-bottom: var(--space-8);
+}
+
+.title {
+  composes: title from "./SummaryCard.module.css";
+  margin-bottom: 0;
+}
+
+.totals {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-8);
+  margin-left: auto;
+}
+
+/* 왼쪽=보유 · 오른쪽=관심. 라벨·구분선 없이 위치로만 구분한다(사용자 확정, §67).
+   양쪽 행 수가 달라도 각 열이 위에서부터 채워지도록 start 정렬 */
+.columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-8) var(--space-16);
+  align-items: start;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  min-width: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-8);
+  font-size: var(--text-caption);
+  min-width: 0;
+}
+
+.name {
+  flex: 1;
+  min-width: 0;
+  color: var(--color-text-primary);
+  font-weight: var(--weight-medium);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rate {
+  flex-shrink: 0;
+  font-weight: var(--weight-semibold);
+}
+
+/* 전일 대비 등락률 — 메인 수익률보다 한 단계 작게 (§35에서 괄호 제거) */
+.daily {
+  flex-shrink: 0;
+  font-size: var(--text-micro);
+}
+
+/* 한쪽 열만 비었을 때 — 열 자리는 유지해 좌/우 의미가 흔들리지 않게 한다 */
+.columnPlaceholder {
+  font-size: var(--text-caption);
+  color: var(--color-text-tertiary);
+}
+
+/* 스크린리더 전용 텍스트 — 제목 우측 두 수치는 시각 라벨이 없으므로
+   의미를 여기서만 준다 (app/stocks/page.module.css와 같은 패턴) */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* 기준가 확정 전 「-」 */
+.pending {
+  color: var(--color-text-tertiary);
+}
+
+.rise {
+  color: var(--color-rise);
+}
+
+.fall {
+  color: var(--color-fall);
+}
+
+.flat {
+  color: var(--color-flat);
+}

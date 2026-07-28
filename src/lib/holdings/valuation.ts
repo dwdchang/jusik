@@ -1,16 +1,22 @@
-import { getStockSnapshots } from "@/lib/market/store";
+import { getStockSnapshots, type StoredStockSnapshot } from "@/lib/market/store";
 import type { Holding, PortfolioValuation } from "@/types/holdings";
 
 /**
  * 보유종목 평가 — QStash 갱신 잡이 저장한 `market:stock:{code}` 스냅샷으로 계산한다.
  * 접속 시 KIS 호출 없음 (Phase 11 §11.6). 스냅샷이 없는 종목(방금 등록·잘못된 코드)은
  * null 평가로 격리하고 합계에서 제외한다 (§11.10-A4).
+ *
+ * `prefetchedSnapshots`는 호출부가 이미 읽어 둔 스냅샷 맵 — 보유 외 종목이 섞여 있어도
+ * 무관하다(코드로 조회하므로). 홈 「내 종목」 카드처럼 보유·관심을 합쳐 MGET 1회로
+ * 끝내는 경로에서 재조회를 없애는 용도 (§67). 미전달이면 기존과 동일하게 직접 읽는다.
  */
 export async function getPortfolioValuation(
-  holdings: Holding[]
+  holdings: Holding[],
+  prefetchedSnapshots?: Map<string, StoredStockSnapshot>
 ): Promise<PortfolioValuation> {
   const symbolCodes = [...new Set(holdings.map((h) => h.symbolCode))];
-  const snapshots = await getStockSnapshots(symbolCodes);
+  const snapshots =
+    prefetchedSnapshots ?? (await getStockSnapshots(symbolCodes));
 
   const items = holdings.map((holding) => {
     const snapshot = snapshots.get(holding.symbolCode);

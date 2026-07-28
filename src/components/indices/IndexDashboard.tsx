@@ -11,7 +11,7 @@ import type {
   RefreshIncident,
   StalenessLevel,
 } from "@/lib/market/staleness";
-import type { WatchlistCardSummary } from "@/lib/watchlist/summary";
+import type { MyStocksCardSummary } from "@/lib/stocks/myStocksCard";
 import type {
   IndexDashboardData,
   IndexSnapshot,
@@ -23,8 +23,8 @@ import { FeedSummaryCard } from "./FeedSummaryCard";
 import { HotStocksCard } from "./HotStocksCard";
 import styles from "./IndexDashboard.module.css";
 import { MarketCard } from "./MarketCard";
+import { MyStocksCard } from "./MyStocksCard";
 import { SummaryCard } from "./SummaryCard";
-import { WatchlistCard } from "./WatchlistCard";
 
 /** 카드 배지 판정 결과 — 장중(09:00~18:20 KST)에만 non-null (§11.10-B).
  * market은 금리·유가·금 3종 중 가장 오래된 수집 시각 기준
@@ -35,7 +35,7 @@ export type DashboardStaleness = Record<
   | "usdkrw"
   | "market"
   | "volatility"
-  | "watchlist"
+  | "myStocks"
   | "dividends",
   StalenessLevel | null
 >;
@@ -93,7 +93,7 @@ export function IndexDashboard({
   data,
   volatilitySummary,
   hotStocksSummary,
-  watchlistSummary,
+  myStocksSummary,
   dividendSummary,
   staleness,
   incident,
@@ -102,7 +102,7 @@ export function IndexDashboard({
   data: IndexDashboardData;
   volatilitySummary: VolatilityCardSummary | null;
   hotStocksSummary: DailyHotCardSummary | null;
-  watchlistSummary: WatchlistCardSummary | null;
+  myStocksSummary: MyStocksCardSummary | null;
   dividendSummary: DividendCardSummary | null;
   staleness: DashboardStaleness;
   incident: RefreshIncident | null;
@@ -195,9 +195,9 @@ export function IndexDashboard({
           summary={hotStocksSummary}
           suppressStale={incident !== null}
         />
-        <WatchlistCard
-          summary={watchlistSummary}
-          staleness={staleness.watchlist}
+        <MyStocksCard
+          summary={myStocksSummary}
+          staleness={staleness.myStocks}
         />
         <DividendCard
           summary={dividendSummary}
