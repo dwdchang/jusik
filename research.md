@@ -149,6 +149,7 @@
 | `indices/dates.ts` | `getLast7BusinessDates` — **현재 미사용 (레거시)** (§9.2) |
 | `market/store.ts` | 공용 시세 Redis 스토어 — `market:detail:*`, `market:stock:*`, `market:stockInfo:*`(배당 회차 `rounds` 포함, §25), `market:lastRefreshAt`(`LastRefreshRecord`: `at`=마지막 성공·`attemptedAt`=마지막 실행 시작(§52)·`trigger`·`ok`), `market:dailyFluctuation`, `market:weeklyFluctuation`, `market:stockMaster`, `market:investor:*`(§42), `market:fiRanking:*`(§50) (§5). `getStockInfoBlocksMap`(MGET 일괄, 없는 종목은 맵에서 제외) 제공 |
 | `stocks/search.ts` | `"use server"` — `searchStocks(query)` 종목명 검색 액션. `auth`+`isEmailAllowed` 가드 후 `market:stockMaster` 부분일치 필터, 접두 우선·가나다 정렬 상위 20. 등록 폼 전용, KIS 직접 호출 없음 |
+| `stocks/myStocksCard.ts` | 홈 「내 종목」 카드 요약 `getMyStocksCardSummary` (Phase 67) — 보유·관심을 한 카드에 담는다. `getHoldings`+`getWatchlist` 병렬 → **합집합 `getStockSnapshots` MGET 1회** → 그 맵을 `getPortfolioValuation`에 주입(재조회 없음). 양쪽 다 수익률 내림차순 상위 4개(`sortRowsByReturnRate`와 같은 규칙), 보유 전체 수익률·전일 대비 동봉. 관심 행은 Phase 65 종가 폴백 규칙 적용. 실패 시 null |
 | `market/staleness.ts` | KST 시간창 가드(`isWithinKisCallWindow` 09:00~18:40) + **스케줄 인지형 배지 판정** `resolveStaleness` — 시세 잡 스케줄 상수(`SCHEDULE_MINUTES`: 09:00~15:30 10분 + 15:40 + 18:15)로 "이미 완료됐어야 할 최근 슬롯(`lastDueRefreshMs`, 유예 20분)"을 구해, fetchedAt이 그보다 오래됐을 때만 배지(정상 휴지 구간엔 안 뜸). 지연 경과로 warn/critical. `SCHEDULE_MINUTES`는 외부 QStash 등록과 동기화 필수. **`resolveRefreshIncident`**(§52) — `market:lastRefreshAt` 레코드(`at`=마지막 성공, `attemptedAt`=마지막 실행 시작)로 홈 전반 갱신 지연 인시던트 판정: 예정 슬롯을 놓쳤고 `attemptedAt`도 그 이전이면 `stalled`(잡 미실행=QStash 미발화 추정), `attemptedAt`은 그 이후면 `failing`(실행됐으나 실패). `since`(멈춘 시각)·`missedSlots`(`countMissedSlots`)·`nextSlotMs`(`nextScheduledRefreshMs`) 동반 |
 | `holdings/store.ts` | 보유종목·포트폴리오 히스토리 store — 암호화, 레거시 평문/`avgPrice` 읽기 하위호환 |
 | `holdings/valuation.ts` | 포트폴리오 평가(스냅샷 MGET) — 시세 없는 종목 null 격리·합계 제외. 일일 등락률(`totalDailyChangeRate`)은 종목별 `changeRate`로 전일 평가액을 역산·가중(히스토리 불필요·항상 가용) |
@@ -175,7 +176,7 @@
 | `push/store.ts` | 웹 푸시 구독 store (Phase 10) — `push:subs:{email}` `secureJson` 암호화(endpoint가 곧 발송 권한), endpoint 기준 dedup 등록/해지/`prunePushSubscriptions`(발송 경로 전용) |
 | `push/send.ts` | 웹 푸시 발송 공용 유틸 (Phase 10) — `sendPushToEmail(email, payload)`: VAPID env 검증, 구독별 실패 격리, 410/404 자동 정리. 페이로드 계약 `{title, body, url?, tag?}`는 `public/sw.js`와 동기화 필수. 잡 훅(2·3단계)·테스트 발송 액션 공유 |
 | `watchlist/store.ts` | 관심종목 store — 암호화 (신규 키라 평문 하위호환 없음) |
-| `watchlist/summary.ts` | `computeWatchReturnRate`(순수 함수) + 홈 카드 요약 `getWatchlistCardSummary` — 수익률 상위 4종목 개별 목록(`top4`: 등록 기준일 대비 수익률 + 전일 등락률, §24·§33). 스냅샷이 없으면 목록 화면과 같은 종가 폴백을 적용해 두 화면이 어긋나지 않게 한다(Phase 65) |
+| `watchlist/summary.ts` | `computeWatchReturnRate`(순수 함수)만 남는다 — 목록(`stocks/rows.ts`)·종목 상세가 쓴다. 홈 카드 요약 `getWatchlistCardSummary`는 Phase 67에서 `stocks/myStocksCard.ts`로 대체·삭제 |
 | `theme.ts` | `THEME_STORAGE_KEY`·`Theme` 타입만 |
 
 ### 2.3 `src/components`
@@ -184,10 +185,10 @@
 |---|---|---|
 | `indices/IndexDashboard` | Server | 홈 카드 조립(§28 원/달러 분리, §33 글로벌 지표 `MarketCard`, **Phase 64에서 「종목분석」 진입 `SummaryCard`(`/analysis`, placeholder형) 추가**) + 헤더(좌 `NavIconLink` 홈 아이콘 + `<h1>Dashboard</h1>` + 우 햄버거 `HeaderMenu` — Phase 26에서 제거했던 제목을 §36에서 영어 제목으로 복원, 설명 문구는 그대로 없음) |
 | `indices/SummaryCard` | Server | **홈 요약 카드 공용 프리미티브** — value/change/placeholder/staleness 배지(§35에서 `footnote` prop 폐지 — 홈 각주 전면 제거). 카드 전체가 Link |
-| `indices/MarketCard` | Server | 「글로벌 지표」 전용 카드 (§33, 제목은 §37에서 `시장`→`글로벌 지표`) — 금리·유가·금·비트코인(USD) 4행 동등 목록, 행마다 지표명·값·등락률. 지표명은 §34에서 축약(`美 금리`·`WTI`·`GOLD`·`BTC`) — 4행 모두 값 열은 숫자만(전부 USD 기준이라 §37에서 BTC의 `($)`도 제거, 통화 안내는 상세 화면 각주에만). 각주는 §35에서 제거, 등락률만 `--text-caption-sm`(12px)로 1pt 축소. §30 추가 지표는 null이면 행 생략. 골격·배지는 SummaryCard composes, 리스트 폼은 WatchlistCard와 동일 관례, 카드 전체 `/indices/market` 링크 |
+| `indices/MarketCard` | Server | 「글로벌 지표」 전용 카드 (§33, 제목은 §37에서 `시장`→`글로벌 지표`) — 금리·유가·금·비트코인(USD) 4행 동등 목록, 행마다 지표명·값·등락률. 지표명은 §34에서 축약(`美 금리`·`WTI`·`GOLD`·`BTC`) — 4행 모두 값 열은 숫자만(전부 USD 기준이라 §37에서 BTC의 `($)`도 제거, 통화 안내는 상세 화면 각주에만). 각주는 §35에서 제거, 등락률만 `--text-caption-sm`(12px)로 1pt 축소. §30 추가 지표는 null이면 행 생략. 골격·배지는 SummaryCard composes, 리스트 폼은 MyStocksCard(구 WatchlistCard)와 동일 관례, 카드 전체 `/indices/market` 링크 |
 | `indices/HotStocksCard` | Server | 핫종목 전용 카드 — 당일 등락률 TOP 4 리스트 (§33에서 4행 통일, SummaryCard 미사용) |
-| `indices/WatchlistCard` | Server | 홈 **「내 종목」** 카드 (§24, 제목은 §57에서 `관심종목`→`내 종목` — 이동 대상은 §58에서 `/watchlist`→`/stocks`(보유·관심·잔고 4탭). **본문은 여전히 관심종목만**이고, §58에서 홈 보유종목 카드가 삭제돼 보유 요약은 잔고 탭에서 본다) — 수익률 상위 4종목 리스트(§33), 행마다 등록 기준일 대비 수익률 + 전일 등락률(§35에서 괄호 제거 — `.daily` 11px로 구분). 골격·staleness 배지는 SummaryCard composes(`STALENESS_LABELS` export 재사용), 리스트 폼은 HotStocksCard와 동일 |
-| `indices/DividendCard` | Server | 배당 일정 전용 카드 (§25) — 다가오는 지급일 상위 4행(§33, 종목명·지급일 MM/DD·주당배당금), **보유종목 기준**. 골격·배지·리스트 폼은 WatchlistCard와 동일 관례, 카드 전체 `/dividends` 링크 |
+| `indices/MyStocksCard` | Server | 홈 **「내 종목」** 카드 (§24→§57 개명→**§67에서 보유+관심 통합**, 구 `WatchlistCard`를 대체) — **왼쪽 보유 4·오른쪽 관심 4** 2열, 제목 우측에 **보유 전체 수익률·전일 대비**. **라벨 텍스트(「보유」·「관심」·이름표) 없음**(사용자 확정) — 좌/우 위치와 글자 크기(수익률 `--text-caption` · 전일 대비 `--text-micro`)로만 구분하고, **열 구분선도 없다**(§57에서 표 세로선을 뺀 것과 같은 방향). 시각 라벨이 없는 대신 `<ol aria-label>`·`.srOnly`로 스크린리더 텍스트는 유지. 2열이 들어가려면 폭이 필요해 카드 자신이 `grid-column: 1 / -1`(전폭)을 갖는다 — 반폭이면 열당 94px로 종목명이 잘린다(§67 계산). 한쪽만 비면 그 열에 `종목을 등록해보세요`, 양쪽 다 비면 카드 전체 placeholder. 골격·staleness 배지는 SummaryCard composes, 행 폼은 구 WatchlistCard 승계 |
+| `indices/DividendCard` | Server | 배당 일정 전용 카드 (§25) — 다가오는 지급일 상위 4행(§33, 종목명·지급일 MM/DD·주당배당금), **보유종목 기준**. 골격·배지·리스트 폼은 MyStocksCard(구 WatchlistCard)와 동일 관례, 카드 전체 `/dividends` 링크 |
 | `indices/IndexDetailScreen` | Server(async) | **지표 상세 3종(코스피·코스닥·원달러) 공용 화면** — `getIndexDetail`/`getOverseasDetail` 분기, 헤더(홈 아이콘 + 지표명 `<h1>`(§36) + 마지막 갱신)+카드+차트+일별 리스트+푸터. `children` 슬롯(일별 시세와 푸터 사이 — usdkrw의 달러 인덱스 섹션용, §28) |
 | `indices/DollarIndexSection` | Server(async) | 원/달러 상세 하단 달러 인덱스 섹션 (§28) — `getOverseasDetail("DXY")` → IndexCard+차트+근사치 각주. 첫 갱신 전엔 준비 중 문구 |
 | `indices/IndexCard` / `IndexDailyList` / `DataAsOfFooter` | Server | 상세 스냅샷 카드 / 일별 시세 리스트(해외 지표) / 홈 푸터 |
@@ -468,8 +469,10 @@ QStash 스케줄 (매일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 * * *) → POST /a
 페이지는 Server Component에서 lib 함수를 직접 호출한다.
 
 - **홈** `app/page.tsx`: `getDashboardData`(detail 7종 MGET) + 카드 요약 4종(변동성·
-  핫종목·관심종목·배당 — §58에서 보유종목 카드·요약 삭제) + `getLastRefreshRecord` 병렬 → staleness 배지 판정 →
-  `IndexDashboard`.
+  핫종목·**내 종목**·배당 — §58에서 보유종목 카드·요약 삭제, §67에서 내 종목 카드가 보유+관심 통합)
+  + `getLastRefreshRecord` 병렬 → staleness 배지 판정 → `IndexDashboard`.
+  내 종목 요약(`getMyStocksCardSummary`)은 `holdings:{email}`·`watchlist:{email}` 2키 +
+  두 목록 합집합 스냅샷 MGET 1회로 끝난다(평가 계산에 스냅샷 맵을 주입해 재조회 없음).
 - **지표 상세**: `IndexDetailScreen` → `getIndexDetail`/`getOverseasDetail` → detail 1건.
   usdkrw는 children `DollarIndexSection`이 `market:detail:dxy` 1건 추가 조회 (§28).
   글로벌 지표(`/indices/market`)는 금리·유가·금·비트코인 2키를 합쳐 MGET 1회(5키) — 카드별
@@ -568,7 +571,9 @@ QStash 스케줄 (매일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 * * *) → POST /a
 - `encryptJson`/`decryptJson`/`isEncrypted` — 개인 데이터 저장 시 필수.
 - `getStockSnapshots`/`getMarketDetails` — MGET 일괄 조회 (개별 GET 반복 금지).
 - `computeWatchReturnRate`, `computeDailyChangeRate`, `latestRecordBefore`,
-  `getPortfolioValuation` — 수익률·평가 계산은 이들 재사용.
+  `getPortfolioValuation` — 수익률·평가 계산은 이들 재사용. `getPortfolioValuation`은
+  두 번째 인자로 **이미 읽어 둔 스냅샷 맵을 주입**할 수 있다(§67 — 보유 외 종목이 섞여
+  있어도 무관, MGET 중복 제거용).
 - `addMonths`/`baseMonthKst`/`monthStartYyyyMmDd`/`monthEndYyyyMmDd` (hotstocks/months) —
   월 단위 계산 공용.
 - `resolveStaleness`(스케줄 인지형 배지)/`isWithinKisCallWindow` (market/staleness).
@@ -701,7 +706,8 @@ QStash 스케줄 (매일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 * * *) → POST /a
     `fillRegistrationPrices`(needsFill), `stocks/rows.ts`(buildWatchRows),
     종목 상세 page(관심 분기). Phase 65의 **종가 폴백 판정(스냅샷 부재 시
     `priceAtRegistration` 사용)도 3곳** — `stocks/rows.ts`(buildWatchRows),
-    종목 상세 page(watchPrice), `watchlist/summary.ts`(홈 카드). 폴백 규칙을
+    종목 상세 page(watchPrice), `stocks/myStocksCard.ts`(홈 카드, §67 이전엔
+    `watchlist/summary.ts`). 폴백 규칙을
     바꾸면 세 곳이 어긋나지 않게 함께 고쳐야 한다.
 12. **차트 축·그리드·툴팁 Recharts 설정** — IndexLineChart/VolatilityChart/HoldingsChart
     3곳에 유사 코드 (tick 스타일·margin 등). 디자인 변경 시 3곳 동시 수정.

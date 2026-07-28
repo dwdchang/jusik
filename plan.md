@@ -3319,6 +3319,29 @@ interface WatchItem {
 
 ---
 
+### Phase 67 — 홈 「내 종목」 카드에 보유+관심 2열 통합 + 전폭 전환 (2026-07-28, 구현 완료)
+
+- **요청 근거**: 사용자 — 홈 「내 종목」 카드가 관심종목만 담고 있는데(§57에서 "카드 내용까지 합칠지 미결"로 남겨 둔 지점), **왼쪽에 보유 4종목·오른쪽에 관심 4종목**을 함께 넣고 **제목 오른쪽에 보유 전체 수익률·전일 대비 등락률**을 붙인다. 라벨 텍스트(「보유」·「관심」·「전체 수익률」 등 이름이 들어간 문구)는 **전부 빼고** 수치와 위치만으로 표현한다.
+- **폭 타당성(실측 계산)**: 현재 카드 폭으로는 불가능하다. `IndexDashboard.module.css`의 2열 그리드 + `--layout-max-width: 480px`이면 카드 폭 (480−32−8)/2 = **220px**, 내부 콘텐츠 196px, 좌우로 쪼개면 **열당 94px**. 한 행 최소 폭은 종목명 4자(≈52px) + 수익률(≈55px) + 등락률(≈46px) + 갭 16px = **약 169px**이라 종목명이 「삼…」 수준으로 잘린다. → **전폭(`grid-column: 1 / -1`)이면 열당 208px**(여유 39px), 뷰포트 400px에서 168px, 360px(1열 그리드)에서 148px로 ellipsis 흡수 가능.
+- **정책(사용자 확정)**:
+  - **라벨 전면 제거** — 열 머리 「보유/관심」도, 제목 우측 수치의 이름표도 두지 않는다. 좌=보유·우=관심은 **위치만으로** 전달한다.
+  - **열 구분선 없음** — 좌/우 구분 단서가 약해지는 것은 감수(사용자: "공간 확보 땜에 어쩔 수 없어"). §57에서 내 종목 표의 세로 구분선을 이미 제거한 것과도 방향이 같다.
+  - **스크린리더 텍스트는 유지** — 시각 라벨이 아니므로 요청 취지에 어긋나지 않는다. 두 열은 `<ol aria-label>`, 제목 우측 두 수치는 `.srOnly` 텍스트로 의미를 준다(`app/stocks/page.module.css`의 같은 패턴 재사용).
+  - **한쪽이 비면 그 열에 placeholder** — 열 자체를 없애면 남은 4행이 보유인지 관심인지 알 수 없다. 문구는 현행 `종목을 등록해보세요` 그대로(이름이 안 들어간 문구라 재사용 가능). 양쪽 다 비면 카드 전체 placeholder(기존과 동일).
+  - **정렬은 수익률 내림차순** — 양쪽 다 `/stocks` 목록(`sortRowsByReturnRate`, §56)과 같은 규칙. 수익률 없는 행은 뒤로, 그들끼리는 종목명순.
+  - **카드 위치 유지** — 그리드에서 내 종목 앞에 카드가 정확히 6개(3행)라 전폭 행이 행 경계에 딱 맞는다. 대신 마지막 「종목분석」 카드가 반 칸으로 남는데(카드 10개 중 1개가 전폭 → 9개가 2열), 위치를 옮기지 않고 감수한다.
+- **구현**:
+  - `lib/stocks/myStocksCard.ts` 신설 — `getMyStocksCardSummary(email)`. `getHoldings`+`getWatchlist` 병렬 → **보유·관심 합집합으로 `getStockSnapshots` MGET 1회** → 그 맵을 `getPortfolioValuation`에 주입해 재조회를 없앤다. 관심 행은 §65 종가 폴백 규칙 그대로. 실패 시 `null`(카드만 placeholder, 홈은 안 막힘).
+  - `lib/holdings/valuation.ts` — `getPortfolioValuation(holdings, prefetchedSnapshots?)` 선택 인자 추가. 미전달 시 동작 완전 동일(기존 호출부 4곳 무변경).
+  - `lib/watchlist/summary.ts` — 카드 전용 `getWatchlistCardSummary`·`WatchlistCardSummary`·`WatchlistCardEntry` **삭제**(새 함수가 완전 대체). `computeWatchReturnRate`는 목록·상세가 쓰므로 유지.
+  - `components/indices/MyStocksCard.tsx`(+`.module.css`) 신설, `WatchlistCard.tsx`(+`.module.css`) **삭제**. 행 폼(`.row`/`.name`/`.rate`/`.daily`)은 구 카드에서 그대로 승계. 카드 자신이 `grid-column: 1 / -1`을 갖는다(홈 그리드 전용 카드).
+  - staleness 배지와 제목 우측 수치가 겹치므로 제목 행에 `padding-right: var(--space-24)`.
+  - `components/indices/IndexDashboard.tsx`·`app/page.tsx` — `DashboardStaleness`의 `watchlist` 키를 **`myStocks`로 개명**(카드가 보유+관심을 다 담으므로), prop·요약 호출 교체. 판정 기준(마지막 갱신 잡 성공 시각)은 불변.
+- **아키텍처 준수**: Redis 읽기만 — **KIS 직접 호출 0, 새 Redis 키 0, 잡 6종·Server Action 시그니처 전부 불변**. 현재 대비 순증은 `holdings:{email}` 읽기 1회뿐이고, 스냅샷 MGET은 보유·관심 합집합으로 **1회로 합쳐져 오히려 줄어든다**.
+- **상태**: **구현 완료(2026-07-28)**. tsc·eslint·build 통과.
+
+---
+
 ## 7. PR 분리 권장 (선택)
 
 | PR | Phase | 리뷰 포인트 |
