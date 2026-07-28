@@ -3342,6 +3342,39 @@ interface WatchItem {
 
 ---
 
+### Phase 68 — 코스피/코스닥 상세에 「시총 순위」 탭 (실시간 30위 + 전일 대비 순위·시총 증감) (2026-07-28, 구현 완료)
+
+- **요청 근거**: 사용자 — 지수 상세(코스피·코스닥)에 탭을 하나 더 추가해 **시가총액 순위**를 보여준다. 열은 **순위 · 종목명 · 현재가 · 등락률 · 시총 금액 · 전일 대비 시총 증감액 · 전일 대비 순위 변동** 7개(종목코드 열은 사용자가 명시적으로 제외). 표 폼은 핫종목 순위 목록과 동일.
+- **조사 실측 (2026-07-28 라이브, KIS `FHPST01740000`)**:
+  - **100위는 불가 — 30위가 상한**. `fid_input_iscd`로 시장 분리는 되지만(0000 전체 / **0001 코스피** / **1001 코스닥**, 코스닥 1위 알테오젠 확인·시총 비중 분모도 시장별로 갈림) **연속조회가 없다**: 응답에 `ctx_area_fk/nk`가 아예 없고 `tr_cont: "N"`으로 재호출해도 같은 1~30위가 반복된다. 멀티시세(`FHKST11300006`)에도 시총·상장주식수 필드가 없어 보완 불가.
+  - **전체시장 1콜로 코스닥을 덮을 수 없다** — 코스닥 1위(알테오젠 15.6조) < 코스피 30위(우리금융지주 23.0조)라 전체 30위에 코스닥이 한 종목도 없다. → **시장별 1콜씩 필요(회차당 2콜)**.
+  - **시총은 실시간** — `stck_avls` = 현재가 × `lstn_stcn`이 정확히 일치(삼성전자 224,000 × 5,846,278,608 = 1309.57조 = API값). 전일 종가 기준이면 1485조로, EOD가 아님이 확정.
+  - **순위도 실제로 움직인다** — ① 9분 46초(=10분 슬롯) 간격 재호출: 시총값 KOSPI 29/30·KOSDAQ 30/30 변동, **순위 변동 각 2건**(신한지주 14→13·기아 13→14 / 파두 18→17·심텍 17→18). ② 전일 종가 순위 대비 당일 14:14: **KOSPI 11/30 · KOSDAQ 17/30** 변동, 30위권 신규 진입·이탈 각 1건씩(우리금융지주 31→30·효성중공업 이탈 / 올릭스 32→29·서진시스템 이탈).
+  - **전일 대비 시총 증감은 응답만으로 산출 가능** — `prdy_vrss × lstn_stcn`. 금융위 EOD 실제 시총과 대조해 **KOSPI 30종목 오차 0.0000%**, KOSDAQ은 29종목 0.0000%·휴젤만 1.716%(상장주식수가 어제 이후 바뀐 1건).
+  - **순위 변동은 응답에 없다** — 30건만 오므로 30위권 밖에서 진입한 종목의 전일 순위를 알 수 없다(실측상 시장당 1건 발생).
+- **정책(사용자 확정)**:
+  - **KIS 30위 단독** — 금융위 EOD 100위·하이브리드는 채택하지 않는다(기준이 섞이면 경계에서 순위 역전·중복이 생김).
+  - **순위 변동 = A안** — 전일 확정 회차 스냅샷을 Redis에 보관해 비교하고, 전일 30위권 밖에서 들어온 종목은 **`NEW`**로 표기(추가 API 호출 0). B안(당일 30종목만 역산 재정렬)은 진입 종목을 "변동 없음"으로 오표기해 배제, C안(금융위 1콜 병용)은 KIS 단독 방침에서 벗어나 배제.
+  - **기준은 18:15 확정 회차 종가** — 거래일이 바뀐 첫 회차에서 직전 거래일의 마지막 저장분(=18:15 회차)을 baseline으로 승격하므로 자동 충족.
+  - **종목코드 열 제외** — 핫종목 표에는 있으나 이 표에서는 뺀다.
+- **구현 (KIS 단독·추가 콜 회차당 2)**:
+  - `lib/api/kis/constants.ts` — `KIS_MARKET_CAP_ISCD`(ALL 0000 / KOSPI 0001 / KOSDAQ 1001)·`KIS_MARKET_CAP_RANKING_SIZE(30)`.
+  - `lib/api/kis/types.ts` — `KisMarketCapRankingRow`에 실측 필드(`stck_prpr`·`prdy_vrss`·`prdy_vrss_sign`·`prdy_ctrt`·`lstn_stcn`) 명시.
+  - `lib/api/kis/client.ts` — `fetchKisMarketCapRanking(market?)`. 인자 없으면 전체시장(기존 종목 정보블록의 「시총 순위」 라벨 용도가 그대로 동작).
+  - `lib/indices/marketCapRankingMapper.ts`(신규) — `mapKisMarketCapRows(rows, baseline)`. 전일 대비 시총 증감은 **baseline이 있으면 실제 차액**(주식수 변동까지 반영), 없으면 `prdy_vrss × lstn_stcn` 역산 폴백. 순위 변동은 `baseline.rank − rank`, baseline에 없으면 `NEW`, baseline 자체가 없으면 전부 `null`(첫 거래일은 "—").
+  - `lib/market/store.ts` — `market:marketCapRanking:{kospi|kosdaq}`(`StoredMarketCapRanking`: `tradingDate`·`rows`·`fetchedAt`)·`market:marketCapRanking:{kospi|kosdaq}:baseline`(`MarketCapBaseline`: 종목코드 → `{rank, capEok}`) 2종 + get/set 4개.
+  - `lib/jobs/refreshMarketData.ts` — `refreshMarketCapRanking` 스텝(1b'''' — 시장당 1콜, 부수 데이터·실패 격리). **저장된 스냅샷의 `tradingDate`가 오늘과 다르면 그것을 baseline으로 승격**한 뒤 새 값을 저장한다(= 직전 거래일 마지막 회차 기준).
+  - `lib/indices/getIndexDetail.ts` — `Promise.all`에 `getMarketCapRanking(market)` 합류(없으면 생략).
+  - `types/indices.ts` — `MarketCapStock`(rank·code·name·price·changeRate·direction·marketCapEok·capChangeEok·rankChange·isNew)·`MarketCapRanking`·`IndexDetailData.marketCapRanking?`.
+  - `lib/format/krw.ts` — `formatEokwon(eokwon, signed?)` 선택 인자(양수 `+` 표기, 증감 열용). 기존 호출부 무변경.
+  - `components/indices/MarketCapRankingTable.tsx`(+`.module.css`, 신규) — **서버 컴포넌트**(토글이 없어 `"use client"` 불필요). 순위·종목명 sticky 가로 스크롤, 나머지 우측 정렬.
+  - `components/indices/IndexDetailScreen.tsx` — `buildDomesticTabs`에 4번째 탭 「시총 순위」 추가(빈 상태는 기존 `emptyPanel` 재사용).
+- **아키텍처 준수**: KIS 직접 호출은 잡 경유만(화면은 Redis만 읽음), **신규 잡·라우트 없이 6종 불변**.
+- **비용**: 회차당 +2콜 → **하루 84콜**(평일 42회차), 고정 콜 24→26(+8%). 응답 64~71ms·7.3KB, Redis 키 4개 ≈ 12KB. QStash 메시지 증가 0.
+- **상태**: **구현 완료(2026-07-28)**. tsc·eslint·build 통과. 첫 거래일에는 baseline이 없어 순위 변동 열이 "—"로 뜨고, 다음 거래일부터 정상 표기된다.
+
+---
+
 ## 7. PR 분리 권장 (선택)
 
 | PR | Phase | 리뷰 포인트 |
