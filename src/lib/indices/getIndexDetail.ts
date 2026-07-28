@@ -1,5 +1,6 @@
 import {
   getFiRanking,
+  getIntradayBaseline,
   getInvestorFlows,
   getMarketCapRanking,
   getMarketDetail,
@@ -19,12 +20,14 @@ import {
 export async function getIndexDetail(
   market: MarketIndex
 ): Promise<IndexDetailData> {
-  const [stored, investor, fiRanking, marketCap] = await Promise.all([
-    getMarketDetail(INDICATOR_TO_DETAIL_KEY[market]),
-    getInvestorFlows(market),
-    getFiRanking(market),
-    getMarketCapRanking(market),
-  ]);
+  const [stored, investor, fiRanking, marketCap, intradayBaseline] =
+    await Promise.all([
+      getMarketDetail(INDICATOR_TO_DETAIL_KEY[market]),
+      getInvestorFlows(market),
+      getFiRanking(market),
+      getMarketCapRanking(market),
+      getIntradayBaseline(market),
+    ]);
 
   if (stored === null) {
     throw new Error(MARKET_DATA_EMPTY_MESSAGE);
@@ -44,6 +47,15 @@ export async function getIndexDetail(
           marketCapRanking: {
             rows: marketCap.rows,
             baseDate: marketCap.baseDate ?? null,
+          },
+        }
+      : {}),
+    // 전일 시각 슬롯은 배포 첫 거래일엔 없다 — 있을 때만 넘겨 화면이 폴백하게 둔다 (§70)
+    ...(intradayBaseline && intradayBaseline.slots.length > 0
+      ? {
+          intradayBaseline: {
+            tradingDate: intradayBaseline.tradingDate,
+            slots: intradayBaseline.slots,
           },
         }
       : {}),

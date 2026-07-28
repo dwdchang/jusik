@@ -7,6 +7,7 @@ import type {
   IndexSeries,
   IndexSnapshot,
   IndicatorId,
+  IntradayFlowSlot,
   InvestorFlowRow,
   MarketCapStock,
   MarketIndex,
@@ -59,6 +60,22 @@ export interface StoredInvestorFlows {
   /** 최신순, 순매수 금액(백만원) */
   rows: InvestorFlowRow[];
   /** 잡이 KIS에서 받아온 시각 (ISO) */
+  fetchedAt: string;
+}
+
+/**
+ * market:investorIntraday:{kospi|kosdaq} — 장중 시각 슬롯 누적 (Phase 70).
+ * 시세 갱신 잡이 회차마다 그 시각의 누적 수급·거래대금을 슬롯으로 덧붙인다
+ * (**KIS 추가 호출 없음** — 같은 회차의 투자자·지수 응답 재사용).
+ * 다음 거래일 첫 회차에서 이 스냅샷이 `:baseline`으로 승격돼 "전일 같은 시각 대비"의 기준이 된다.
+ */
+export interface StoredIntradayFlows {
+  market: MarketIndex;
+  /** 이 슬롯들이 속한 거래일 "YYYY-MM-DD" (KST) */
+  tradingDate: string;
+  /** 시각 오름차순, 같은 hhmm은 나중 값으로 덮어씀 */
+  slots: IntradayFlowSlot[];
+  /** 마지막 슬롯을 쓴 시각 (ISO) */
   fetchedAt: string;
 }
 
@@ -238,6 +255,16 @@ function investorKey(market: MarketIndex): string {
   return `market:investor:${market === "KOSPI" ? "kospi" : "kosdaq"}`;
 }
 
+/** market:investorIntraday:{kospi|kosdaq} 키 조립 (Phase 70) */
+function intradayFlowsKey(market: MarketIndex): string {
+  return `market:investorIntraday:${market === "KOSPI" ? "kospi" : "kosdaq"}`;
+}
+
+/** market:investorIntraday:{kospi|kosdaq}:baseline 키 조립 (Phase 70) */
+function intradayBaselineKey(market: MarketIndex): string {
+  return `${intradayFlowsKey(market)}:baseline`;
+}
+
 /** market:fiRanking:{kospi|kosdaq} 키 조립 (Phase 50) */
 function fiRankingKey(market: MarketIndex): string {
   return `market:fiRanking:${market === "KOSPI" ? "kospi" : "kosdaq"}`;
@@ -306,6 +333,31 @@ export async function setInvestorFlows(
   value: StoredInvestorFlows
 ): Promise<void> {
   await getRedis().set(investorKey(value.market), value);
+}
+
+export async function getIntradayFlows(
+  market: MarketIndex
+): Promise<StoredIntradayFlows | null> {
+  return getRedis().get<StoredIntradayFlows>(intradayFlowsKey(market));
+}
+
+export async function setIntradayFlows(
+  value: StoredIntradayFlows
+): Promise<void> {
+  await getRedis().set(intradayFlowsKey(value.market), value);
+}
+
+/** 직전 거래일 슬롯 — "전일 같은 시각 대비"의 기준 (Phase 70) */
+export async function getIntradayBaseline(
+  market: MarketIndex
+): Promise<StoredIntradayFlows | null> {
+  return getRedis().get<StoredIntradayFlows>(intradayBaselineKey(market));
+}
+
+export async function setIntradayBaseline(
+  value: StoredIntradayFlows
+): Promise<void> {
+  await getRedis().set(intradayBaselineKey(value.market), value);
 }
 
 export async function getFiRanking(

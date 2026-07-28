@@ -12,6 +12,7 @@ import { IndexDailyList } from "./IndexDailyList";
 import { IndexDailyTable } from "./IndexDailyTable";
 import { InvestorFlowTable } from "./InvestorFlowTable";
 import { MarketCapRankingTable } from "./MarketCapRankingTable";
+import { MarketFlowSummary } from "./MarketFlowSummary";
 import styles from "./IndexDetailScreen.module.css";
 
 /**
@@ -122,6 +123,15 @@ export async function IndexDetailScreen({
         >
           <IndexCard snapshot={data.snapshot} />
         </section>
+
+        {market === "KOSPI" || market === "KOSDAQ" ? (
+          <MarketFlowSummary
+            dailyRows={data.dailyRows}
+            investorRows={data.investorRows}
+            intradayBaseline={data.intradayBaseline}
+            asOf={data.asOf}
+          />
+        ) : null}
 
         <section className={styles.section} aria-label="최근 7거래일 추이">
           <IndexChartClient series={data.history} />

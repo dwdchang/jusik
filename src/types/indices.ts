@@ -123,6 +123,28 @@ export interface InvestorFlowRow {
 }
 
 /**
+ * 장중 시각 슬롯 1개 (Phase 70) — **그 시각까지의 당일 누적**(백만원).
+ *
+ * KIS `FHPTJ04040000`의 당일 행은 조회 시점까지의 누적이라(2026-07-28 실측:
+ * 15:00 개인 3,652,442 → 15:27 3,895,491), 전일 *종일* 합계와 비교하면 장 초반에
+ * 갭이 커진다. 갱신 잡이 10분마다 이 값을 이미 받아오므로 회차마다 슬롯으로
+ * 적재해 두고, 다음 거래일에 **같은 시각 슬롯끼리** 비교한다.
+ * KIS는 과거 거래일의 시간대별 수급을 제공하지 않아(§70 실측) 자체 축적이 유일한 경로다.
+ */
+export interface IntradayFlowSlot {
+  /** KST "HHMM" (갱신 잡 회차 시각) */
+  hhmm: string;
+  /** 개인 누적 순매수(백만원) */
+  individual: number;
+  /** 외국인 누적 순매수(백만원) */
+  foreign: number;
+  /** 기관계 누적 순매수(백만원) */
+  institution: number;
+  /** 시장 전체 누적 거래대금(백만원) — 지수 스냅샷이 없던 회차는 생략 */
+  tradingValue?: number;
+}
+
+/**
  * 종목별 수급 순위 1종목 — 외국인/기관 순매수(또는 순매도) 상위 (Phase 50).
  * netBuyQty(주)·netBuyAmount(백만원)는 조회한 투자자 그룹 기준이며, 순매도상위는 음수.
  */
@@ -218,6 +240,17 @@ export interface IndexDetailData {
    * 스냅샷이 아직 없으면 생략된다(화면에서 "준비 중" 표시). 해외 지표는 항상 미포함.
    */
   marketCapRanking?: MarketCapRanking;
+  /**
+   * 직전 거래일의 장중 시각 슬롯 (KOSPI/KOSDAQ만, §70) — 「거래대금 · 수급」 요약이
+   * **전일 같은 시각**과 비교하는 기준. 배포 첫 거래일에는 없어(생략) 화면이
+   * 전일 종일 대비로 폴백한다.
+   */
+  intradayBaseline?: {
+    /** 기준이 된 거래일 "YYYY-MM-DD" (KST) */
+    tradingDate: string;
+    /** 시각 오름차순 */
+    slots: IntradayFlowSlot[];
+  };
 }
 
 export const KIS_DATA_NOTICE =

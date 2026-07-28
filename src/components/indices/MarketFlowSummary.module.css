@@ -1,0 +1,123 @@
+/* 상세 화면의 다른 섹션(IndexDetailScreen .section)과 같은 간격을 스스로 갖는다 —
+   데이터가 없으면 컴포넌트가 null을 반환하므로 빈 래퍼를 두지 않기 위함 */
+.card {
+  margin-bottom: var(--space-16);
+  padding: var(--space-16);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.title {
+  font-size: var(--text-caption);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-secondary);
+  margin-bottom: var(--space-12);
+}
+
+/* 거래대금 한 줄 — 라벨 좌측, 값·전일 대비 우측 정렬 */
+.tradingRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-12);
+}
+
+.tradingLabel {
+  font-size: var(--text-caption-sm);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.date {
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+}
+
+.tradingValues {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tradingValue {
+  font-size: var(--text-caption);
+  font-weight: var(--weight-bold);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+}
+
+.tradingChange {
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+}
+
+/* 개인·외국인·기관계 3열 — 최대 폭 480px라 균등 3분할로 고정 */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-8);
+  margin-top: var(--space-12);
+  padding-top: var(--space-12);
+  border-top: 1px solid var(--color-border);
+}
+
+.cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.cellLabel {
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+}
+
+/* 값이 셀 폭을 넘겨 이웃 열과 겹치지 않도록 잘라낸다 (좁은 화면 안전판) */
+.cellValue,
+.cellChange {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cellValue {
+  font-size: var(--text-caption-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.cellChange {
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+}
+
+.note {
+  margin-top: var(--space-12);
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+  line-height: 1.5;
+}
+
+.note strong {
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-secondary);
+}
+
+.rise {
+  color: var(--color-rise);
+}
+
+.fall {
+  color: var(--color-fall);
+}
+
+.flat {
+  color: var(--color-flat);
+}

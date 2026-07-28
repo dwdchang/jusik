@@ -24,7 +24,7 @@ import type {
   KisMarketCapRankingRow,
   KisOverseasDailyResponse,
 } from "@/lib/api/kis/types";
-import { todayKstDate } from "@/lib/date/kst";
+import { kstHhmm, todayKstDate } from "@/lib/date/kst";
 import { saveHoldings, upsertPortfolioHistory } from "@/lib/holdings/store";
 import {
   backfillStockHistoryIfMissing,
@@ -55,11 +55,15 @@ import {
 } from "@/lib/indices/volatility";
 import {
   INDICATOR_TO_DETAIL_KEY,
+  getIntradayFlows,
   getMarketCapBaseline,
   getMarketCapRanking,
+  getMarketDetail,
   getStockInfoBlocks,
   setDailyFluctuation,
   setFiRanking,
+  setIntradayBaseline,
+  setIntradayFlows,
   setInvestorFlows,
   getLastRefreshRecord,
   setLastRefreshRecord,
@@ -78,6 +82,11 @@ import {
   type StockMasterItem,
   type StoredStockSnapshot,
 } from "@/lib/market/store";
+import type {
+  IntradayFlowSlot,
+  InvestorFlowRow,
+  MarketIndex,
+} from "@/types/indices";
 import { getStockHistory } from "@/lib/holdings/stockHistory";
 import { saveWatchlist } from "@/lib/watchlist/store";
 import type { Holding } from "@/types/holdings";
@@ -120,6 +129,8 @@ export interface RefreshMarketDataReport {
   weeklyFluctuation: { ok: boolean; count?: number; error?: string };
   /** 일별 수급(코스피·코스닥 시장 전체 투자자 순매수) 저장 결과 — 부수 데이터, 실패 격리 */
   investorFlows: { ok: boolean; count?: number; error?: string };
+  /** 장중 시각 슬롯 적재(§70) 결과 — KIS 호출 0, 부수 데이터·실패 격리. count는 저장한 시장 수 */
+  intradayFlows: { ok: boolean; count?: number; error?: string };
   /** 종목별 수급 순위(외국인·기관 × 순매수·순매도) 저장 결과 — 부수 데이터, 실패 격리 */
   fiRanking: { ok: boolean; count?: number; error?: string };
   /** 시총 순위(코스피·코스닥 각 상위 30) 저장 결과 — 부수 데이터, 실패 격리 */
@@ -396,20 +407,96 @@ async function refreshWeeklyFluctuation(
  * 최근 N거래일치 저장한다. 부수 데이터라 실패해도 잡 전체 ok에 영향 없이 로그만 남긴다
  * — 다음 회차가 자연 재시도. 한 시장이 실패하면 그 회차는 통째로 재시도(멱등).
  */
-async function refreshInvestorFlows(
-  fetchedAt: string
-): Promise<RefreshMarketDataReport["investorFlows"]> {
+async function refreshInvestorFlows(fetchedAt: string): Promise<{
+  report: RefreshMarketDataReport["investorFlows"];
+  /** 이번 회차에 실제로 받아온 최신 행 — 장중 슬롯 적재(§70)가 그대로 재사용한다 */
+  latest: Partial<Record<MarketIndex, InvestorFlowRow>>;
+}> {
+  const latest: Partial<Record<MarketIndex, InvestorFlowRow>> = {};
+
   try {
     let count = 0;
     for (const market of ["KOSPI", "KOSDAQ"] as const) {
       const raw = await fetchKisInvestorDaily(market);
       const rows = mapKisInvestorRows(raw, market);
       await setInvestorFlows({ market, rows, fetchedAt });
+      latest[market] = rows[0];
       count += rows.length;
     }
-    return { ok: true, count };
+    return { report: { ok: true, count }, latest };
   } catch (error) {
     console.error("[job] investor flows refresh failed:", error);
+    return { report: { ok: false, error: errorMessage(error) }, latest };
+  }
+}
+
+/**
+ * 장중 시각 슬롯 적재 → market:investorIntraday:{kospi|kosdaq} (§70).
+ *
+ * **KIS 추가 호출 0** — 같은 회차의 투자자 응답(`latest`)과 방금 저장된 지수 스냅샷의
+ * 거래대금을 재사용해 "이 시각까지의 누적"을 슬롯 하나로 굳힌다. 다음 거래일 첫 회차에서
+ * 직전 스냅샷을 `:baseline`으로 승격해 화면이 **전일 같은 시각**과 비교할 수 있게 한다
+ * (KIS는 과거 거래일의 시간대별 수급을 주지 않아 자체 축적이 유일한 경로).
+ *
+ * 당일 행이 아직 없는 회차(휴장일·장 시작 전)는 전일 누계를 오늘 슬롯으로 오인하지
+ * 않도록 건너뛴다. 부수 데이터라 실패해도 잡 전체 ok에 영향 없다.
+ */
+async function refreshIntradayFlowSlots(
+  fetchedAt: string,
+  latest: Partial<Record<MarketIndex, InvestorFlowRow>>
+): Promise<RefreshMarketDataReport["intradayFlows"]> {
+  try {
+    const today = todayKstDate();
+    const todayBasDt = today.replace(/-/g, "");
+    const hhmm = kstHhmm(Date.now());
+    let count = 0;
+
+    for (const market of ["KOSPI", "KOSDAQ"] as const) {
+      const row = latest[market];
+      if (row === undefined || row.basDt !== todayBasDt) {
+        continue;
+      }
+
+      const stored = await getIntradayFlows(market);
+
+      // 거래일이 바뀌었으면 직전 거래일 슬롯 묶음을 기준선으로 승격
+      if (
+        stored !== null &&
+        stored.tradingDate !== today &&
+        stored.slots.length > 0
+      ) {
+        await setIntradayBaseline(stored);
+      }
+
+      const detail = await getMarketDetail(INDICATOR_TO_DETAIL_KEY[market]);
+      const detailRow = detail?.dailyRows[0];
+      const tradingValue =
+        detailRow !== undefined && detailRow.basDt === todayBasDt
+          ? detailRow.tradingValue
+          : undefined;
+
+      const slot: IntradayFlowSlot = {
+        hhmm,
+        individual: row.individual,
+        foreign: row.foreign,
+        institution: row.institution,
+        ...(tradingValue !== undefined ? { tradingValue } : {}),
+      };
+
+      // 같은 거래일이면 이어 붙이고(같은 슬롯은 최신 값으로 교체), 아니면 새로 시작
+      const kept =
+        stored !== null && stored.tradingDate === today
+          ? stored.slots.filter((s) => s.hhmm !== hhmm)
+          : [];
+      const slots = [...kept, slot].sort((a, b) => a.hhmm.localeCompare(b.hhmm));
+
+      await setIntradayFlows({ market, tradingDate: today, slots, fetchedAt });
+      count += 1;
+    }
+
+    return { ok: true, count };
+  } catch (error) {
+    console.error("[job] intraday flow slots refresh failed:", error);
     return { ok: false, error: errorMessage(error) };
   }
 }
@@ -876,7 +963,15 @@ export async function refreshMarketData(
   const weeklyFluctuation = await refreshWeeklyFluctuation(startedAt);
 
   // 1b''. 시장 전체 일별 수급 → market:investor:{kospi|kosdaq} (§42, 부수 데이터·실패 격리)
-  const investorFlows = await refreshInvestorFlows(startedAt);
+  const { report: investorFlows, latest: latestInvestorRows } =
+    await refreshInvestorFlows(startedAt);
+
+  // 1b''-2. 장중 시각 슬롯 적재 → market:investorIntraday:{kospi|kosdaq}
+  // (§70, KIS 호출 0 — 위 응답 재사용. 전일 같은 시각 대비의 기준을 쌓는다)
+  const intradayFlows = await refreshIntradayFlowSlots(
+    startedAt,
+    latestInvestorRows
+  );
 
   // 1b'''. 종목별 수급 순위 → market:fiRanking:{kospi|kosdaq} (§50, 부수 데이터·실패 격리)
   const fiRanking = await refreshFiRanking(startedAt);
@@ -987,6 +1082,7 @@ export async function refreshMarketData(
     dailyFluctuation,
     weeklyFluctuation,
     investorFlows,
+    intradayFlows,
     fiRanking,
     marketCapRanking,
     stockMaster,

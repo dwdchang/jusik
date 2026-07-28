@@ -20,6 +20,18 @@ export function kstYyyyMmDd(ms: number): string {
   );
 }
 
+/**
+ * 임의 시각(ms)을 KST 시:분 "HHMM"으로 (§70 장중 시각 슬롯 키).
+ * 갱신 잡이 10분 간격이라 그대로 슬롯 식별자가 된다.
+ */
+export function kstHhmm(ms: number): string {
+  const kst = new Date(ms + 9 * 60 * 60 * 1000);
+  return (
+    String(kst.getUTCHours()).padStart(2, "0") +
+    String(kst.getUTCMinutes()).padStart(2, "0")
+  );
+}
+
 /** KST 기준 이번 달 "YYYYMM" — 수출입 월간 잡의 부분월 판정 기준 (§17-4) */
 export function currentKstMonth(): string {
   return todayKstDate().slice(0, 7).replace("-", "");
