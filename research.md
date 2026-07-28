@@ -145,7 +145,7 @@
 | `indices/dxy.ts` | 달러 인덱스 계산 (§28) — `computeDxyDetail`(순수): KIS에 DXY 종목이 없어 환율 6종(`KIS_DXY_COMPONENTS`)의 일별 종가를 ICE 공식(가중 기하평균)으로 합성. 통화쌍별 휴장일이 달라 기준일 교집합에서만 계산, `StoredMarketDetail` 동일 폼 반환 |
 | `indices/getDashboard.ts` | 홈 데이터 리더 — `market:detail:*` 7종 MGET. 필수 4종 없으면 throw(`MARKET_DATA_EMPTY_MESSAGE`), oil·gold·btcUsd(§33)는 null 허용 |
 | `indices/getIndexDetail.ts` / `getOverseasDetail.ts` | 상세 리더 — `market:detail:{key}` 1건. **두 파일 내용이 사실상 동일** (§8) |
-| `indices/volatility.ts` | 변동성 기록 store+계산+카드 요약 (한 파일에 쓰기·읽기 혼재) |
+| `indices/volatility.ts` | 변동성 기록 store+계산+카드 요약 (한 파일에 쓰기·읽기 혼재). 카드 요약은 최신 2개 기록의 전일 대비 + 월 집계 2종, 당일 진행분 판정(KST 15:30)까지 (§71) |
 | `indices/dates.ts` | `getLast7BusinessDates` — **현재 미사용 (레거시)** (§9.2) |
 | `market/store.ts` | 공용 시세 Redis 스토어 — `market:detail:*`, `market:stock:*`, `market:stockInfo:*`(배당 회차 `rounds` 포함, §25), `market:lastRefreshAt`(`LastRefreshRecord`: `at`=마지막 성공·`attemptedAt`=마지막 실행 시작(§52)·`trigger`·`ok`), `market:dailyFluctuation`, `market:weeklyFluctuation`, `market:stockMaster`, `market:investor:*`(§42), `market:investorIntraday:*`(+`:baseline`, §70), `market:fiRanking:*`(§50), `market:marketCapRanking:*`(+`:baseline`, §68) (§5). `getStockInfoBlocksMap`(MGET 일괄, 없는 종목은 맵에서 제외) 제공 |
 | `stocks/search.ts` | `"use server"` — `searchStocks(query)` 종목명 검색 액션. `auth`+`isEmailAllowed` 가드 후 `market:stockMaster` 부분일치 필터, 접두 우선·가나다 정렬 상위 20. 등록 폼 전용, KIS 직접 호출 없음 |
@@ -184,7 +184,7 @@
 | 컴포넌트 | 종류 | 역할 |
 |---|---|---|
 | `indices/IndexDashboard` | Server | 홈 카드 조립(§28 원/달러 분리, §33 글로벌 지표 `MarketCard`, **Phase 64에서 「종목분석」 진입 `SummaryCard`(`/analysis`, placeholder형) 추가**) + 헤더(좌 `NavIconLink` 홈 아이콘 + `<h1>Dashboard</h1>` + 우 햄버거 `HeaderMenu` — Phase 26에서 제거했던 제목을 §36에서 영어 제목으로 복원, 설명 문구는 그대로 없음) |
-| `indices/SummaryCard` | Server | **홈 요약 카드 공용 프리미티브** — value/change/placeholder/staleness 배지(§35에서 `footnote` prop 폐지 — 홈 각주 전면 제거). 카드 전체가 Link |
+| `indices/SummaryCard` | Server | **홈 요약 카드 공용 프리미티브** — value/change/**note**/placeholder/staleness 배지(§35에서 `footnote` prop 폐지 — 홈 각주 전면 제거. §71의 `note`는 각주가 아니라 **기준이 다른 부가 지표 한 줄**로, 색상 없이 tertiary 대비. 현재 변동성 카드만 사용). 카드 전체가 Link |
 | `indices/MarketCard` | Server | 「글로벌 지표」 전용 카드 (§33, 제목은 §37에서 `시장`→`글로벌 지표`) — 금리·유가·금·비트코인(USD) 4행 동등 목록, 행마다 지표명·값·등락률. 지표명은 §34에서 축약(`美 금리`·`WTI`·`GOLD`·`BTC`) — 4행 모두 값 열은 숫자만(전부 USD 기준이라 §37에서 BTC의 `($)`도 제거, 통화 안내는 상세 화면 각주에만). 각주는 §35에서 제거, 등락률만 `--text-caption-sm`(12px)로 1pt 축소. §30 추가 지표는 null이면 행 생략. 골격·배지는 SummaryCard composes, 리스트 폼은 MyStocksCard(구 WatchlistCard)와 동일 관례, 카드 전체 `/indices/market` 링크 |
 | `indices/HotStocksCard` | Server | 핫종목 전용 카드 — 당일 등락률 TOP 4 리스트 (§33에서 4행 통일, SummaryCard 미사용) |
 | `indices/MyStocksCard` | Server | 홈 **「내 종목」** 카드 (§24→§57 개명→**§67에서 보유+관심 통합**, 구 `WatchlistCard`를 대체) — **왼쪽 보유 4·오른쪽 관심 4** 2열, 제목 우측에 **보유 전체 수익률·전일 대비**. **라벨 텍스트(「보유」·「관심」·이름표) 없음**(사용자 확정) — 좌/우 위치와 글자 크기(수익률 `--text-caption` · 전일 대비 `--text-micro`)로만 구분하고, **열 구분선도 없다**(§57에서 표 세로선을 뺀 것과 같은 방향). 시각 라벨이 없는 대신 `<ol aria-label>`·`.srOnly`로 스크린리더 텍스트는 유지. 2열이 들어가려면 폭이 필요해 카드 자신이 `grid-column: 1 / -1`(전폭)을 갖는다 — 반폭이면 열당 94px로 종목명이 잘린다(§67 계산). 한쪽만 비면 그 열에 `종목을 등록해보세요`, 양쪽 다 비면 카드 전체 placeholder. 골격·staleness 배지는 SummaryCard composes, 행 폼은 구 WatchlistCard 승계 |
@@ -500,6 +500,9 @@ QStash 스케줄 (매일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 * * *) → POST /a
 - **핫종목**: `?mode` 서버 분기 — 월간은 `getHotStocks` 통짜 1건→`?period` 탭(링크에 `mode=monthly` 유지), 당일/주간은 `getDailyFluctuation`/`getWeeklyFluctuation` 1건(상위 30)+`getStockMaster`(위첨자 매핑)+`resolveStaleness`. (검증: 알 수 없는 mode→daily, period→1m).
 - **변동성**: `getVolatilityHistory` → `aggregateMonthlyAverages`(최근 6개월) + 당월 필터
   일별 기록 목록(내림차순 — 페치 1회 재사용, Phase 27).
+  홈 카드(`getVolatilityCardSummary`)는 같은 history 1건에서 **최신 2개 기록으로 전일 대비**,
+  월 집계로 당월 평균·전월 대비를 함께 만든다(§71 — 기록이 1건이라도 있으면 카드 표시,
+  당월/전월분이 없으면 해당 값만 null).
 - **예외 — DLQ(`/dlq`, Phase 18)**: 유일하게 Redis가 아닌 외부 API(QStash)를 Server
   Component에서 직접 읽는다(`listDlqMessages`, `QSTASH_TOKEN` 서버 전용). 운영 확인용
   읽기 전용 화면이라 스냅샷 캐시 없음. KIS 금지 원칙(§3)과는 무관(QStash는 KIS 아님).
@@ -609,7 +612,8 @@ QStash 스케줄 (매일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 * * *) → POST /a
 - `types/indices.ts` — `IndicatorId`(=`MarketIndex`|`OverseasIndicator`(GOLD 포함 4종)|`"DXY"`|`"BTCKRW"`|`"BTCUSD"` —
   DXY는 환율 6종 합성 파생 지표(§28), BTC 2종은 업비트 외부 지표(§30)),
   `IndexSnapshot`/`IndexSeries`/`IndexDailyRow`/`IndexDetailData`/`IndexDashboardData`,
-  `PriceDirection`, 변동성 3종, `KIS_DATA_NOTICE`, `INDICATOR_NAMES`.
+  `PriceDirection`, 변동성 3종(`VolatilityCardSummary`는 §71에서 일 지표 4·월 지표 2로 확장),
+  `KIS_DATA_NOTICE`, `INDICATOR_NAMES`.
 - `types/holdings.ts` — `Holding`(totalCost 모델), `PortfolioDailyRecord`,
   `HoldingValuation`/`PortfolioValuation`. (`HoldingsCardSummary`는 §58 홈 보유종목 카드 삭제와 함께 제거)
 - `types/watchlist.ts` — `WatchItem` (priceAtRegistration/priceBasisDate 잠정·확정 모델 + `changeRateAtRegistration?` 등락률 폴백값, Phase 65 — optional이라 구 레코드 호환).
