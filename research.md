@@ -96,6 +96,8 @@
 | `api/jobs/refresh-feeds/route.ts` | 피드(공시) 갱신 잡 엔드포인트 (POST, §4.5) — KIS가 아니라 **시간창 가드 없음** |
 | `api/jobs/refresh-trade-detail/route.ts` | 수출입 상세 갱신 잡 엔드포인트 (POST, §4.6, Phase 17-5) — 월 1회·시간창 가드 없음 |
 | `api/jobs/cleanup-orphan-stocks/route.ts` | 고아 종목 키 정리 잡 엔드포인트 (POST, §4.7, Phase 49) — 매일 03:00 KST·KIS 미호출·시간창 가드 없음 |
+| `api/market/last-refresh/route.ts` | 마지막 갱신 시각 조회 (GET, Phase 77) — `ui/AutoRefresh` 전용. `market:lastRefreshAt`의 성공 시각 하나만 반환(**Redis GET 1회·KIS 호출 0**). 잡 라우트와 달리 **세션 인증**(호출 주체가 브라우저) — proxy matcher에 더해 라우트에서도 `isEmailAllowed` 확인(이중 방어). `Cache-Control: no-store` 필수 — 캐시되면 갱신 감지 자체가 무의미해진다 |
+| `actions.ts` | 루트 Server Action (Phase 77) — `invalidateMarketRouterCache()`: `revalidatePath("/", "layout")`로 **클라이언트 라우터 캐시 전량 무효화**. `router.refresh()`만으로는 현재 라우트만 지워, 갱신 직후 다른 화면으로 이동하면 `staleTimes`(600초) 안의 묵은 세그먼트가 그대로 보인다. 화면이 전부 동적 렌더라 무효화할 서버 캐시는 없고 노리는 효과는 클라이언트 캐시 하나뿐 |
 
 라우트별 `page.module.css` 동반. 오류 UI는 별도 error.tsx 없이 각 page의 try/catch 인라인 처리.
 
@@ -220,6 +222,7 @@
 | `nav/HeaderMenu` | Server | 햄버거 메뉴 조립 전용(Phase 18) — `MenuSidebar`에 `ThemeToggle`·`SignOutButton`을 슬롯으로 주입 (서버 액션 폼은 Client 안에서 정의 불가) |
 | `nav/MenuSidebar` | Client | 햄버거 버튼 + 우측 슬라이드 사이드바(Phase 18) — 열림 상태·오버레이·ESC 닫기, 화면 모드(위)/알림 설정(Phase 10)·DLQ 확인 링크(중간)/로그아웃(아래) |
 | `ui/ToggleSwitch` | Client | **알림 on/off 스위치 공용 컴포넌트** (Phase 74) — `checked`·`onToggle`·`label`·`disabled`. 아래 알림 토글 4종이 전부 이것을 쓴다. 트랙 안에 켬/끔 **문구를 넣지 않고** 색(`--color-primary`/`--color-switch-off`)과 손잡이 위치로만 상태를 표시하며, 접근성은 `role="switch"`+`aria-checked`(토글 버튼용 `aria-pressed` 아님). §8.15 참고 |
+| `ui/AutoRefresh` | Client | **갱신 회차 반영 시 자동 새로고침** (Phase 77) — 루트 `layout.tsx`에 배치(전 화면 커버), 렌더 출력 없음. 마운트 시 기준값 확보 → 예정 회차(`nextScheduledRefreshMs` 재사용)까지는 **서버를 부르지 않음** → 회차가 지나면 30초 간격으로 `/api/market/last-refresh` 확인 → `at`이 달라지면 `invalidateMarketRouterCache()` + `router.refresh()` → 5분 안에 안 바뀌면 그 회차 포기. **예정 시각만 보고 곧바로 새로고침하지 않는 이유**는 잡 실행·Redis 반영 편차(§9.4의 20분 유예와 같은 사정). **경로는 의존성이 아니라 ref로 읽는다** — 화면을 옮길 때마다 타이머를 다시 걸면 회차 대기 상태가 초기화돼 그 회차를 통째로 놓친다. 백그라운드 탭은 확인을 건너뛰고 `visibilitychange` 복귀 시 한 번 더 확인, `/login` 제외 |
 | `alerts/PushSubscriptionManager` | Client | 이 기기의 푸시 구독 on/off + 테스트 발송 (Phase 10) — 지원 감지(iOS 미설치 시 홈 화면 추가 안내), `sw.js` 등록→`pushManager.subscribe`→Server Action 저장. VAPID 공개키는 prop으로 수신. 스위치는 **낙관적으로 움직이지 않는다**(권한 허용·구독 등록이 끝난 뒤에만 켜짐 — 거부되면 꺼진 채 남고 사유는 메시지 줄) |
 | `alerts/StockAlertToggles` | Client | 보유·관심종목별 알림 on/off (Phase 10 2·3단계) — 서버가 내려준 목록·초기 상태를 로컬 상태로 토글, `setStockAlertEnabledAction` 저장. 끄면 시세·공시·시장경보 알림이 음소거되지만 **배당은 예외라 계속 온다**(Phase 73) |
 | `alerts/CategoryAlertToggles` | Client | 알림 종류별 on/off (Phase 73) — `CategoryAlertItem[]`(key·label·description·enabled)을 받아 토글, `setAlertCategoryEnabledAction` 저장. `/alerts`는 4종 전부, 배당 페이지 「내 배당」 탭은 `dividend` 1종만 넘겨 **같은 컴포넌트·같은 키를 재사용**한다 |
@@ -255,7 +258,11 @@
   `.container`가 `padding: --space-16`·헤더 `margin-bottom: --space-16`으로
   동일해야 좌우 정렬선·제목 높이가 화면 간에 어긋나지 않는다.
 - `src/app/globals.css` — `.numeric` (`tabular-nums`) 등 전역. 숫자 UI는 항상 `.numeric` 병기.
-- `next.config.ts` — `staticPageGenerationTimeout: 300` + `/sw.js` no-cache 헤더(Phase 10).
+- `next.config.ts` — `staticPageGenerationTimeout: 300` + `/sw.js` no-cache 헤더(Phase 10)
+  + `experimental.staleTimes.dynamic: 600`(Phase 77 — 갱신 간격과 동일. Phase 48의 30초는
+  갱신 주기의 1/20만 덮어 캐시 이득 대부분을 버렸다. **"다음 갱신까지 남은 시간만큼"은 표현 불가** —
+  `staleTimes`는 빌드타임 고정값이고 시각별로 계산해 넣을 훅이 없다. 그 의도는
+  `ui/AutoRefresh`가 능동 무효화로 대신한다). `static`은 기본값(5분) 유지.
 
 ---
 
@@ -823,6 +830,11 @@ QStash 스케줄 (매일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 * * *) → POST /a
   "예정된 갱신이 지났는데도 누락된 경우"에만 배지를 띄운다. **정상 휴지 구간(15:40~18:15,
   장 마감 후·주말)에는 마지막 갱신이 오래돼도 배지가 뜨지 않는다.** `SCHEDULE_MINUTES`
   상수는 외부 QStash 등록과 반드시 일치시켜야 한다(스케줄 변경 시 동반 수정 — §8.13 결합점).
+- **자동 새로고침도 같은 상수를 쓴다** (Phase 77) — `ui/AutoRefresh`가 `nextScheduledRefreshMs`로
+  다음 예정 회차를 구해 그 전까지는 서버를 부르지 않는다. 따라서 `SCHEDULE_MINUTES`가
+  실제 QStash 등록과 어긋나면 배지 오판정뿐 아니라 **자동 새로고침 시점도 함께 어긋난다**
+  (결합점이 하나 늘었다). 다만 회차를 놓쳐도 다음 회차에 복구되고, 탭 복귀 시점 확인이
+  별도로 걸려 있어 영구적으로 묵은 화면이 남지는 않는다.
 - 피드 잡(DART)은 시간창 제약 없음 — 스케줄은 매일 08~22시 정시
   (`CRON_TZ=Asia/Seoul 0 8-22 * * *`), 라우트에 시간창 가드도 없다.
 - 공휴일은 미반영 — 휴장일 감지는 basDt ≠ KST 오늘 (tradingDay=false → 알림만 skip,
