@@ -1,23 +1,47 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { FeedTabsClient } from "@/components/feeds/FeedTabsClient";
+import {
+  FeedTabsClient,
+  type TabKey,
+} from "@/components/feeds/FeedTabsClient";
 import { NavIconLink } from "@/components/nav/NavIconLink";
 import { ensureAllowedSession } from "@/lib/auth/ensureAllowedSession";
-import { getDisclosureBoard, getNewsBoard } from "@/lib/feeds/homeFeed";
+import {
+  getDisclosureBoard,
+  getEarningsBoard,
+  getNewsBoard,
+} from "@/lib/feeds/homeFeed";
 import { getTradeStatsView } from "@/lib/feeds/tradeStats";
 import styles from "./page.module.css";
 
 export const metadata: Metadata = {
   title: "뉴스·공시 — jusik",
-  description: "보유·관심종목의 뉴스·공시·수출입 통합 피드",
+  description: "보유·관심종목의 뉴스·공시·실적·수출입 통합 피드",
 };
+
+const TAB_KEYS: ReadonlyArray<TabKey> = [
+  "news",
+  "disclosure",
+  "earnings",
+  "trade",
+];
+
+/** `?tab=` → 진입 탭. 미지정·오값은 기본 탭(뉴스)으로 떨어뜨린다 (Phase 81) */
+function toTabKey(value: string | undefined): TabKey {
+  return TAB_KEYS.find((key) => key === value) ?? "news";
+}
 
 /**
  * 뉴스·공시 상세 페이지 (Phase 17-2b, plan.md §17.8) — 홈 요약 카드에서 이동.
  * 17-2에서 홈 전체폭에 있던 탭+게시판+아코디언(FeedTabsClient)을 위치만 이 페이지로 옮겼다.
  * 데이터·컴포넌트는 무변경 재사용, 페이지는 세션 가드와 헤더만 담당한다.
+ * Phase 81에서 실적 탭과 `?tab=` 진입 탭(실적 푸시 알림 링크용)이 추가됐다.
  */
-export default async function FeedsPage() {
+export default async function FeedsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
   const session = await ensureAllowedSession();
   const email = session.user?.email;
 
@@ -25,13 +49,19 @@ export default async function FeedsPage() {
     redirect("/login");
   }
 
-  const [disclosures, news, tradeStats] = await Promise.all([
+  const { tab } = await searchParams;
+
+  const [disclosures, news, earnings, tradeStats] = await Promise.all([
     getDisclosureBoard(email).catch((err) => {
       console.error("[FeedsPage] getDisclosureBoard failed:", err);
       return [];
     }),
     getNewsBoard(email).catch((err) => {
       console.error("[FeedsPage] getNewsBoard failed:", err);
+      return [];
+    }),
+    getEarningsBoard(email).catch((err) => {
+      console.error("[FeedsPage] getEarningsBoard failed:", err);
       return [];
     }),
     getTradeStatsView().catch((err) => {
@@ -51,7 +81,9 @@ export default async function FeedsPage() {
         <FeedTabsClient
           disclosures={disclosures}
           news={news}
+          earnings={earnings}
           tradeStats={tradeStats}
+          initialTab={toTabKey(tab)}
         />
       </div>
     </main>

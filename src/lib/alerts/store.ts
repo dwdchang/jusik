@@ -188,6 +188,15 @@ export function disclosureCursorKey(symbolCode: string): string {
   return `alerts:disclosure:last:${symbolCode}`;
 }
 
+/**
+ * alerts:earnings:last:{code} — 실적 공시 마지막 통지 접수번호 (Phase 81).
+ * 공시 커서와 분리한다: 실적은 유형을 좁힌 별도 조회라 접수번호 흐름이 달라
+ * 한 커서를 공유하면 한쪽이 다른 쪽 알림을 삼킨다.
+ */
+export function earningsCursorKey(symbolCode: string): string {
+  return `alerts:earnings:last:${symbolCode}`;
+}
+
 function dividendSentKey(symbolCode: string, payDate: string): string {
   return `alerts:dividend:sent:${symbolCode}:${payDate}`;
 }
@@ -225,6 +234,35 @@ export async function setDisclosureCursor(
   rceptNo: string
 ): Promise<void> {
   await getRedis().set(disclosureCursorKey(symbolCode), rceptNo);
+}
+
+/** 종목별 마지막 통지 실적 접수번호 일괄 조회 (MGET 1회) — Phase 81 */
+export async function getEarningsCursors(
+  symbolCodes: string[]
+): Promise<Map<string, string>> {
+  if (symbolCodes.length === 0) {
+    return new Map();
+  }
+
+  // 공시 커서와 같은 이유로 문자열로 되돌린다 (Upstash가 number로 파싱할 수 있음)
+  const rows = await getRedis().mget<Array<string | number | null>>(
+    ...symbolCodes.map(earningsCursorKey)
+  );
+
+  const byCode = new Map<string, string>();
+  rows.forEach((row, i) => {
+    if (row !== null) {
+      byCode.set(symbolCodes[i], String(row));
+    }
+  });
+  return byCode;
+}
+
+export async function setEarningsCursor(
+  symbolCode: string,
+  rceptNo: string
+): Promise<void> {
+  await getRedis().set(earningsCursorKey(symbolCode), rceptNo);
 }
 
 /** 종목별 시장경보 상태 일괄 조회 (MGET 1회) — 없는 종목은 맵에서 빠진다 */

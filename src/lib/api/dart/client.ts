@@ -95,12 +95,26 @@ export async function fetchDartCorpCodeMap(): Promise<Record<string, string>> {
 }
 
 /**
+ * 공시유형 코드 (list.json `pblntf_ty`) — Phase 81 실측 확정.
+ * 무필터로 조회하면 대형주는 90일간 800건이 넘어(삼성전자 818건 실측) 실적 공시가
+ * 상위 N건 컷에서 밀려난다. 유형을 좁히면 같은 기간이 15건으로 줄어 1페이지에 들어온다.
+ */
+export const DART_PBLNTF_PERIODIC = "A"; // 정기공시 — 사업·반기·분기보고서
+export const DART_PBLNTF_EXCHANGE = "I"; // 거래소공시 — 잠정실적 공정공시·IR 개최 등
+
+/**
  * 공시검색(list.json) — 고유번호·기간으로 접수일 내림차순 최신 공시를 조회한다.
  * status "000"=정상, "013"=조회 결과 없음(빈 배열로 정상 처리), 그 외는 throw.
+ * `pblntfTy`를 주면 그 공시유형만 조회한다 (미지정 시 전체).
  */
 export async function fetchDartDisclosures(
   corpCode: string,
-  options: { bgnDe: string; endDe: string; pageCount: number }
+  options: {
+    bgnDe: string;
+    endDe: string;
+    pageCount: number;
+    pblntfTy?: string;
+  }
 ): Promise<DartListRow[]> {
   const params = new URLSearchParams({
     crtfc_key: getDartApiKey(),
@@ -112,6 +126,10 @@ export async function fetchDartDisclosures(
     page_no: "1",
     page_count: String(options.pageCount),
   });
+
+  if (options.pblntfTy !== undefined) {
+    params.set("pblntf_ty", options.pblntfTy);
+  }
 
   const response = await fetch(`${DART_BASE_URL}/list.json?${params}`, {
     cache: "no-store",
@@ -150,7 +168,7 @@ export interface DartDividendDecision {
 }
 
 /** 공시 원문(document.xml, zip) → 태그 제거 평문. 서식 XML/HTML 혼재라 태그만 걷어낸다. */
-async function fetchDartDocumentText(rceptNo: string): Promise<string> {
+export async function fetchDartDocumentText(rceptNo: string): Promise<string> {
   const url = `${DART_BASE_URL}/document.xml?crtfc_key=${getDartApiKey()}&rcept_no=${rceptNo}`;
   const response = await fetch(url, {
     cache: "no-store",
@@ -237,4 +255,141 @@ export async function fetchDartDividendDecision(
         : null,
     recordDate,
   };
+}
+
+/** 잠정실적 공시에서 뽑은 계정 1행 — Phase 81 */
+export interface DartEarningsFigure {
+  /** 계정명 ("매출액"·"영업이익"·"당기순이익") */
+  label: string;
+  /** 당기실적 */
+  current: number | null;
+  /** 전년동기실적 */
+  yoyBase: number | null;
+  /** 전년동기대비 증감율(%) — 흑자·적자 전환이면 서식상 비어 있다 */
+  yoyPct: number | null;
+  /** 전년동기 대비 "흑자전환"·"적자전환" 등 (해당 없으면 null) */
+  turnaround: string | null;
+}
+
+/** 잠정실적 공시 원문 파싱 결과 — Phase 81 */
+export interface DartEarningsDetail {
+  /** 금액 단위 라벨 ("백만원"·"억원"·"원" 등) — 서식 헤더 실측값 그대로 */
+  unit: string;
+  /** 당기실적 대상 기간 "2026-01-01 ~ 2026-03-31" (못 찾으면 빈 문자열) */
+  period: string;
+  /** 값이 하나라도 있는 계정 행만 (전 항목 "-"인 월간 IR 공시는 빈 배열) */
+  figures: DartEarningsFigure[];
+}
+
+/**
+ * 잠정실적 서식의 셀 토큰 → 숫자. 빈칸·"-"는 null.
+ * 음수 표기는 서식마다 `-1,234` / `△1,234` / `(1,234)`가 섞여 셋 다 수용한다.
+ */
+function parseEarningsCell(token: string): number | null {
+  const raw = token.trim();
+  if (raw === "" || raw === "-" || raw === "－") {
+    return null;
+  }
+
+  const negative = /^[△▲(]/.test(raw) || raw.startsWith("-");
+  const digits = raw.replace(/[^\d.]/g, "");
+  if (digits === "" || digits === ".") {
+    return null;
+  }
+
+  const value = Number(digits);
+  return Number.isFinite(value) ? (negative ? -value : value) : null;
+}
+
+/** 잠정실적 서식에서 추출할 계정 — 표시 순서 그대로 */
+const EARNINGS_ACCOUNTS = ["매출액", "영업이익", "당기순이익"] as const;
+
+/**
+ * 흑자적자전환여부 칸에 올 수 있는 값 — 실측(2026-05 잠정실적 61건 180행)에서
+ * "-"·"흑자전환"·"적자전환"만 나왔고, 서식 정의상 "지속" 표기도 가능하다.
+ */
+const TURNAROUND_LABELS = new Set([
+  "흑자전환",
+  "적자전환",
+  "흑자지속",
+  "적자지속",
+  "흑전",
+  "적전",
+]);
+
+/** 금액·증감율 칸으로 허용되는 모양 — 숫자(부호·콤마·소수점) 또는 빈칸 "-" */
+function isNumericCell(token: string): boolean {
+  return token === "-" || token === "－" || /^[-△▲(]?[\d,]+(\.\d+)?\)?$/.test(token);
+}
+
+/** 흑자적자전환 칸으로 허용되는 모양 — 빈칸이거나 정해진 라벨 */
+function isTurnaroundCell(token: string): boolean {
+  return token === "-" || token === "－" || TURNAROUND_LABELS.has(token);
+}
+
+/**
+ * 영업(잠정)실적 공정공시 원문 → 매출액·영업이익·당기순이익 (Phase 81).
+ *
+ * 표준 서식이라 태그 제거 후 `{계정명} 당해실적` 뒤 7개 셀이 고정 순서로 온다
+ * (실측 rcpt 20260515801516 한미반도체 26.1Q):
+ *   당기실적 · 전기실적 · 전기대비증감율 · 흑자적자전환 · 전년동기실적 ·
+ *   전년동기대비증감율 · 흑자적자전환
+ * 그중 0·4·5·6번째만 쓴다. 수주만 공시하는 월간 IR 건은 전 셀이 "-"라 빈 배열이 된다.
+ * "당기순이익"은 "지배기업 소유주지분 순이익" 행과 문자열이 겹치지 않아 오매칭이 없다.
+ *
+ * **칸 모양 검증이 필수다** — `[기재정정]` 건의 원문은 실적표가 아니라 "정정전/정정후"
+ * 나열이라 같은 정규식이 엉뚱한 7칸에 걸린다(실측 서울반도체 20260512900204:
+ * `["당기실적(2026.1Q)","235,094",…]`). 7칸이 숫자·전환라벨 모양을 만족하지 않으면
+ * 표준 서식이 아니라고 보고 그 행을 버린다.
+ */
+export function parseDartEarningsDetail(text: string): DartEarningsDetail {
+  const unit = text.match(/단위\s*:\s*([가-힣]+)/)?.[1] ?? "";
+  const periodMatch = text.match(
+    /실적기간\s*당기실적\s*(\d{4}-\d{2}-\d{2})\s*~\s*(\d{4}-\d{2}-\d{2})/
+  );
+  const period =
+    periodMatch !== null ? `${periodMatch[1]} ~ ${periodMatch[2]}` : "";
+
+  const figures: DartEarningsFigure[] = [];
+  for (const label of EARNINGS_ACCOUNTS) {
+    // 한 계정명이 여러 번 나올 수 있다 — 정정 공시는 "정정전/정정후" 나열이 실적표보다
+    // 앞에 오므로 첫 매치만 보면 안 되고, 칸 모양을 만족하는 첫 후보를 골라야 한다.
+    for (const match of text.matchAll(
+      new RegExp(`${label}\\s*당해실적((?:\\s+\\S+){7})`, "g")
+    )) {
+      const cells = match[1].trim().split(/\s+/);
+
+      // 표준 서식 검증 — 금액·증감율 5칸은 숫자 모양, 전환 2칸은 라벨 모양이어야 한다
+      const shapeOk =
+        [0, 1, 2, 4, 5].every((i) => isNumericCell(cells[i])) &&
+        [3, 6].every((i) => isTurnaroundCell(cells[i]));
+      if (!shapeOk) {
+        continue;
+      }
+
+      const current = parseEarningsCell(cells[0]);
+      const yoyBase = parseEarningsCell(cells[4]);
+      // 값이 아예 없는 행(수주만 공시하는 월간 IR 등)은 표에 넣지 않는다
+      if (current === null && yoyBase === null) {
+        break;
+      }
+      figures.push({
+        label,
+        current,
+        yoyBase,
+        yoyPct: parseEarningsCell(cells[5]),
+        turnaround: TURNAROUND_LABELS.has(cells[6]) ? cells[6] : null,
+      });
+      break;
+    }
+  }
+
+  return { unit, period, figures };
+}
+
+/** 접수번호로 잠정실적 원문을 받아 파싱한다. 원문 조회 실패는 호출부로 throw. */
+export async function fetchDartEarningsDetail(
+  rceptNo: string
+): Promise<DartEarningsDetail> {
+  return parseDartEarningsDetail(await fetchDartDocumentText(rceptNo));
 }

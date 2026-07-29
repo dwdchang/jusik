@@ -2,8 +2,11 @@ import { todayKstDate } from "@/lib/date/kst";
 import { getRedis } from "@/lib/redis/client";
 import {
   disclosuresKey,
+  earningsKey,
   newsKey,
+  type EarningsFigure,
   type StoredDisclosures,
+  type StoredEarnings,
   type StoredNews,
 } from "@/lib/feeds/store";
 import { getHoldings } from "@/lib/holdings/store";
@@ -105,6 +108,68 @@ export async function getDisclosureBoard(email: string): Promise<FeedBoardItem[]
         meta: d.flrNm,
         remark: d.rm,
         url: `${DART_VIEWER_URL}?rcpNo=${d.rceptNo}`,
+      });
+    }
+  });
+
+  items.sort((a, b) => (a.sortKey < b.sortKey ? 1 : a.sortKey > b.sortKey ? -1 : 0));
+  return items.slice(0, HOME_FEED_LIMIT);
+}
+
+/**
+ * 실적 게시판 1행 (Phase 81) — 공시 게시판 모델에 실적 전용 필드를 얹는다.
+ * `meta`는 공시와 같은 제출인, `remark`는 rm을 그대로 쓴다.
+ */
+export interface EarningsBoardItem extends FeedBoardItem {
+  /** 매칭된 실적 유형 라벨 (예: ["잠정실적"]) */
+  categories: string[];
+  /** 잠정실적 표 — 원문 파싱에 성공한 건만 */
+  figures?: EarningsFigure[];
+  /** 당기실적 대상 기간 "2026-01-01 ~ 2026-03-31" */
+  period?: string;
+  /** 금액 단위 라벨 ("백만원" 등) */
+  unit?: string;
+}
+
+/**
+ * 실적 게시판 — 사용자 보유+관심종목의 실적 공시 스냅샷을 MGET 일괄 조회 후
+ * 접수 순서 내림차순 병합, 상위 HOME_FEED_LIMIT건으로 컷 (공시 게시판과 동일 규칙).
+ */
+export async function getEarningsBoard(
+  email: string
+): Promise<EarningsBoardItem[]> {
+  const owned = await collectOwnedStocks(email);
+  const codes = [...owned.keys()];
+  if (codes.length === 0) {
+    return [];
+  }
+
+  const rows = await getRedis().mget<Array<StoredEarnings | null>>(
+    ...codes.map(earningsKey)
+  );
+
+  const items: EarningsBoardItem[] = [];
+  rows.forEach((row, i) => {
+    if (row === null) {
+      return;
+    }
+    const symbolCode = codes[i];
+    const stockName = owned.get(symbolCode) ?? symbolCode;
+    for (const e of row.items) {
+      items.push({
+        id: e.rceptNo,
+        symbolCode,
+        stockName,
+        title: e.reportNm,
+        sortKey: e.rceptNo,
+        date: e.rceptDt,
+        meta: e.flrNm,
+        remark: e.rm,
+        url: `${DART_VIEWER_URL}?rcpNo=${e.rceptNo}`,
+        categories: e.categories,
+        figures: e.figures,
+        period: e.period,
+        unit: e.unit,
       });
     }
   });

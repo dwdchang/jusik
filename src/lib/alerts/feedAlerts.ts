@@ -1,4 +1,4 @@
-import type { DisclosureItem } from "@/lib/feeds/store";
+import type { DisclosureItem, EarningsItem } from "@/lib/feeds/store";
 import { getStockSnapshots, type StoredStockSnapshot } from "@/lib/market/store";
 import { sendPushToEmail } from "@/lib/push/send";
 import type { Holding } from "@/types/holdings";
@@ -6,15 +6,17 @@ import type { WatchItem } from "@/types/watchlist";
 import {
   getAlertPrefs,
   getDisclosureCursors,
+  getEarningsCursors,
   getMarketWarnStates,
   getMutedSymbols,
   setDisclosureCursor,
+  setEarningsCursor,
   setMarketWarnState,
   type MarketWarnState,
 } from "./store";
 
 /**
- * 공시·시장경보 알림 판정·발송 — Phase 10 3단계 (plan.md §10.6).
+ * 공시·시장경보·실적 알림 판정·발송 — Phase 10 3단계 (plan.md §10.6), 실적은 Phase 81.
  * feeds 갱신 잡(refreshFeeds)의 알림 훅에서만 호출된다. 시세 알림(evaluate.ts)과 달리
  * 쿨다운이 없고, 종목별 전역 커서(마지막 통지 접수번호·경보 상태)로 중복을 차단한다.
  * 대상 종목은 피드 수집 범위와 동일한 보유+관심종목이며, 음소거 목록은 시세 알림과 공유.
@@ -159,6 +161,14 @@ export interface FeedAlertsReport {
     mutedSkipped: number;
     prefSkipped: number;
   };
+  /** 실적 공시 — 「실적」 알림 종류로 발송 (Phase 81), 공시와 별도 커서 */
+  earnings: {
+    baselined: number;
+    matched: number;
+    sent: number;
+    mutedSkipped: number;
+    prefSkipped: number;
+  };
 }
 
 interface DisclosureEvent {
@@ -172,6 +182,11 @@ interface MarketWarnEvent {
   changes: string[];
 }
 
+interface EarningsEvent {
+  symbolCode: string;
+  item: EarningsItem;
+}
+
 /**
  * 공시·시장경보 알림 파이프라인.
  * 커서·경보 상태는 발송 결과와 무관하게 전진시킨다 — 일시 발송 실패로 다음 회차에
@@ -181,6 +196,8 @@ interface MarketWarnEvent {
 export async function evaluateFeedAlerts(context: {
   /** 이번 회차에 방금 받아온 종목별 공시 (조회 실패 종목은 없음) */
   disclosuresBySymbol: Map<string, DisclosureItem[]>;
+  /** 이번 회차에 방금 받아온 종목별 실적 공시 (Phase 81) */
+  earningsBySymbol: Map<string, EarningsItem[]>;
   holdingsByEmail: Map<string, Holding[]>;
   watchlistsByEmail: Map<string, WatchItem[]>;
   /** 종목코드→종목명 — 없으면 코드로 표기 */
@@ -198,6 +215,13 @@ export async function evaluateFeedAlerts(context: {
     marketWarnings: {
       baselined: 0,
       changed: 0,
+      sent: 0,
+      mutedSkipped: 0,
+      prefSkipped: 0,
+    },
+    earnings: {
+      baselined: 0,
+      matched: 0,
       sent: 0,
       mutedSkipped: 0,
       prefSkipped: 0,
@@ -252,7 +276,42 @@ export async function evaluateFeedAlerts(context: {
     }
   }
 
-  // 2. 시장경보 — 저장된 KIS 스냅샷(새 API 호출 없음)의 경보 필드 회차 간 비교
+  // 2. 실적 공시 — 공시와 같은 커서 방식이되 별도 키(alerts:earnings:last:{code}).
+  //    유형을 좁힌 별도 조회라 접수번호 흐름이 달라 커서를 공유하면 서로를 삼킨다.
+  const earningsEvents: EarningsEvent[] = [];
+  const earningsCodes = [...context.earningsBySymbol.keys()];
+  const earningsCursors = await getEarningsCursors(earningsCodes);
+
+  for (const [symbolCode, items] of context.earningsBySymbol) {
+    if (items.length === 0) {
+      continue;
+    }
+
+    const latest = items.reduce((max, item) =>
+      item.rceptNo > max.rceptNo ? item : max
+    ).rceptNo;
+    const cursor = earningsCursors.get(symbolCode);
+
+    if (cursor === undefined) {
+      // 첫 회차 — 최근 90일 실적 공시가 한꺼번에 쏟아지지 않게 기준점만 저장
+      await setEarningsCursor(symbolCode, latest);
+      report.earnings.baselined += 1;
+      continue;
+    }
+
+    for (const item of items) {
+      if (item.rceptNo > cursor) {
+        earningsEvents.push({ symbolCode, item });
+        report.earnings.matched += 1;
+      }
+    }
+
+    if (latest > cursor) {
+      await setEarningsCursor(symbolCode, latest);
+    }
+  }
+
+  // 3. 시장경보 — 저장된 KIS 스냅샷(새 API 호출 없음)의 경보 필드 회차 간 비교
   const warnEvents: MarketWarnEvent[] = [];
   const warnCodes = [
     ...new Set([
@@ -295,13 +354,14 @@ export async function evaluateFeedAlerts(context: {
   if (
     disclosureEvents.length === 0 &&
     dividendEvents.length === 0 &&
-    warnEvents.length === 0
+    warnEvents.length === 0 &&
+    earningsEvents.length === 0
   ) {
     return report;
   }
 
-  // 3. 발송 — 사용자별 보유+관심종목에 해당하는 이벤트만.
-  //    음소거는 배당 공시를 포함한 3종 모두에 적용된다 (Phase 79)
+  // 4. 발송 — 사용자별 보유+관심종목에 해당하는 이벤트만.
+  //    음소거는 배당 공시를 포함한 4종 모두에 적용된다 (Phase 79·81)
   const emails = new Set([
     ...context.holdingsByEmail.keys(),
     ...context.watchlistsByEmail.keys(),
@@ -329,10 +389,14 @@ export async function evaluateFeedAlerts(context: {
     const myWarnings = warnEvents.filter((event) =>
       owned.has(event.symbolCode)
     );
+    const myEarnings = earningsEvents.filter((event) =>
+      owned.has(event.symbolCode)
+    );
     if (
       myDisclosures.length === 0 &&
       myDividends.length === 0 &&
-      myWarnings.length === 0
+      myWarnings.length === 0 &&
+      myEarnings.length === 0
     ) {
       continue;
     }
@@ -386,6 +450,27 @@ export async function evaluateFeedAlerts(context: {
         });
         if (sendReport.sent > 0) {
           report.dividendDisclosures.sent += 1;
+        }
+      }
+
+      // 실적 공시 — 수치는 화면(피드 실적 탭)에 있고 푸시는 유형·보고서명만 (Phase 81)
+      for (const event of myEarnings) {
+        if (!prefs.earnings) {
+          report.earnings.prefSkipped += 1;
+          continue;
+        }
+        if (mutedSet.has(event.symbolCode)) {
+          report.earnings.mutedSkipped += 1;
+          continue;
+        }
+        const sendReport = await sendPushToEmail(email, {
+          title: `실적 공시 — ${nameOf(event.symbolCode)}`,
+          body: `[${event.item.categories.join("·")}] ${event.item.reportNm}`,
+          url: "/feeds?tab=earnings",
+          tag: `earnings-${event.symbolCode}-${event.item.rceptNo}`,
+        });
+        if (sendReport.sent > 0) {
+          report.earnings.sent += 1;
         }
       }
 

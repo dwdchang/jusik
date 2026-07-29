@@ -28,6 +28,54 @@ export interface StoredDisclosures {
   fetchedAt: string;
 }
 
+/** 잠정실적 표의 계정 1행 — 원문 파싱 결과 (Phase 81) */
+export interface EarningsFigure {
+  /** 계정명 ("매출액"·"영업이익"·"당기순이익") */
+  label: string;
+  /** 당기실적 */
+  current: number | null;
+  /** 전년동기실적 */
+  yoyBase: number | null;
+  /** 전년동기대비 증감율(%) — 흑자·적자 전환이면 서식상 비어 있다 */
+  yoyPct: number | null;
+  /** 전년동기 대비 "흑자전환"·"적자전환" 등 (해당 없으면 null) */
+  turnaround: string | null;
+}
+
+/**
+ * 실적 공시 1건 (Phase 81) — 공시와 같은 DART 원본이지만 수집 경로·유형이 달라
+ * 별도 키로 둔다. 링크는 공시와 동일하게 rceptNo로 조립한다.
+ */
+export interface EarningsItem {
+  reportNm: string;
+  rceptNo: string;
+  /** 접수일자 "YYYYMMDD" */
+  rceptDt: string;
+  flrNm: string;
+  rm: string;
+  /** 매칭된 실적 유형 라벨 (`feeds/earnings.ts`) — 최소 1개 */
+  categories: string[];
+  /**
+   * 원문 파싱을 이미 시도했는지. 성공·실패 모두 true로 굳혀 매 회차 원문(zip)을
+   * 다시 받지 않게 한다 — 잠정실적 서식이 아니거나 수치가 전부 "-"여도 마찬가지.
+   */
+  parsed?: boolean;
+  /** 잠정실적 표 (없거나 파싱 실패면 없음) */
+  figures?: EarningsFigure[];
+  /** 당기실적 대상 기간 "2026-01-01 ~ 2026-03-31" */
+  period?: string;
+  /** 금액 단위 라벨 ("백만원" 등) */
+  unit?: string;
+}
+
+/** market:earnings:{symbolCode} — 최근 실적 공시 스냅샷 (SET 덮어쓰기) */
+export interface StoredEarnings {
+  symbolCode: string;
+  /** 접수 순서 내림차순 최대 10건 */
+  items: EarningsItem[];
+  fetchedAt: string;
+}
+
 /** dart:corpCodeMap — 종목코드(6자리)→DART 고유번호(8자리), 30일 주기 저빈도 갱신 */
 export interface StoredCorpCodeMap {
   map: Record<string, string>;
@@ -138,6 +186,11 @@ export function newsKey(symbolCode: string): string {
   return `market:news:${symbolCode}`;
 }
 
+/** market:earnings:{code} 키 조립 — 리더(homeFeed MGET)·라이터·고아 정리 잡이 공유 */
+export function earningsKey(symbolCode: string): string {
+  return `market:earnings:${symbolCode}`;
+}
+
 const CORP_CODE_MAP_KEY = "dart:corpCodeMap";
 
 /** market:tradeStats — 종목 무관 단일 키 (수출입은 시장 전체 지표) */
@@ -161,6 +214,34 @@ export async function setDisclosures(value: StoredDisclosures): Promise<void> {
 
 export async function setNews(value: StoredNews): Promise<void> {
   await getRedis().set(newsKey(value.symbolCode), value);
+}
+
+/**
+ * 종목별 실적 스냅샷 일괄 조회 (MGET 1회) — 갱신 잡이 직전 회차의 파싱 결과를
+ * 재사용해 같은 공시의 원문(zip)을 다시 받지 않으려고 쓴다 (Phase 81).
+ */
+export async function getEarningsSnapshots(
+  symbolCodes: string[]
+): Promise<Map<string, StoredEarnings>> {
+  if (symbolCodes.length === 0) {
+    return new Map();
+  }
+
+  const rows = await getRedis().mget<Array<StoredEarnings | null>>(
+    ...symbolCodes.map(earningsKey)
+  );
+
+  const byCode = new Map<string, StoredEarnings>();
+  rows.forEach((row, i) => {
+    if (row !== null) {
+      byCode.set(symbolCodes[i], row);
+    }
+  });
+  return byCode;
+}
+
+export async function setEarnings(value: StoredEarnings): Promise<void> {
+  await getRedis().set(earningsKey(value.symbolCode), value);
 }
 
 export async function getCorpCodeMap(): Promise<StoredCorpCodeMap | null> {

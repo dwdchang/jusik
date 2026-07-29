@@ -8,8 +8,11 @@ import {
 } from "@/lib/alerts/feedAlerts";
 import { fetchTradeStats } from "@/lib/api/customs/client";
 import {
+  DART_PBLNTF_EXCHANGE,
+  DART_PBLNTF_PERIODIC,
   fetchDartCorpCodeMap,
   fetchDartDisclosures,
+  fetchDartEarningsDetail,
 } from "@/lib/api/dart/client";
 import { fetchNaverNews } from "@/lib/api/naver/client";
 import {
@@ -19,13 +22,21 @@ import {
   todayKstDate,
 } from "@/lib/date/kst";
 import {
+  hasEarningsFigures,
+  matchEarningsCategories,
+} from "@/lib/feeds/earnings";
+import {
   getCorpCodeMap,
+  getEarningsSnapshots,
   getTradeStats,
   setCorpCodeMap,
   setDisclosures,
+  setEarnings,
   setNews,
   setTradeStats,
   type DisclosureItem,
+  type EarningsItem,
+  type StoredEarnings,
   type NewsItem,
   type TradeStatMonth,
 } from "@/lib/feeds/store";
@@ -60,6 +71,20 @@ const DISCLOSURE_WINDOW_DAYS = 90;
 const DISCLOSURE_MAX_ITEMS = 10;
 /** 종목당 저장하는 최근 뉴스 최대 건수 */
 const NEWS_MAX_ITEMS = 10;
+/** 실적 공시 조회 기간 — 분기 발표 주기를 한 번은 포함하도록 공시와 같은 90일 */
+const EARNINGS_WINDOW_DAYS = 90;
+/** 종목당 저장하는 최근 실적 공시 최대 건수 */
+const EARNINGS_MAX_ITEMS = 10;
+/**
+ * 유형별 조회 요청 건수 — `pblntf_ty`로 좁히면 대형주도 90일 15건 수준이라
+ * (삼성전자 실측: 무필터 818건 → 거래소공시 15건) 30건이면 전부 들어온다.
+ */
+const EARNINGS_PAGE_COUNT = 30;
+/**
+ * 한 회차에 새로 받는 잠정실적 원문(zip) 최대 건수 — 첫 회차에 전 종목 원문을
+ * 한꺼번에 받지 않게 막는 상한. 남은 건은 다음 회차가 이어받는다(파싱 결과는 굳혀 재사용).
+ */
+const EARNINGS_DOC_BUDGET = 20;
 /** DART 분당 과다 호출 차단 대비 종목 간 유량 제한 */
 const DART_CALL_INTERVAL_MS = 150;
 /** 네이버 검색 API 종목 간 유량 제한 (일 25,000콜 내 여유) */
@@ -117,6 +142,16 @@ export interface RefreshFeedsReport {
     count?: number;
     /** 종목명이 아직 안 채워져 검색어를 만들 수 없는 종목 — 실패로 치지 않는다 */
     skipped?: "no_name";
+    error?: string;
+  }>;
+  /** 실적 공시 갱신 결과 (Phase 81) — 종목별 실패 격리 */
+  earnings: Array<{
+    symbolCode: string;
+    ok: boolean;
+    count?: number;
+    /** 이번 회차에 원문을 새로 파싱한 건수 */
+    parsed?: number;
+    skipped?: "unlisted";
     error?: string;
   }>;
   /** 수출입 월간 통계 갱신 결과 — 월 1회성 (§17-4) */
@@ -314,6 +349,139 @@ async function refreshNews(
 }
 
 /**
+ * 종목별 실적 공시 조회 → market:earnings:{code} 저장 (Phase 81, 종목별 실패 격리).
+ *
+ * 기존 공시 수집(유형 무필터 상위 10건)은 대형주에서 실적 공시가 컷에 밀리므로
+ * `pblntf_ty`를 좁힌 조회를 따로 돌린다 — 거래소공시(I, 잠정실적·IR)와
+ * 정기공시(A, 분기·반기·사업보고서) 2회. 잠정실적은 원문(zip)을 파싱해 수치까지
+ * 굳히되, **직전 회차에 이미 파싱한 접수번호는 결과를 그대로 물려받아** 같은 공시의
+ * 원문을 다시 받지 않는다(회차당 신규 파싱은 EARNINGS_DOC_BUDGET건으로 제한).
+ */
+async function refreshEarnings(
+  symbolCodes: string[],
+  corpCodeMap: Record<string, string>,
+  fetchedAt: string
+): Promise<{
+  results: RefreshFeedsReport["earnings"];
+  itemsBySymbol: Map<string, EarningsItem[]>;
+}> {
+  const results: RefreshFeedsReport["earnings"] = [];
+  const itemsBySymbol = new Map<string, EarningsItem[]>();
+  const bgnDe = kstYyyyMmDdDaysAgo(EARNINGS_WINDOW_DAYS);
+  const endDe = kstYyyyMmDdDaysAgo(0);
+
+  // 직전 회차 스냅샷 — 접수번호별 파싱 결과 재사용 기준 (MGET 1회)
+  const previous = await getEarningsSnapshots(symbolCodes).catch(
+    (error: unknown) => {
+      // 읽기 실패는 "직전 결과 없음"으로 격리 — 파싱만 다시 할 뿐 수집은 계속된다
+      console.error("[job] earnings snapshot read failed:", error);
+      return new Map<string, StoredEarnings>();
+    }
+  );
+
+  let docBudget = EARNINGS_DOC_BUDGET;
+
+  for (const symbolCode of symbolCodes) {
+    const corpCode = corpCodeMap[symbolCode];
+
+    if (corpCode === undefined) {
+      results.push({ symbolCode, ok: true, skipped: "unlisted" });
+      continue;
+    }
+
+    try {
+      const rows: Awaited<ReturnType<typeof fetchDartDisclosures>> = [];
+      for (const pblntfTy of [DART_PBLNTF_EXCHANGE, DART_PBLNTF_PERIODIC]) {
+        rows.push(
+          ...(await fetchDartDisclosures(corpCode, {
+            bgnDe,
+            endDe,
+            pageCount: EARNINGS_PAGE_COUNT,
+            pblntfTy,
+          }))
+        );
+        await sleep(DART_CALL_INTERVAL_MS);
+      }
+
+      // 실적 유형만 남기고 접수번호로 중복 제거 → 최신순 상위 N건
+      const byRceptNo = new Map<string, EarningsItem>();
+      for (const row of rows) {
+        const reportNm = row.report_nm?.trim() ?? "";
+        const rceptNo = row.rcept_no ?? "";
+        const categories = matchEarningsCategories(reportNm);
+
+        if (rceptNo === "" || categories.length === 0) {
+          continue;
+        }
+        byRceptNo.set(rceptNo, {
+          reportNm,
+          rceptNo,
+          rceptDt: row.rcept_dt ?? "",
+          flrNm: row.flr_nm ?? "",
+          rm: row.rm?.trim() ?? "",
+          categories,
+        });
+      }
+
+      const items = [...byRceptNo.values()]
+        // 접수번호는 "YYYYMMDD+일련" 14자리 고정이라 문자열 비교가 곧 시간순이다
+        .sort((a, b) => (a.rceptNo < b.rceptNo ? 1 : a.rceptNo > b.rceptNo ? -1 : 0))
+        .slice(0, EARNINGS_MAX_ITEMS);
+
+      const carried = new Map(
+        (previous.get(symbolCode)?.items ?? []).map((item) => [
+          item.rceptNo,
+          item,
+        ])
+      );
+
+      let parsed = 0;
+      for (const item of items) {
+        const before = carried.get(item.rceptNo);
+        if (before?.parsed === true) {
+          item.parsed = true;
+          item.figures = before.figures;
+          item.period = before.period;
+          item.unit = before.unit;
+          continue;
+        }
+        if (!hasEarningsFigures(item.categories) || docBudget <= 0) {
+          continue;
+        }
+
+        docBudget -= 1;
+        try {
+          const detail = await fetchDartEarningsDetail(item.rceptNo);
+          item.parsed = true;
+          item.period = detail.period;
+          item.unit = detail.unit;
+          if (detail.figures.length > 0) {
+            item.figures = detail.figures;
+          }
+          parsed += 1;
+        } catch (error) {
+          // 원문 조회·파싱 실패는 제목·링크만 있는 항목으로 남긴다 (parsed 미표기 → 다음 회차 재시도)
+          console.error(
+            `[job] earnings document parse failed (${item.rceptNo}):`,
+            error
+          );
+        }
+        await sleep(DART_CALL_INTERVAL_MS);
+      }
+
+      await setEarnings({ symbolCode, items, fetchedAt });
+      itemsBySymbol.set(symbolCode, items);
+      results.push({ symbolCode, ok: true, count: items.length, parsed });
+    } catch (error) {
+      console.error(`[job] earnings refresh failed (${symbolCode}):`, error);
+      results.push({ symbolCode, ok: false, error: errorMessage(error) });
+    }
+  }
+
+  return { results, itemsBySymbol };
+}
+
+/**
  * 수출입 월간 통계 갱신 — 월 1회성 (§17-4). 관세청 API 실측 확정 규칙 반영:
  * 현재 KST 월은 월중 집계라 미완결 → "직전 달"을 기대 최신 확정월로 본다.
  * 이미 그 달(이상)을 확보했으면 KIS 외 월간 소스를 다시 부르지 않는다.
@@ -407,6 +575,7 @@ export async function refreshFeeds(
       watchlists,
       disclosures: [],
       news: [],
+      earnings: [],
       tradeStats,
       alerts: { evaluated: false, reason: "no target symbols" },
       dividendAlerts: { evaluated: false, reason: "no target symbols" },
@@ -428,11 +597,16 @@ export async function refreshFeeds(
   const codeNames = unionSymbolNames(holdingsByEmail, watchlistsByEmail);
   const news = await refreshNews(codeNames, startedAt);
 
-  // 5. 공시·시장경보 알림 훅 — 실패해도 로그만 남기고 잡 ok는 게이팅하지 않는다
+  // 5. 종목별 실적 공시 조회(유형 한정 2회 + 잠정실적 원문) → market:earnings:{code}
+  const { results: earnings, itemsBySymbol: earningsBySymbol } =
+    await refreshEarnings(symbolCodes, map, startedAt);
+
+  // 6. 공시·시장경보·실적 알림 훅 — 실패해도 로그만 남기고 잡 ok는 게이팅하지 않는다
   let alerts: RefreshFeedsReport["alerts"];
   try {
     const summary = await evaluateFeedAlerts({
       disclosuresBySymbol: itemsBySymbol,
+      earningsBySymbol,
       holdingsByEmail,
       watchlistsByEmail,
       names: codeNames,
@@ -443,7 +617,7 @@ export async function refreshFeeds(
     alerts = { evaluated: false, reason: errorMessage(error) };
   }
 
-  // 6. 배당 지급일 당일 알림 훅 — 보유 사용자만 대상 (Phase 25), 실패해도 로그만
+  // 7. 배당 지급일 당일 알림 훅 — 보유 사용자만 대상 (Phase 25), 실패해도 로그만
   let dividendAlerts: RefreshFeedsReport["dividendAlerts"];
   try {
     const summary = await evaluateDividendAlerts({
@@ -461,7 +635,8 @@ export async function refreshFeeds(
   const ok =
     corpCodeMap.ok &&
     disclosures.every((row) => row.ok) &&
-    news.every((row) => row.ok);
+    news.every((row) => row.ok) &&
+    earnings.every((row) => row.ok);
 
   return {
     trigger,
@@ -471,6 +646,7 @@ export async function refreshFeeds(
     watchlists,
     disclosures,
     news,
+    earnings,
     tradeStats,
     alerts,
     dividendAlerts,

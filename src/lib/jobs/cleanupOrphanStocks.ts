@@ -8,8 +8,12 @@ import {
 } from "./collectTargets";
 import { STOCK_KEY_PREFIX, stockInfoKey, stockKey } from "@/lib/market/store";
 import { stockHistoryKey } from "@/lib/holdings/stockHistory";
-import { disclosuresKey, newsKey } from "@/lib/feeds/store";
-import { disclosureCursorKey, marketWarnKey } from "@/lib/alerts/store";
+import { disclosuresKey, earningsKey, newsKey } from "@/lib/feeds/store";
+import {
+  disclosureCursorKey,
+  earningsCursorKey,
+  marketWarnKey,
+} from "@/lib/alerts/store";
 
 /**
  * 고아 종목 키 정리 잡 — Phase 49 (plan.md §49).
@@ -42,7 +46,9 @@ function orphanKeysFor(code: string): string[] {
     stockHistoryKey(code),
     disclosuresKey(code),
     newsKey(code),
+    earningsKey(code),
     disclosureCursorKey(code),
+    earningsCursorKey(code),
     marketWarnKey(code),
   ];
 }
@@ -57,7 +63,7 @@ export interface CleanupOrphanStocksReport {
   scannedCount?: number;
   /** 고아로 판정된 종목 수 */
   orphanCount?: number;
-  /** 실제로 삭제된 키 총수 (종목당 최대 7개, 미존재 키는 제외) */
+  /** 실제로 삭제된 키 총수 (종목당 최대 9개, 미존재 키는 제외) */
   deletedKeys?: number;
   /** 고아 종목코드 (로그·점검용) */
   orphanCodes?: string[];

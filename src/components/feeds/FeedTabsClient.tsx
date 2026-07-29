@@ -9,15 +9,16 @@ import {
   formatYoy,
   formatYyyymm,
 } from "@/lib/format/trade";
-import type { FeedBoardItem } from "@/lib/feeds/homeFeed";
+import type { EarningsBoardItem, FeedBoardItem } from "@/lib/feeds/homeFeed";
+import type { EarningsFigure } from "@/lib/feeds/store";
 import type { TradeStatsView } from "@/lib/feeds/tradeStats";
 import styles from "./FeedTabsClient.module.css";
 
 /**
- * 홈 통합 피드 카드 — 뉴스·공시·수출입 3탭 (Phase 17-2, plan.md §17.7).
+ * 홈 통합 피드 카드 — 뉴스·공시·실적·수출입 4탭 (Phase 17-2, plan.md §17.7 / §81).
  * 탭 전환·아코디언 펼침은 순수 상호작용이라 서버로 못 옮기는 최소 Client 예외.
  * 데이터는 전부 Server(page.tsx)에서 조회해 props로 받고, 여기선 표시 상태만 다룬다.
- * 뉴스·공시·수출입 3탭 모두 실동작한다 (§17.13·§17-4).
+ * 4탭 모두 실동작한다 (§17.13·§17-4·§81).
  */
 
 /** 부호 → 색상 클래스 (양수=상승색, 음수=하락색) — 수출입 증감·수지 표기 공용 */
@@ -28,25 +29,31 @@ function signClass(value: number | null): string {
   return value > 0 ? styles.rise : styles.fall;
 }
 
-type TabKey = "news" | "disclosure" | "trade";
+export type TabKey = "news" | "disclosure" | "earnings" | "trade";
 
 const TABS: ReadonlyArray<{ key: TabKey; label: string }> = [
   { key: "news", label: "뉴스" },
   { key: "disclosure", label: "공시" },
+  { key: "earnings", label: "실적" },
   { key: "trade", label: "수출입" },
 ];
 
 export function FeedTabsClient({
   disclosures,
   news,
+  earnings,
   tradeStats,
+  initialTab,
 }: {
   disclosures: FeedBoardItem[];
   news: FeedBoardItem[];
+  earnings: EarningsBoardItem[];
   tradeStats: TradeStatsView | null;
+  /** 실적 알림 링크(`/feeds?tab=earnings`)로 들어온 경우의 진입 탭 (Phase 81) */
+  initialTab: TabKey;
 }) {
-  // 첫 탭(뉴스)이 실동작하므로 기본 선택. 탭 전환 시 열린 아코디언은 접는다.
-  const [activeTab, setActiveTab] = useState<TabKey>("news");
+  // 기본은 뉴스 탭. 탭 전환 시 열린 아코디언은 접는다.
+  const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const [openId, setOpenId] = useState<string | null>(null);
 
   const toggle = (id: string) =>
@@ -79,6 +86,8 @@ export function FeedTabsClient({
           <DisclosureBoard items={disclosures} openId={openId} onToggle={toggle} />
         ) : activeTab === "news" ? (
           <NewsBoard items={news} openId={openId} onToggle={toggle} />
+        ) : activeTab === "earnings" ? (
+          <EarningsBoard items={earnings} openId={openId} onToggle={toggle} />
         ) : (
           <TradeBoard view={tradeStats} />
         )}
@@ -233,6 +242,170 @@ function DisclosureBoard({
                       </dd>
                     </div>
                   </dl>
+                  <a
+                    href={item.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={styles.originalLink}
+                  >
+                    원문 보기 →
+                  </a>
+                </div>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+      <p className={styles.source}>출처: 금융감독원 전자공시시스템(DART)</p>
+    </>
+  );
+}
+
+/** 잠정실적 표의 금액 셀 — 단위는 원문 헤더 그대로라 캡션에 따로 적는다 */
+function formatFigure(value: number | null): string {
+  return value === null ? "—" : value.toLocaleString("ko-KR");
+}
+
+/**
+ * 전년동기대비 증감 — 부호를 명시해 개선/악화가 한눈에 보이게 한다.
+ * 흑자·적자 전환이면 DART 서식이 증감율 칸을 비우고 전환 라벨을 대신 채운다.
+ */
+function formatFigureChange(figure: EarningsFigure): string {
+  if (figure.yoyPct !== null) {
+    return `${figure.yoyPct > 0 ? "+" : ""}${figure.yoyPct.toFixed(1)}%`;
+  }
+  return figure.turnaround ?? "—";
+}
+
+/** 증감 칸 색 — 전환 라벨은 흑자=상승색·적자=하락색으로 읽는다 */
+function changeSignClass(figure: EarningsFigure): string {
+  if (figure.yoyPct !== null) {
+    return signClass(figure.yoyPct);
+  }
+  if (figure.turnaround === null) {
+    return styles.flat;
+  }
+  return figure.turnaround.startsWith("흑") ? styles.rise : styles.fall;
+}
+
+/**
+ * 실적 게시판 (Phase 81) — 잠정실적 공정공시·정기보고서·IR 개최 등 실적 이벤트.
+ * 잠정실적은 원문에서 파싱한 매출액·영업이익·당기순이익 표를 아코디언에 함께 편다.
+ */
+function EarningsBoard({
+  items,
+  openId,
+  onToggle,
+}: {
+  items: EarningsBoardItem[];
+  openId: string | null;
+  onToggle: (id: string) => void;
+}) {
+  if (items.length === 0) {
+    return (
+      <p className={styles.placeholder}>
+        보유·관심종목의 최근 90일 실적 공시가 아직 없습니다. 실적은 분기 발표
+        시즌(2·5·8·11월 전후)에 집중됩니다.
+      </p>
+    );
+  }
+
+  return (
+    <>
+      <ul className={styles.list}>
+        {items.map((item) => {
+          const isOpen = openId === item.id;
+          const figures: EarningsFigure[] = item.figures ?? [];
+          return (
+            <li key={item.id} className={styles.item}>
+              <button
+                type="button"
+                className={styles.row}
+                aria-expanded={isOpen}
+                onClick={() => onToggle(item.id)}
+              >
+                <span className={styles.title}>
+                  <span className={styles.badge}>{item.categories[0]}</span>
+                  {item.title}
+                </span>
+                <span className={styles.rowMeta}>
+                  <span className={styles.stockName}>{item.stockName}</span>
+                  <span className="numeric">
+                    {formatBasDtDisplay(item.date)}
+                  </span>
+                </span>
+              </button>
+
+              {isOpen ? (
+                <div className={styles.accordion}>
+                  <dl className={styles.metaList}>
+                    <div className={styles.metaRow}>
+                      <dt>종목</dt>
+                      <dd>
+                        {item.stockName} ({item.symbolCode})
+                      </dd>
+                    </div>
+                    <div className={styles.metaRow}>
+                      <dt>유형</dt>
+                      <dd>{item.categories.join(" · ")}</dd>
+                    </div>
+                    {item.period !== undefined && item.period !== "" ? (
+                      <div className={styles.metaRow}>
+                        <dt>대상기간</dt>
+                        <dd className="numeric">{item.period}</dd>
+                      </div>
+                    ) : null}
+                    <div className={styles.metaRow}>
+                      <dt>제출인</dt>
+                      <dd>{item.meta}</dd>
+                    </div>
+                    <div className={styles.metaRow}>
+                      <dt>접수일</dt>
+                      <dd className="numeric">
+                        {formatBasDtDisplay(item.date)}
+                      </dd>
+                    </div>
+                  </dl>
+
+                  {figures.length > 0 ? (
+                    <>
+                      <table className={styles.earningsTable}>
+                        <thead>
+                          <tr>
+                            <th scope="col">구분</th>
+                            <th scope="col">당기</th>
+                            <th scope="col">전년동기</th>
+                            <th scope="col">증감</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {figures.map((figure) => (
+                            <tr key={figure.label}>
+                              <th scope="row">{figure.label}</th>
+                              <td className="numeric">
+                                {formatFigure(figure.current)}
+                              </td>
+                              <td className="numeric">
+                                {formatFigure(figure.yoyBase)}
+                              </td>
+                              <td
+                                className={`numeric ${changeSignClass(figure)}`}
+                              >
+                                {formatFigureChange(figure)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <p className={styles.tradeCaption}>
+                        단위 {item.unit !== undefined && item.unit !== ""
+                          ? item.unit
+                          : "원문 기준"}{" "}
+                        · 잠정치라 확정치와 다를 수 있음
+                      </p>
+                    </>
+                  ) : null}
+
                   <a
                     href={item.url}
                     target="_blank"
