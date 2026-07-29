@@ -71,6 +71,11 @@
   --radius-lg: 16px;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
 
+  /* 토글 스위치 꺼짐 트랙 — 켜짐은 --color-primary (§74).
+     흰 surface 위에서 트랙 윤곽이 드러나야 하므로 --color-border보다 진하고,
+     흰색 손잡이와 대비되도록 --color-text-tertiary보다는 연하게 잡는다. */
+  --color-switch-off: #ced4da;
+
   /* 잠정값 흐리기 — 실시간 시세 대신 등록 시 종가로 폴백한 값(§65).
      색을 바꾸지 않고 투명도만 낮춰, 등락률·수익률의 방향 색(빨강/파랑)도
      의미를 잃지 않은 채 함께 흐려지게 한다. */
@@ -103,6 +108,9 @@ html[data-theme="dark"] {
 
   /* 보유종목 종목명 — 어두운 surface 위에서 읽히는 밝은 보라 (§56) */
   --color-holding-name: #b197fc;
+
+  /* 토글 스위치 꺼짐 트랙 — 어두운 surface(#1c1f26)와 흰 손잡이 사이 중간 회색 (§74) */
+  --color-switch-off: #414855;
 
   /* 거래량 막대 — 어두운 surface 위에서 시인성 확보용 밝은 슬레이트 회색 */
   --chart-bar: #6b7688;

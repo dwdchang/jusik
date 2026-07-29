@@ -6,12 +6,17 @@ import {
   subscribePushAction,
   unsubscribePushAction,
 } from "@/app/alerts/actions";
+import { ToggleSwitch } from "@/components/ui/ToggleSwitch";
 import styles from "./PushSubscriptionManager.module.css";
 
 /**
  * 이 기기의 푸시 구독 on/off + 테스트 발송.
  * VAPID 공개키는 서버 컴포넌트(alerts/page.tsx)가 env를 읽어 prop으로 내려준다 —
  * NEXT_PUBLIC_ 금지 규칙 때문에 클라이언트에서 env를 직접 읽지 않는다.
+ *
+ * 스위치는 낙관적으로 움직이지 않는다(§74) — `subscribed`는 권한 허용·구독 등록이
+ * 실제로 끝난 뒤에만 true가 되므로, 권한이 거부되면 스위치가 꺼진 채로 남고
+ * 사유는 아래 메시지 줄에 뜬다.
  */
 
 type SupportState =
@@ -191,17 +196,15 @@ export function PushSubscriptionManager({
         <div>
           <p className={styles.rowTitle}>이 기기의 알림</p>
           <p className={styles.rowStatus}>
-            {subscribed ? "구독 중" : "꺼짐"}
+            이 기기(브라우저)에서 푸시 알림을 받습니다.
           </p>
         </div>
-        <button
-          type="button"
-          className={subscribed ? styles.buttonSecondary : styles.buttonPrimary}
-          onClick={subscribed ? unsubscribe : subscribe}
+        <ToggleSwitch
+          checked={subscribed}
+          onToggle={subscribed ? unsubscribe : subscribe}
+          label="이 기기의 알림"
           disabled={busy}
-        >
-          {subscribed ? "알림 끄기" : "알림 켜기"}
-        </button>
+        />
       </div>
 
       {subscribed && (

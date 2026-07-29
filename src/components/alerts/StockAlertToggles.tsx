@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { setStockAlertEnabledAction } from "@/app/alerts/actions";
+import { ToggleSwitch } from "@/components/ui/ToggleSwitch";
 import styles from "./StockAlertToggles.module.css";
 
 /**
@@ -49,23 +50,20 @@ export function StockAlertToggles({ items }: { items: StockAlertItem[] }) {
     <div className={styles.list}>
       {items.map((item) => {
         const enabled = enabledByCode[item.symbolCode] ?? true;
+        const displayName =
+          item.name.trim() === "" ? item.symbolCode : item.name;
         return (
           <div key={item.symbolCode} className={styles.row}>
             <div className={styles.stock}>
-              <p className={styles.name}>
-                {item.name.trim() === "" ? item.symbolCode : item.name}
-              </p>
+              <p className={styles.name}>{displayName}</p>
               <p className={`${styles.code} numeric`}>{item.symbolCode}</p>
             </div>
-            <button
-              type="button"
-              className={enabled ? styles.buttonOn : styles.buttonOff}
-              onClick={() => toggle(item.symbolCode)}
+            <ToggleSwitch
+              checked={enabled}
+              onToggle={() => toggle(item.symbolCode)}
+              label={`${displayName} 알림`}
               disabled={busyCode !== null}
-              aria-pressed={enabled}
-            >
-              {enabled ? "알림 켬" : "알림 끔"}
-            </button>
+            />
           </div>
         );
       })}

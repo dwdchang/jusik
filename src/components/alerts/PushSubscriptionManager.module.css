@@ -23,33 +23,19 @@
   color: var(--color-text-secondary);
 }
 
-.buttonPrimary,
+/* 테스트 발송 전용 — 구독 on/off는 ToggleSwitch가 맡는다 (§74) */
 .buttonSecondary {
   flex-shrink: 0;
   padding: 10px var(--space-16);
-  border: none;
+  border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
+  background-color: var(--color-bg);
+  color: var(--color-text-primary);
   font-size: var(--text-caption);
   font-weight: var(--weight-semibold);
   cursor: pointer;
 }
 
-.buttonPrimary {
-  background-color: var(--color-primary);
-  color: #ffffff;
-}
-
-.buttonPrimary:active {
-  background-color: var(--color-primary-pressed);
-}
-
-.buttonSecondary {
-  background-color: var(--color-bg);
-  color: var(--color-text-primary);
-  border: 1px solid var(--color-border);
-}
-
-.buttonPrimary:disabled,
 .buttonSecondary:disabled {
   opacity: 0.5;
   cursor: default;

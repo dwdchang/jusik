@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { setAlertCategoryEnabledAction } from "@/app/alerts/actions";
+import { ToggleSwitch } from "@/components/ui/ToggleSwitch";
 import type { AlertCategory } from "@/lib/alerts/categories";
 import styles from "./CategoryAlertToggles.module.css";
 
@@ -57,15 +58,12 @@ export function CategoryAlertToggles({
               <p className={styles.label}>{item.label}</p>
               <p className={styles.description}>{item.description}</p>
             </div>
-            <button
-              type="button"
-              className={enabled ? styles.buttonOn : styles.buttonOff}
-              onClick={() => toggle(item.key)}
+            <ToggleSwitch
+              checked={enabled}
+              onToggle={() => toggle(item.key)}
+              label={item.label}
               disabled={busyKey !== null}
-              aria-pressed={enabled}
-            >
-              {enabled ? "알림 켬" : "알림 끔"}
-            </button>
+            />
           </div>
         );
       })}
