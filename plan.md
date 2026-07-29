@@ -3507,6 +3507,27 @@ interface WatchItem {
 
 ---
 
+### Phase 76 — 보안 검토: next 16.2.12 업그레이드(권고 9건 해소) + 종목분석 라우트 코드 검증 (2026-07-29, 구현 완료)
+
+- **요청 근거**: 사용자 — "보안 검토해줘". 작업 트리가 깨끗해 미커밋 변경이 아니라 **코드베이스 전체**를 AGENTS.md §6 4개 항목 기준으로 점검.
+- **발견 ① (High) — 「16.3.0 정식까지 대기」 판단의 근거가 오독이었다**:
+  - 2026-07-24·07-28 두 차례에 걸쳐 `npm audit` 요약의 `next` 범위 `9.3.4-canary.0 - 16.3.0-preview.7`을 보고 "16.2.x는 전부 취약 범위 안 → 정식 16.3.0까지 보류"로 결론냈고 사용자 결정까지 그렇게 굳었다.
+  - 실제로는 그 범위가 **next 자체 권고 9건 + 번들 의존성(postcss·sharp) 권고의 합집합**이다. `npm audit --json`으로 `vulnerabilities.next.via[]`를 풀면 자체 권고 9건은 전부 `>=16.0.0 <16.2.11` — **16.2.11에서 이미 패치**됐고 `fixAvailable: {next 16.2.12, isSemVerMajor: false}`(비파괴).
+  - **교훈(재발 방지)**: `npm audit` 요약 범위로 판단하지 말고 **`--json`의 `via` 개별 범위**를 확인한다. 번들 의존성 권고가 부모 패키지 항목에 합쳐져 표시되기 때문이다. 업그레이드 후 해소 검증도 총계가 아니라 `via`에 전이 의존성만 남았는지로 한다.
+- **발견 ② (Low) — 종목분석 라우트 2개의 종목코드 형식 미검증**: `/analysis/[symbolCode]`·`/analysis/[symbolCode]/statements`가 경로 파라미터를 검증 없이 사용. `getAnalysisOverview`는 corpCode 매핑에서 걸러지지만(→`not_listed`) 같은 `Promise.all`에서 **병렬로** 도는 `getAnalysisQuote`는 그 게이트를 지나지 않고 곧바로 금융위 API를 호출한다. `likeSrtnCd`가 **부분일치** 파라미터라 임의 문자열도 400행을 받아오고(응답은 `srtnCd` 완전일치 필터에 전부 걸러져 캐시 쓰기·오염은 없다) **일일 쿼터만 소모**된다. 화이트리스트 계정만 도달하므로 Low.
+- **구현**:
+  - `package.json` — `next` 16.2.6 → **16.2.12**, `eslint-config-next`도 동반 정합(버전 일치 관례). 정확 버전 고정 유지.
+  - `analysis/[symbolCode]/page.tsx`·`statements/page.tsx` — `/^\d{6}$/` 미통과 시 `redirect("/analysis")`. `/stocks/[symbolCode]`·`/indices/trade/[yyyymm]`의 기존 관례와 동일 형태로 맞춤.
+- **해소된 9건**: GHSA-6gpp(프록시 우회)·GHSA-955p(미인증 Server Function 노출)·GHSA-m99w(Server Actions DoS)·GHSA-89xv(커스텀 서버 SSRF)·GHSA-p9j2(rewrites SSRF)·GHSA-q8wf(이미지 SVG DoS)·GHSA-68g3·GHSA-4633(캐시 혼동)·GHSA-4c39(Edge 무제한 페이로드).
+  - 이 중 GHSA-6gpp·GHSA-955p는 **취약 버전에서도 실피해로 이어지지 않았다** — "프록시는 낙관적 세션 체크, 접근 제어는 페이지에서"라는 §3 설계 덕에 페이지 18개가 각자 `ensureAllowedSession`, Server Action 8개가 각자 `requireEmail()`을 호출하고 있어 프레임워크 계층이 뚫려도 데이터에 닿지 못한다. **이 이중 방어는 계속 유지할 것**.
+- **남긴 것(조치 대상 아님)**: `npm audit` 12건 유지 — ① 번들 **postcss@8.4.31·sharp@0.34.5**(업그레이드 후 `npm ls` 실측, 여전히 next가 고정 → "Next 16.x 안에 해결 경로 없음" 판단 그대로) ② **eslint 계열 8건**(전부 devDependency, fix는 `eslint@10` breaking change뿐). **next 자체 권고는 0건.**
+- **통과 확인(조치 불필요)**: API 라우트는 잡 6종+NextAuth뿐이고 잡은 전부 `verifyJobRequest`(QStash JWT 서명 → `CRON_SECRET` Bearer + `timingSafeEqual`) 후 401 · 페이지 18개 전부 세션 가드(`/dlq`는 추가로 `isAdminEmail`) · `searchParams` 5곳 전부 화이트리스트 분기 · Server Action 8개 전부 형식 검증(종목 토글은 **본인 보유·관심 소속까지** 확인) · 오픈 리다이렉트 없음(경로는 서버가 화이트리스트로 조립) · `dangerouslySetInnerHTML` 1곳은 정적 문자열 · 외부 링크는 `toSafeHttpUrl`로 http(s)만 · 시크릿 하드코딩 0·`NEXT_PUBLIC_` 0·`.env*` git 미추적 · 보유·이력 AES-256-GCM.
+- **범위**: 의존성 버전 + 라우트 가드 2줄. 데이터 파이프라인·캐시 키·잡 6종·화면 표시 전부 불변(재시딩 불필요).
+- **검증**: tsc·eslint·build 통과(라우트 28개 생성, `Proxy (Middleware)` 정상 등록). `npm audit --json`으로 `next.via`에 전이 의존성만 남음을 실측 확인.
+- **상태**: **구현 완료(2026-07-29)**.
+
+---
+
 ## 7. PR 분리 권장 (선택)
 
 | PR | Phase | 리뷰 포인트 |
