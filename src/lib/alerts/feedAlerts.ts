@@ -1,3 +1,4 @@
+import { isAlertableEarnings } from "@/lib/feeds/earnings";
 import type { DisclosureItem, EarningsItem } from "@/lib/feeds/store";
 import { getStockSnapshots, type StoredStockSnapshot } from "@/lib/market/store";
 import { sendPushToEmail } from "@/lib/push/send";
@@ -164,7 +165,10 @@ export interface FeedAlertsReport {
   /** 실적 공시 — 「실적」 알림 종류로 발송 (Phase 81), 공시와 별도 커서 */
   earnings: {
     baselined: number;
+    /** 새 실적 공시 중 알림 대상 유형(`isAlertableEarnings`) 건수 */
     matched: number;
+    /** 새 공시이긴 하나 IR·실적예고라 알림에서 뺀 건수 (Phase 81-1) */
+    typeSkipped: number;
     sent: number;
     mutedSkipped: number;
     prefSkipped: number;
@@ -222,6 +226,7 @@ export async function evaluateFeedAlerts(context: {
     earnings: {
       baselined: 0,
       matched: 0,
+      typeSkipped: 0,
       sent: 0,
       mutedSkipped: 0,
       prefSkipped: 0,
@@ -300,10 +305,16 @@ export async function evaluateFeedAlerts(context: {
     }
 
     for (const item of items) {
-      if (item.rceptNo > cursor) {
-        earningsEvents.push({ symbolCode, item });
-        report.earnings.matched += 1;
+      if (item.rceptNo <= cursor) {
+        continue;
       }
+      // IR 개최·실적예고는 수치 없는 일정 안내라 화면에만 남기고 푸시는 보내지 않는다
+      if (!isAlertableEarnings(item.categories)) {
+        report.earnings.typeSkipped += 1;
+        continue;
+      }
+      earningsEvents.push({ symbolCode, item });
+      report.earnings.matched += 1;
     }
 
     if (latest > cursor) {

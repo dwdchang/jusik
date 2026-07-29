@@ -62,7 +62,7 @@ export const ALERT_CATEGORY_META: ReadonlyArray<{
     key: "earnings",
     label: "실적",
     description:
-      "잠정실적 공정공시·실적 전망·결산 공시예고·IR 개최·정기보고서(분기·반기·사업)",
+      "잠정실적 공정공시 · 정기보고서(분기·반기·사업) · 실적 급변 공시 (IR 개최·공시예고 일정은 제외)",
   },
 ];
 

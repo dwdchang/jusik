@@ -60,3 +60,21 @@ export function matchEarningsCategories(reportNm: string): string[] {
 export function hasEarningsFigures(categories: string[]): boolean {
   return categories.includes("잠정실적");
 }
+
+/**
+ * 푸시 알림을 보낼 유형 (Phase 81-1) — **화면 탭은 6유형 전부 보여주되 알림은 좁힌다.**
+ *
+ * 실측(보유·관심 13종목 최근 90일 58건)에서 「IR」이 41%(24건)·「실적예고」가 5%로
+ * 합쳐 절반 가까이인데, 둘 다 **수치가 없는 일정 안내**다(IR 24건 중 수치표 0건,
+ * 한 종목이 90일에 6번). 실적 자체가 아니라 "언제 발표하겠다"는 예고라 푸시로 받을
+ * 이유가 없어 알림에서만 뺀다 — 탭에서 훑어보는 값은 그대로 있다 (사용자 확정).
+ *
+ * 「실적변동」은 이 표본에 0건이라 소음이 없으면서, 뜨면 매출·손익 30% 이상 변동
+ * ·매출액 미달·자본잠식 같은 실적 급변 의무공시라 놓치면 안 되는 신호다.
+ */
+const ALERTABLE_LABELS = new Set(["잠정실적", "정기보고서", "실적변동"]);
+
+/** 이 공시가 푸시 알림 대상인가 — 매칭 유형 중 하나라도 알림 대상이면 보낸다 */
+export function isAlertableEarnings(categories: string[]): boolean {
+  return categories.some((label) => ALERTABLE_LABELS.has(label));
+}
