@@ -11,7 +11,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## 1. 기술 스택 및 환경
 
-- Next.js 16.2.6 (App Router, `src/app`), React 19.2.4, TypeScript Strict
+- Next.js 16.2.12 (App Router, `src/app`), React 19.2.4, TypeScript Strict
 - **Tailwind CSS 절대 금지** — 순수 CSS + CSS Modules만
 - 디자인 토큰: `src/styles/tokens.css` · 숫자 UI: `globals.css`의 `.numeric` (`tabular-nums`)
 

@@ -2,7 +2,7 @@
 
 ## 1. 기술 스택 및 환경
 
-- **Framework:** Next.js 16.2.6 (App Router, `src/app` 구조)
+- **Framework:** Next.js 16.2.12 (App Router, `src/app` 구조)
 - **Library:** React 19.2.4, TypeScript (Strict 모드)
 - **Styling:** **Tailwind CSS 사용 절대 금지**
   - 오직 순수 CSS 및 **CSS Modules (`*.module.css`)** 방식만 사용할 것
