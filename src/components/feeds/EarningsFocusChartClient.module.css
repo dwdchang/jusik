@@ -1,0 +1,8 @@
+.skeleton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--chart-height);
+  font-size: var(--text-caption);
+  color: var(--color-text-tertiary);
+}

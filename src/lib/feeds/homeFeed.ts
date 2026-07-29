@@ -5,6 +5,7 @@ import {
   earningsKey,
   newsKey,
   type EarningsFigure,
+  type EarningsIr,
   type StoredDisclosures,
   type StoredEarnings,
   type StoredNews,
@@ -129,6 +130,8 @@ export interface EarningsBoardItem extends FeedBoardItem {
   period?: string;
   /** 금액 단위 라벨 ("백만원" 등) */
   unit?: string;
+  /** IR 개최 일정 (Phase 82) — 「IR」 유형만 */
+  ir?: EarningsIr;
 }
 
 /**
@@ -170,6 +173,7 @@ export async function getEarningsBoard(
         figures: e.figures,
         period: e.period,
         unit: e.unit,
+        ir: e.ir,
       });
     }
   });

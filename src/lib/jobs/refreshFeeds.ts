@@ -13,6 +13,7 @@ import {
   fetchDartCorpCodeMap,
   fetchDartDisclosures,
   fetchDartEarningsDetail,
+  fetchDartIrDetail,
 } from "@/lib/api/dart/client";
 import { fetchNaverNews } from "@/lib/api/naver/client";
 import {
@@ -22,8 +23,11 @@ import {
   todayKstDate,
 } from "@/lib/date/kst";
 import {
+  EARNINGS_PARSER_VERSION,
   hasEarningsFigures,
+  hasIrSchedule,
   matchEarningsCategories,
+  needsEarningsDocument,
 } from "@/lib/feeds/earnings";
 import {
   getCorpCodeMap,
@@ -81,10 +85,14 @@ const EARNINGS_MAX_ITEMS = 10;
  */
 const EARNINGS_PAGE_COUNT = 30;
 /**
- * 한 회차에 새로 받는 잠정실적 원문(zip) 최대 건수 — 첫 회차에 전 종목 원문을
+ * 한 회차에 새로 받는 실적 공시 원문(zip) 최대 건수 — 첫 회차에 전 종목 원문을
  * 한꺼번에 받지 않게 막는 상한. 남은 건은 다음 회차가 이어받는다(파싱 결과는 굳혀 재사용).
+ *
+ * Phase 82에서 파싱 대상이 잠정실적 + IR로 늘었다(실측 13종목 90일: 잠정 15건 + IR 24건).
+ * 파서 버전이 올라 기존 저장분도 한 번씩 다시 받으므로 상한을 30으로 키운다 —
+ * 회차당 최대 30콜(간격 150ms)이라 잡 시간에 4.5초를 더할 뿐이다.
  */
-const EARNINGS_DOC_BUDGET = 20;
+const EARNINGS_DOC_BUDGET = 30;
 /** DART 분당 과다 호출 차단 대비 종목 간 유량 제한 */
 const DART_CALL_INTERVAL_MS = 150;
 /** 네이버 검색 API 종목 간 유량 제한 (일 25,000콜 내 여유) */
@@ -353,9 +361,9 @@ async function refreshNews(
  *
  * 기존 공시 수집(유형 무필터 상위 10건)은 대형주에서 실적 공시가 컷에 밀리므로
  * `pblntf_ty`를 좁힌 조회를 따로 돌린다 — 거래소공시(I, 잠정실적·IR)와
- * 정기공시(A, 분기·반기·사업보고서) 2회. 잠정실적은 원문(zip)을 파싱해 수치까지
- * 굳히되, **직전 회차에 이미 파싱한 접수번호는 결과를 그대로 물려받아** 같은 공시의
- * 원문을 다시 받지 않는다(회차당 신규 파싱은 EARNINGS_DOC_BUDGET건으로 제한).
+ * 정기공시(A, 분기·반기·사업보고서) 2회. 잠정실적은 수치표를, IR 개최는 일정을(Phase 82)
+ * 원문(zip)에서 파싱해 굳히되, **직전 회차에 같은 파서 버전으로 파싱한 접수번호는 결과를
+ * 그대로 물려받아** 원문을 다시 받지 않는다(회차당 신규 파싱은 EARNINGS_DOC_BUDGET건 제한).
  */
 async function refreshEarnings(
   symbolCodes: string[],
@@ -438,29 +446,39 @@ async function refreshEarnings(
       let parsed = 0;
       for (const item of items) {
         const before = carried.get(item.rceptNo);
-        if (before?.parsed === true) {
-          item.parsed = true;
+        // 같은 파서 버전으로 이미 뜯어본 건은 결과만 물려받는다.
+        // 버전이 낮으면(=옛 파서) 새 필드를 채우러 아래에서 다시 파싱한다.
+        if (before?.parsedV === EARNINGS_PARSER_VERSION) {
+          item.parsedV = before.parsedV;
           item.figures = before.figures;
           item.period = before.period;
           item.unit = before.unit;
+          item.ir = before.ir;
           continue;
         }
-        if (!hasEarningsFigures(item.categories) || docBudget <= 0) {
+        if (!needsEarningsDocument(item.categories) || docBudget <= 0) {
           continue;
         }
 
         docBudget -= 1;
         try {
-          const detail = await fetchDartEarningsDetail(item.rceptNo);
-          item.parsed = true;
-          item.period = detail.period;
-          item.unit = detail.unit;
-          if (detail.figures.length > 0) {
-            item.figures = detail.figures;
+          if (hasEarningsFigures(item.categories)) {
+            const detail = await fetchDartEarningsDetail(item.rceptNo);
+            item.period = detail.period;
+            item.unit = detail.unit;
+            if (detail.figures.length > 0) {
+              item.figures = detail.figures;
+            }
+          } else if (hasIrSchedule(item.categories)) {
+            const ir = await fetchDartIrDetail(item.rceptNo);
+            if (ir !== null) {
+              item.ir = ir;
+            }
           }
+          item.parsedV = EARNINGS_PARSER_VERSION;
           parsed += 1;
         } catch (error) {
-          // 원문 조회·파싱 실패는 제목·링크만 있는 항목으로 남긴다 (parsed 미표기 → 다음 회차 재시도)
+          // 원문 조회·파싱 실패는 제목·링크만 있는 항목으로 남긴다 (버전 미표기 → 다음 회차 재시도)
           console.error(
             `[job] earnings document parse failed (${item.rceptNo}):`,
             error

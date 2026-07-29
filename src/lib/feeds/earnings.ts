@@ -61,6 +61,26 @@ export function hasEarningsFigures(categories: string[]): boolean {
   return categories.includes("잠정실적");
 }
 
+/** 원문에서 IR 개최 일정을 뽑을 수 있는 유형인가 (Phase 82) */
+export function hasIrSchedule(categories: string[]): boolean {
+  return categories.includes("IR");
+}
+
+/** 원문(zip)을 받아 파싱할 값이 있는 유형인가 — 나머지는 제목·링크로 충분하다 */
+export function needsEarningsDocument(categories: string[]): boolean {
+  return hasEarningsFigures(categories) || hasIrSchedule(categories);
+}
+
+/**
+ * 원문 파서 버전 (Phase 82) — 올리면 저장된 항목이 다음 회차부터 다시 파싱된다.
+ *
+ * v1: 잠정실적 표(당기·전년동기·전년동기대비) — Phase 81
+ * v2: 잠정실적 표에 **전기(전분기) 3칸** 추가 + IR 개최 일정 파싱 — Phase 82
+ *
+ * 재파싱은 회차당 `EARNINGS_DOC_BUDGET`건으로 제한돼 있어 한 번에 몰리지 않는다.
+ */
+export const EARNINGS_PARSER_VERSION = 2;
+
 /**
  * 푸시 알림을 보낼 유형 (Phase 81-1) — **화면 탭은 6유형 전부 보여주되 알림은 좁힌다.**
  *

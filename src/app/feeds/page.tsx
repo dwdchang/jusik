@@ -4,8 +4,10 @@ import {
   FeedTabsClient,
   type TabKey,
 } from "@/components/feeds/FeedTabsClient";
+import { EarningsFocusPanel } from "@/components/feeds/EarningsFocusPanel";
 import { NavIconLink } from "@/components/nav/NavIconLink";
 import { ensureAllowedSession } from "@/lib/auth/ensureAllowedSession";
+import { getEarningsStockOptions } from "@/lib/feeds/earningsFocus";
 import {
   getDisclosureBoard,
   getEarningsBoard,
@@ -36,11 +38,13 @@ function toTabKey(value: string | undefined): TabKey {
  * 17-2에서 홈 전체폭에 있던 탭+게시판+아코디언(FeedTabsClient)을 위치만 이 페이지로 옮겼다.
  * 데이터·컴포넌트는 무변경 재사용, 페이지는 세션 가드와 헤더만 담당한다.
  * Phase 81에서 실적 탭과 `?tab=` 진입 탭(실적 푸시 알림 링크용)이 추가됐다.
+ * Phase 82에서 실적 탭 상단에 종목 선택(`?code=`)+분기 실적 블록이 붙었다 — 그 조회는
+ * **실적 탭으로 들어왔을 때만** 한다(다른 탭에서 DART를 부를 이유가 없다).
  */
 export default async function FeedsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; code?: string }>;
 }) {
   const session = await ensureAllowedSession();
   const email = session.user?.email;
@@ -49,7 +53,24 @@ export default async function FeedsPage({
     redirect("/login");
   }
 
-  const { tab } = await searchParams;
+  const { tab, code } = await searchParams;
+  const activeTab = toTabKey(tab);
+
+  const stockOptions =
+    activeTab === "earnings"
+      ? await getEarningsStockOptions(email).catch((err) => {
+          console.error("[FeedsPage] getEarningsStockOptions failed:", err);
+          return [];
+        })
+      : [];
+
+  // `?code=`는 외부 입력이라 **보유·관심 목록에 있고 자료를 뽑을 수 있는 종목**만 통과시킨다.
+  // 미지정이면 첫 종목을 기본 선택 — 빈 화면으로 시작하지 않게 한다.
+  const selectable = stockOptions.filter((option) => option.supported);
+  const selected =
+    selectable.find((option) => option.symbolCode === code)?.symbolCode ??
+    selectable[0]?.symbolCode ??
+    null;
 
   const [disclosures, news, earnings, tradeStats] = await Promise.all([
     getDisclosureBoard(email).catch((err) => {
@@ -82,8 +103,13 @@ export default async function FeedsPage({
           disclosures={disclosures}
           news={news}
           earnings={earnings}
+          earningsFocus={
+            activeTab === "earnings" ? (
+              <EarningsFocusPanel options={stockOptions} selected={selected} />
+            ) : null
+          }
           tradeStats={tradeStats}
-          initialTab={toTabKey(tab)}
+          activeTab={activeTab}
         />
       </div>
     </main>

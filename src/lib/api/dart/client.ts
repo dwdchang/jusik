@@ -257,12 +257,18 @@ export async function fetchDartDividendDecision(
   };
 }
 
-/** 잠정실적 공시에서 뽑은 계정 1행 — Phase 81 */
+/** 잠정실적 공시에서 뽑은 계정 1행 — Phase 81, 전기(전분기) 3칸은 Phase 82 */
 export interface DartEarningsFigure {
   /** 계정명 ("매출액"·"영업이익"·"당기순이익") */
   label: string;
   /** 당기실적 */
   current: number | null;
+  /** 전기(직전 분기)실적 */
+  qoqBase: number | null;
+  /** 전기대비 증감율(%) — 흑자·적자 전환이면 서식상 비어 있다 */
+  qoqPct: number | null;
+  /** 전기 대비 "흑자전환"·"적자전환" 등 (해당 없으면 null) */
+  qoqTurnaround: string | null;
   /** 전년동기실적 */
   yoyBase: number | null;
   /** 전년동기대비 증감율(%) — 흑자·적자 전환이면 서식상 비어 있다 */
@@ -334,7 +340,8 @@ function isTurnaroundCell(token: string): boolean {
  * (실측 rcpt 20260515801516 한미반도체 26.1Q):
  *   당기실적 · 전기실적 · 전기대비증감율 · 흑자적자전환 · 전년동기실적 ·
  *   전년동기대비증감율 · 흑자적자전환
- * 그중 0·4·5·6번째만 쓴다. 수주만 공시하는 월간 IR 건은 전 셀이 "-"라 빈 배열이 된다.
+ * **7칸을 전부 쓴다** (Phase 82 — 전에는 전기 3칸을 받아놓고 버렸다).
+ * 수주만 공시하는 월간 IR 건은 전 셀이 "-"라 빈 배열이 된다.
  * "당기순이익"은 "지배기업 소유주지분 순이익" 행과 문자열이 겹치지 않아 오매칭이 없다.
  *
  * **칸 모양 검증이 필수다** — `[기재정정]` 건의 원문은 실적표가 아니라 "정정전/정정후"
@@ -376,6 +383,9 @@ export function parseDartEarningsDetail(text: string): DartEarningsDetail {
       figures.push({
         label,
         current,
+        qoqBase: parseEarningsCell(cells[1]),
+        qoqPct: parseEarningsCell(cells[2]),
+        qoqTurnaround: TURNAROUND_LABELS.has(cells[3]) ? cells[3] : null,
         yoyBase,
         yoyPct: parseEarningsCell(cells[5]),
         turnaround: TURNAROUND_LABELS.has(cells[6]) ? cells[6] : null,
@@ -392,4 +402,67 @@ export async function fetchDartEarningsDetail(
   rceptNo: string
 ): Promise<DartEarningsDetail> {
   return parseDartEarningsDetail(await fetchDartDocumentText(rceptNo));
+}
+
+/** 기업설명회(IR) 개최 공시 원문 파싱 결과 — Phase 82 */
+export interface DartIrDetail {
+  /** 개최 일시 "2026-07-30 10:00" — 시각 미정이면 서식이 "--:--"로 온다 */
+  eventAt: string;
+  /** 장소 (없으면 "-") */
+  place: string;
+  /** 개최목적 — "2026년 2분기 경영실적 발표" / "6월 NDR 참석" 등 */
+  purpose: string;
+  /** 개최방법 — "Conference Call"·"컨퍼런스콜"·"대면 미팅" 등 */
+  method: string;
+  /** 주요 설명회내용(요약) */
+  summary: string;
+  /** IR 자료 게재일시 (없으면 "-") */
+  materialAt: string;
+  /** 관련 웹페이지 URL (없으면 "-") */
+  irUrl: string;
+}
+
+/**
+ * 기업설명회(IR) 개최 공시 원문 → 일시·목적·개최방법·IR 자료 링크 (Phase 82).
+ *
+ * 잠정실적과 달리 수치표가 아니라 **완전 정형 서식**이라 라벨 사이를 그대로 집으면 된다
+ * (실측 2026-01~07 보유·관심 16종목의 IR 공시 48건 전건 파싱 성공).
+ *
+ * 9개 항목 중 5개만 쓴다 — 참가 대상자·후원기관·결정일자·기타 중요사항은 화면에
+ * 실적 정보를 더해주지 않는다. 값이 없는 칸은 서식이 "-"로 채워 오므로 별도 처리가 없다.
+ * 시각이 미정인 대면 미팅·NDR 건은 일시가 "2026-06-08 --:--"로 온다.
+ *
+ * ⚠️ 컨퍼런스콜 **내용**(가이던스 발언·Q&A)은 DART에 없다. 여기서 얻는 건 일정과
+ * 회사 공식 IR 페이지 링크까지이고, 발표 내용은 뉴스 탭이 사후에 커버한다.
+ */
+export function parseDartIrDetail(text: string): DartIrDetail | null {
+  const when = text.match(
+    /1\.\s*일시 및 장소\s*일시\s*(.+?)\s*장소\s*(.+?)\s*2\.\s*참가 대상자/
+  );
+  // 일시조차 못 잡으면 표준 서식이 아니다 — 억지로 채우지 않고 제목·링크만 남긴다
+  if (when === null) {
+    return null;
+  }
+
+  const pick = (re: RegExp): string => text.match(re)?.[1]?.trim() ?? "";
+  const material = text.match(
+    /8\.\s*IR 자료 게재일시\s*(.+?)\s*관련 웹페이지\s*(\S*)\s*9\./
+  );
+
+  return {
+    eventAt: when[1].trim(),
+    place: when[2].trim(),
+    purpose: pick(/3\.\s*개최목적\s*(.+?)\s*4\.\s*개최방법/),
+    method: pick(/4\.\s*개최방법\s*(.+?)\s*5\.\s*후원기관/),
+    summary: pick(/6\.\s*주요 설명회내용\(요약\)\s*(.+?)\s*7\.\s*결정일자/),
+    materialAt: material?.[1]?.trim() ?? "",
+    irUrl: material?.[2]?.trim() ?? "",
+  };
+}
+
+/** 접수번호로 IR 개최 공시 원문을 받아 파싱한다. 원문 조회 실패는 호출부로 throw. */
+export async function fetchDartIrDetail(
+  rceptNo: string
+): Promise<DartIrDetail | null> {
+  return parseDartIrDetail(await fetchDartDocumentText(rceptNo));
 }

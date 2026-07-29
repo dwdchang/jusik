@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { formatBasDtDisplay } from "@/lib/format/basDt";
 import {
   formatUsdEok,
@@ -15,10 +15,15 @@ import type { TradeStatsView } from "@/lib/feeds/tradeStats";
 import styles from "./FeedTabsClient.module.css";
 
 /**
- * 홈 통합 피드 카드 — 뉴스·공시·실적·수출입 4탭 (Phase 17-2, plan.md §17.7 / §81).
- * 탭 전환·아코디언 펼침은 순수 상호작용이라 서버로 못 옮기는 최소 Client 예외.
- * 데이터는 전부 Server(page.tsx)에서 조회해 props로 받고, 여기선 표시 상태만 다룬다.
+ * 홈 통합 피드 카드 — 뉴스·공시·실적·수출입 4탭 (Phase 17-2, plan.md §17.7 / §81 / §82).
+ * 데이터는 전부 Server(page.tsx)에서 조회해 props로 받고, 여기선 아코디언만 다룬다.
  * 4탭 모두 실동작한다 (§17.13·§17-4·§81).
+ *
+ * **탭 전환은 `useState`가 아니라 `?tab=` 링크다** (Phase 82). 실적 탭 상단 블록은
+ * 서버에서만 만들 수 있는데(DART 조회 + `<Suspense>` 스트리밍), 탭이 클라이언트
+ * 상태이면 그 블록을 매 방문마다 미리 렌더해 둬야 했다 — 뉴스만 보고 나가는 방문에도
+ * DART를 부르는 셈이다. 탭을 URL로 올리면 서버가 필요한 탭만 조립하고, 덤으로 탭
+ * 상태가 공유·북마크 가능해진다(`?tab=`은 §81에서 이미 알림 링크용으로 있었다).
  */
 
 /** 부호 → 색상 클래스 (양수=상승색, 음수=하락색) — 수출입 증감·수지 표기 공용 */
@@ -42,18 +47,23 @@ export function FeedTabsClient({
   disclosures,
   news,
   earnings,
+  earningsFocus,
   tradeStats,
-  initialTab,
+  activeTab,
 }: {
   disclosures: FeedBoardItem[];
   news: FeedBoardItem[];
   earnings: EarningsBoardItem[];
+  /**
+   * 실적 탭 상단 블록(종목 선택 + 분기 실적 + IR 일정) — Phase 82.
+   * **서버에서 렌더해 슬롯으로 받는다.** 안에 `<Suspense>` 스트리밍과 DART 조회가
+   * 들어 있어 Client 경계 밖에 둬야 한다 (이 컴포넌트는 아코디언만 다룬다).
+   */
+  earningsFocus: ReactNode;
   tradeStats: TradeStatsView | null;
-  /** 실적 알림 링크(`/feeds?tab=earnings`)로 들어온 경우의 진입 탭 (Phase 81) */
-  initialTab: TabKey;
+  /** 서버가 `?tab=`에서 확정한 현재 탭 (기본 뉴스) */
+  activeTab: TabKey;
 }) {
-  // 기본은 뉴스 탭. 탭 전환 시 열린 아코디언은 접는다.
-  const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
   const [openId, setOpenId] = useState<string | null>(null);
 
   const toggle = (id: string) =>
@@ -63,21 +73,18 @@ export function FeedTabsClient({
     <div className={styles.card}>
       <div className={styles.tabs} role="tablist" aria-label="피드 종류">
         {TABS.map((tab) => (
-          <button
+          <Link
             key={tab.key}
-            type="button"
+            href={`/feeds?tab=${tab.key}`}
+            scroll={false}
             role="tab"
             aria-selected={activeTab === tab.key}
             className={`${styles.tab} ${
               activeTab === tab.key ? styles.tabActive : ""
             }`}
-            onClick={() => {
-              setActiveTab(tab.key);
-              setOpenId(null);
-            }}
           >
             {tab.label}
-          </button>
+          </Link>
         ))}
       </div>
 
@@ -87,7 +94,10 @@ export function FeedTabsClient({
         ) : activeTab === "news" ? (
           <NewsBoard items={news} openId={openId} onToggle={toggle} />
         ) : activeTab === "earnings" ? (
-          <EarningsBoard items={earnings} openId={openId} onToggle={toggle} />
+          <>
+            {earningsFocus}
+            <EarningsBoard items={earnings} openId={openId} onToggle={toggle} />
+          </>
         ) : (
           <TradeBoard view={tradeStats} />
         )}
@@ -267,25 +277,36 @@ function formatFigure(value: number | null): string {
 }
 
 /**
- * 전년동기대비 증감 — 부호를 명시해 개선/악화가 한눈에 보이게 한다.
+ * 증감 칸 — 부호를 명시해 개선/악화가 한눈에 보이게 한다.
  * 흑자·적자 전환이면 DART 서식이 증감율 칸을 비우고 전환 라벨을 대신 채운다.
  */
-function formatFigureChange(figure: EarningsFigure): string {
-  if (figure.yoyPct !== null) {
-    return `${figure.yoyPct > 0 ? "+" : ""}${figure.yoyPct.toFixed(1)}%`;
+function formatFigureChange(
+  pct: number | null | undefined,
+  turnaround: string | null | undefined
+): string {
+  if (pct !== null && pct !== undefined) {
+    return `${pct > 0 ? "+" : ""}${pct.toFixed(1)}%`;
   }
-  return figure.turnaround ?? "—";
+  return turnaround ?? "—";
 }
 
 /** 증감 칸 색 — 전환 라벨은 흑자=상승색·적자=하락색으로 읽는다 */
-function changeSignClass(figure: EarningsFigure): string {
-  if (figure.yoyPct !== null) {
-    return signClass(figure.yoyPct);
+function changeSignClass(
+  pct: number | null | undefined,
+  turnaround: string | null | undefined
+): string {
+  if (pct !== null && pct !== undefined) {
+    return signClass(pct);
   }
-  if (figure.turnaround === null) {
+  if (turnaround === null || turnaround === undefined) {
     return styles.flat;
   }
-  return figure.turnaround.startsWith("흑") ? styles.rise : styles.fall;
+  return turnaround.startsWith("흑") ? styles.rise : styles.fall;
+}
+
+/** 잠정실적 표에 전기(전분기) 칸이 있는가 — 파서 v1로 저장된 옛 항목엔 없다 (Phase 82) */
+function hasQoqColumns(figures: EarningsFigure[]): boolean {
+  return figures.some((figure) => figure.qoqBase !== undefined);
 }
 
 /**
@@ -316,6 +337,7 @@ function EarningsBoard({
         {items.map((item) => {
           const isOpen = openId === item.id;
           const figures: EarningsFigure[] = item.figures ?? [];
+          const showQoq = hasQoqColumns(figures);
           return (
             <li key={item.id} className={styles.item}>
               <button
@@ -369,34 +391,67 @@ function EarningsBoard({
 
                   {figures.length > 0 ? (
                     <>
-                      <table className={styles.earningsTable}>
-                        <thead>
-                          <tr>
-                            <th scope="col">구분</th>
-                            <th scope="col">당기</th>
-                            <th scope="col">전년동기</th>
-                            <th scope="col">증감</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {figures.map((figure) => (
-                            <tr key={figure.label}>
-                              <th scope="row">{figure.label}</th>
-                              <td className="numeric">
-                                {formatFigure(figure.current)}
-                              </td>
-                              <td className="numeric">
-                                {formatFigure(figure.yoyBase)}
-                              </td>
-                              <td
-                                className={`numeric ${changeSignClass(figure)}`}
-                              >
-                                {formatFigureChange(figure)}
-                              </td>
+                      {/* 6칸이 480px에 안 들어가는 단위(백만원)가 있어 표만 가로 스크롤 */}
+                      <div className={styles.earningsTableScroll}>
+                        <table className={styles.earningsTable}>
+                          <thead>
+                            <tr>
+                              <th scope="col">구분</th>
+                              <th scope="col">당기</th>
+                              {showQoq ? (
+                                <>
+                                  <th scope="col">전분기</th>
+                                  <th scope="col">전분기대비</th>
+                                </>
+                              ) : null}
+                              <th scope="col">전년동기</th>
+                              <th scope="col">전년동기대비</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody>
+                            {figures.map((figure) => (
+                              <tr key={figure.label}>
+                                <th scope="row">{figure.label}</th>
+                                <td className="numeric">
+                                  {formatFigure(figure.current)}
+                                </td>
+                                {showQoq ? (
+                                  <>
+                                    <td className="numeric">
+                                      {formatFigure(figure.qoqBase ?? null)}
+                                    </td>
+                                    <td
+                                      className={`numeric ${changeSignClass(
+                                        figure.qoqPct,
+                                        figure.qoqTurnaround
+                                      )}`}
+                                    >
+                                      {formatFigureChange(
+                                        figure.qoqPct,
+                                        figure.qoqTurnaround
+                                      )}
+                                    </td>
+                                  </>
+                                ) : null}
+                                <td className="numeric">
+                                  {formatFigure(figure.yoyBase)}
+                                </td>
+                                <td
+                                  className={`numeric ${changeSignClass(
+                                    figure.yoyPct,
+                                    figure.turnaround
+                                  )}`}
+                                >
+                                  {formatFigureChange(
+                                    figure.yoyPct,
+                                    figure.turnaround
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                       <p className={styles.tradeCaption}>
                         단위 {item.unit !== undefined && item.unit !== ""
                           ? item.unit
@@ -404,6 +459,38 @@ function EarningsBoard({
                         · 잠정치라 확정치와 다를 수 있음
                       </p>
                     </>
+                  ) : null}
+
+                  {item.ir !== undefined ? (
+                    <dl className={styles.metaList}>
+                      <div className={styles.metaRow}>
+                        <dt>개최일시</dt>
+                        <dd className="numeric">{item.ir.eventAt}</dd>
+                      </div>
+                      <div className={styles.metaRow}>
+                        <dt>개최방법</dt>
+                        <dd>{item.ir.method}</dd>
+                      </div>
+                      <div className={styles.metaRow}>
+                        <dt>개최목적</dt>
+                        <dd>{item.ir.purpose}</dd>
+                      </div>
+                      {item.ir.irUrl.startsWith("http") ? (
+                        <div className={styles.metaRow}>
+                          <dt>IR 자료</dt>
+                          <dd>
+                            <a
+                              href={item.ir.irUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className={styles.originalLink}
+                            >
+                              바로가기 →
+                            </a>
+                          </dd>
+                        </div>
+                      ) : null}
+                    </dl>
                   ) : null}
 
                   <a

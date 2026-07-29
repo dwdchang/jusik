@@ -1,0 +1,286 @@
+/* 실적 탭 상단 블록 (Phase 82) — 종목 칩 + 분기 실적 + IR 일정 */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-12);
+  padding-bottom: var(--space-16);
+  border-bottom: 1px solid var(--color-border);
+}
+
+/* ── 종목 선택 칩 ─────────────────────────────── */
+
+.chipGroups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.chipRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  min-width: 0;
+}
+
+.chipRowLabel {
+  flex-shrink: 0;
+  font-size: var(--text-micro);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-tertiary);
+}
+
+/* 종목이 늘어도 세로로 밀리지 않게 가로 스크롤 — 모바일 PWA 기준 */
+.chips {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.chips::-webkit-scrollbar {
+  display: none;
+}
+
+.chip {
+  flex-shrink: 0;
+  padding: 5px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background-color: var(--color-surface);
+  font-size: var(--text-caption-sm);
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.chip:hover {
+  color: var(--color-text-primary);
+}
+
+.chipActive {
+  border-color: var(--color-primary);
+  background-color: var(--color-primary);
+  font-weight: var(--weight-semibold);
+  color: #ffffff;
+}
+
+.chipActive:hover {
+  color: #ffffff;
+}
+
+.chipDisabled {
+  opacity: var(--opacity-provisional);
+  cursor: not-allowed;
+}
+
+/* ── 최신 분기 요약 ───────────────────────────── */
+
+.blockHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-8);
+}
+
+.blockTitle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-caption);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-secondary);
+}
+
+.badge {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background-color: var(--color-bg);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-tertiary);
+}
+
+.highlights {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+.highlight {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-12);
+}
+
+.highlight dt {
+  flex-shrink: 0;
+  font-size: var(--text-caption-sm);
+  color: var(--color-text-tertiary);
+}
+
+.highlight dd {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+}
+
+.highlightValue {
+  font-size: var(--text-caption);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.highlightChanges {
+  display: flex;
+  gap: var(--space-8);
+  font-size: var(--text-micro);
+}
+
+/* ── 분기 표 ──────────────────────────────────── */
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-micro);
+}
+
+.table th,
+.table td {
+  padding: 6px 4px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.table thead th {
+  border-bottom: 1px solid var(--color-border);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-tertiary);
+}
+
+.table thead th:first-child,
+.table tbody th {
+  text-align: left;
+}
+
+.table tbody th {
+  font-weight: var(--weight-medium);
+  color: var(--color-text-secondary);
+}
+
+.table tbody td {
+  color: var(--color-text-primary);
+}
+
+.provisionalRow td {
+  color: var(--color-text-secondary);
+}
+
+.rowMark {
+  margin-left: 4px;
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+}
+
+.caption {
+  font-size: var(--text-micro);
+  line-height: 1.5;
+  color: var(--color-text-tertiary);
+}
+
+.status {
+  padding: var(--space-16) 0;
+  text-align: center;
+  font-size: var(--text-caption-sm);
+  line-height: 1.6;
+  color: var(--color-text-tertiary);
+}
+
+.pending {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--chart-height);
+  font-size: var(--text-caption-sm);
+  color: var(--color-text-tertiary);
+}
+
+/* ── IR 일정 ──────────────────────────────────── */
+
+.irBlock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  padding-top: var(--space-12);
+  border-top: 1px solid var(--color-border);
+}
+
+.irList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+  list-style: none;
+}
+
+.irItem {
+  padding: var(--space-8) var(--space-12);
+  border-radius: var(--radius-md);
+  background-color: var(--color-bg);
+}
+
+.irHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.irWhen {
+  font-size: var(--text-caption-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.irPurpose {
+  font-size: var(--text-caption-sm);
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+}
+
+.irMeta,
+.irSummary {
+  font-size: var(--text-micro);
+  line-height: 1.5;
+  color: var(--color-text-tertiary);
+}
+
+.irLink {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.irLink:hover {
+  text-decoration: underline;
+}
+
+/* ── 증감 색 ──────────────────────────────────── */
+
+.rise {
+  color: var(--color-rise);
+}
+
+.fall {
+  color: var(--color-fall);
+}
+
+.flat {
+  color: var(--color-text-tertiary);
+}

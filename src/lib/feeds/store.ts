@@ -28,18 +28,36 @@ export interface StoredDisclosures {
   fetchedAt: string;
 }
 
-/** 잠정실적 표의 계정 1행 — 원문 파싱 결과 (Phase 81) */
+/** 잠정실적 표의 계정 1행 — 원문 파싱 결과 (Phase 81, 전기 3칸은 Phase 82) */
 export interface EarningsFigure {
   /** 계정명 ("매출액"·"영업이익"·"당기순이익") */
   label: string;
   /** 당기실적 */
   current: number | null;
+  /** 전기(직전 분기)실적 — 파서 v1로 저장된 항목엔 없다 */
+  qoqBase?: number | null;
+  /** 전기대비 증감율(%) — 흑자·적자 전환이면 서식상 비어 있다 */
+  qoqPct?: number | null;
+  /** 전기 대비 "흑자전환"·"적자전환" 등 (해당 없으면 null) */
+  qoqTurnaround?: string | null;
   /** 전년동기실적 */
   yoyBase: number | null;
   /** 전년동기대비 증감율(%) — 흑자·적자 전환이면 서식상 비어 있다 */
   yoyPct: number | null;
   /** 전년동기 대비 "흑자전환"·"적자전환" 등 (해당 없으면 null) */
   turnaround: string | null;
+}
+
+/** 기업설명회(IR) 개최 공시에서 뽑은 일정 (Phase 82) — `DartIrDetail`과 같은 모양 */
+export interface EarningsIr {
+  /** 개최 일시 "2026-07-30 10:00" (시각 미정이면 "--:--") */
+  eventAt: string;
+  place: string;
+  purpose: string;
+  method: string;
+  summary: string;
+  materialAt: string;
+  irUrl: string;
 }
 
 /**
@@ -56,16 +74,20 @@ export interface EarningsItem {
   /** 매칭된 실적 유형 라벨 (`feeds/earnings.ts`) — 최소 1개 */
   categories: string[];
   /**
-   * 원문 파싱을 이미 시도했는지. 성공·실패 모두 true로 굳혀 매 회차 원문(zip)을
-   * 다시 받지 않게 한다 — 잠정실적 서식이 아니거나 수치가 전부 "-"여도 마찬가지.
+   * 원문 파싱을 시도한 **파서 버전** (`EARNINGS_PARSER_VERSION`). 성공·실패 모두
+   * 굳혀 매 회차 원문(zip)을 다시 받지 않게 한다 — 잠정실적 서식이 아니거나 수치가
+   * 전부 "-"여도 마찬가지다. 버전이 현재보다 낮으면 새 필드를 채우러 다시 파싱한다
+   * (Phase 82에서 boolean `parsed`를 대체 — 옛 값은 버전이 없어 자연히 재파싱된다).
    */
-  parsed?: boolean;
+  parsedV?: number;
   /** 잠정실적 표 (없거나 파싱 실패면 없음) */
   figures?: EarningsFigure[];
   /** 당기실적 대상 기간 "2026-01-01 ~ 2026-03-31" */
   period?: string;
   /** 금액 단위 라벨 ("백만원" 등) */
   unit?: string;
+  /** IR 개최 일정 (Phase 82) — 「IR」 유형이고 표준 서식일 때만 */
+  ir?: EarningsIr;
 }
 
 /** market:earnings:{symbolCode} — 최근 실적 공시 스냅샷 (SET 덮어쓰기) */
