@@ -1,11 +1,22 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { AnalysisChartsClient } from "@/components/analysis/AnalysisChartsClient";
+import { cache, Suspense } from "react";
+import {
+  AnalysisFinancialChartsClient,
+  AnalysisQuoteChartsClient,
+} from "@/components/analysis/AnalysisChartsClient";
 import { InvestmentIndicators } from "@/components/analysis/InvestmentIndicators";
 import { KeyMetricsTable } from "@/components/analysis/KeyMetricsTable";
+import {
+  InvestmentIndicatorsPending,
+  KeyMetricsTablePending,
+  QuoteChartsPending,
+} from "@/components/analysis/QuotePendingBlocks";
 import { NavIconLink } from "@/components/nav/NavIconLink";
+import type { AnalysisOverview } from "@/lib/analysis/overview";
 import { getAnalysisOverview } from "@/lib/analysis/overview";
+import type { AnalysisQuote } from "@/lib/analysis/quote";
 import { getAnalysisQuote } from "@/lib/analysis/quote";
 import {
   buildInvestmentIndicators,
@@ -26,16 +37,25 @@ import styles from "./page.module.css";
  * 데이터는 캐시 주기가 다른 둘을 병렬로 읽는다 — 재무(`overview`, TTL 30일)와
  * 시세(`quote`, TTL 6시간). 첫 열람은 DART·금융위를 실제로 부르므로 느릴 수 있고,
  * 그 뒤로는 캐시에서 나온다.
+ *
+ * **둘을 함께 기다리지는 않는다** (Phase 78) — 응답 속도가 10배 넘게 벌어져(DART 1초 대
+ * 금융위 5~15초, 2026-07-29 실측) 예전에는 재무 차트까지 시세에 묶여 있었다. 지금은
+ * 시세 의존 블록만 `<Suspense>`로 감싸 재무 차트를 먼저 내보내고, 그 자리는
+ * `QuotePendingBlocks`가 경과 시간과 함께 지킨다. 화면 순서는 그대로다.
  */
 
-async function resolveName(symbolCode: string): Promise<string | null> {
+/**
+ * 종목명 조회 — `generateMetadata`와 본문이 같은 요청에서 각각 부른다.
+ * `market:stockMaster`가 161KB라 `cache()`가 없으면 그 왕복을 두 번 한다(Phase 78).
+ */
+const resolveName = cache(async (symbolCode: string): Promise<string | null> => {
   try {
     const master = await getStockMaster();
     return master?.items.find((item) => item.code === symbolCode)?.name ?? null;
   } catch {
     return null;
   }
-}
+});
 
 export async function generateMetadata({
   params,
@@ -56,6 +76,65 @@ const STATUS_MESSAGE: Record<string, string> = {
   error: "재무 정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.",
 };
 
+/**
+ * 차트와 표가 같은 시리즈를 쓴다 — 조립은 순수 함수라 블록마다 다시 만들어도 부담이 없다.
+ * `quote`가 null이면 시세로 채우는 칸(PER·PBR·연환산 시가배당률)만 빈다.
+ */
+function buildSeries(overview: AnalysisOverview, quote: AnalysisQuote | null) {
+  return {
+    ttm: withTtmValuation(overview.ttm, quote),
+    annual: withAnnualValuation(overview.annual, quote),
+    quarter: withQuarterValuation(overview.quarter),
+  };
+}
+
+// ── 시세 의존 블록 ───────────────────────────────────────
+// 셋 다 같은 `quotePromise`를 기다린다(호출은 한 번뿐이라 중복 조회가 없다). 하나로
+// 합치지 않은 이유는 화면 순서다 — 사이에 재무 차트가 끼어 있고 그 순서는 확정 사항이다.
+
+async function IndicatorsSection({
+  overview,
+  quotePromise,
+}: {
+  overview: AnalysisOverview;
+  quotePromise: Promise<AnalysisQuote | null>;
+}) {
+  const quote = await quotePromise;
+  return (
+    <InvestmentIndicators
+      indicators={buildInvestmentIndicators(overview, quote)}
+      basisDate={quote?.basisDate ?? null}
+    />
+  );
+}
+
+async function QuoteChartsSection({
+  overview,
+  quotePromise,
+}: {
+  overview: AnalysisOverview;
+  quotePromise: Promise<AnalysisQuote | null>;
+}) {
+  const quote = await quotePromise;
+  return (
+    <AnalysisQuoteChartsClient
+      changes={quote?.changes ?? []}
+      series={buildSeries(overview, quote)}
+    />
+  );
+}
+
+async function KeyMetricsSection({
+  overview,
+  quotePromise,
+}: {
+  overview: AnalysisOverview;
+  quotePromise: Promise<AnalysisQuote | null>;
+}) {
+  const quote = await quotePromise;
+  return <KeyMetricsTable series={buildSeries(overview, quote)} />;
+}
+
 export default async function AnalysisDetailPage({
   params,
 }: {
@@ -71,21 +150,14 @@ export default async function AnalysisDetailPage({
     redirect("/analysis");
   }
 
-  const [name, result, quote] = await Promise.all([
+  // 시세는 여기서 **시작만** 하고 기다리지 않는다 — 재무와 병렬로 흐르다가 아래
+  // `<Suspense>` 안에서 도착한다. (실패해도 null로 끝나 reject되지 않는다)
+  const quotePromise = getAnalysisQuote(symbolCode);
+
+  const [name, result] = await Promise.all([
     resolveName(symbolCode),
     getAnalysisOverview(symbolCode),
-    getAnalysisQuote(symbolCode),
   ]);
-
-  // 차트와 표가 같은 시리즈를 쓴다 — 조립은 한 번만
-  const series =
-    result.status === "ok"
-      ? {
-          ttm: withTtmValuation(result.overview.ttm, quote),
-          annual: withAnnualValuation(result.overview.annual, quote),
-          quarter: withQuarterValuation(result.overview.quarter),
-        }
-      : null;
 
   return (
     <div className={styles.page}>
@@ -98,27 +170,40 @@ export default async function AnalysisDetailPage({
           </div>
         </header>
 
-        {result.status !== "ok" || series === null ? (
+        {result.status !== "ok" ? (
           <p className={styles.empty}>{STATUS_MESSAGE[result.status]}</p>
         ) : (
           <>
             <p className={styles.meta}>
               {result.overview.basis}재무제표 기준 · 최근{" "}
               {result.overview.annual.length}개년 · 출처 DART
-              {quote !== null ? " · 시세 금융위원회" : ""}
             </p>
 
-            <InvestmentIndicators
-              indicators={buildInvestmentIndicators(result.overview, quote)}
-              basisDate={quote?.basisDate ?? null}
+            <Suspense fallback={<InvestmentIndicatorsPending />}>
+              <IndicatorsSection
+                overview={result.overview}
+                quotePromise={quotePromise}
+              />
+            </Suspense>
+
+            <Suspense fallback={<QuoteChartsPending />}>
+              <QuoteChartsSection
+                overview={result.overview}
+                quotePromise={quotePromise}
+              />
+            </Suspense>
+
+            {/* 시세를 안 쓰는 차트 3종 — 재무가 오는 대로 먼저 그린다 */}
+            <AnalysisFinancialChartsClient
+              series={buildSeries(result.overview, null)}
             />
 
-            <AnalysisChartsClient
-              changes={quote?.changes ?? []}
-              series={series}
-            />
-
-            <KeyMetricsTable series={series} />
+            <Suspense fallback={<KeyMetricsTablePending />}>
+              <KeyMetricsSection
+                overview={result.overview}
+                quotePromise={quotePromise}
+              />
+            </Suspense>
 
             <Link
               href={`/analysis/${symbolCode}/statements`}

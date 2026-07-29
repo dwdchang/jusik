@@ -21,11 +21,17 @@ import styles from "./AnalysisCharts.module.css";
 
 /**
  * 종목분석 차트 묶음 — Phase 72. 주가 변동률 막대 + 4종 차트(실적·배당금&시가배당률·
- * 현금흐름표·주당현금흐름)를 한 청크로 묶는다.
+ * 현금흐름표·주당현금흐름).
  * 차트마다 연환산/연간/분기 탭을 따로 들고 있어(서로 독립) 관심 있는 지표만 바꿔 본다.
  *
  * recharts는 클라이언트 전용이라 이 파일 전체가 `'use client'`이고, 페이지는
  * `AnalysisChartsClient`(dynamic·ssr:false)를 통해 부른다.
+ *
+ * ⚠️ export가 **재무용·시세용 둘로 갈린다** (Phase 78). 원천의 응답 속도가 10배 넘게
+ * 차이 나기 때문이다 — DART 재무는 1초, 금융위 시세는 5~15초(2026-07-29 실측). 시세를
+ * 안 쓰는 차트까지 한 덩어리로 묶어 두면 다 함께 15초를 기다린다. 어느 쪽에 속하는지는
+ * **연환산 탭까지 포함해** 판정했다: 실적·현금흐름표·주당현금흐름은 전 탭이 DART 값만
+ * 쓰므로 재무용, 배당금&시가배당률은 연환산 탭의 시가배당률이 종가로 계산되므로 시세용.
  */
 
 export interface AnalysisSeriesSet {
@@ -333,9 +339,10 @@ function PriceChangeChart({ changes }: { changes: PriceChangeEntry[] }) {
   );
 }
 
-// ── 차트 4종 조립 ────────────────────────────────────────
+// ── 차트 조립 — 재무용·시세용 ────────────────────────────
 
-export function AnalysisCharts({
+/** 주가 변동률 + 배당금&시가배당률 — 시세(`quote`)가 있어야 완성되는 차트 (Phase 78) */
+export function AnalysisQuoteCharts({
   changes,
   series,
 }: {
@@ -346,6 +353,33 @@ export function AnalysisCharts({
     <div className={styles.stack}>
       <PriceChangeChart changes={changes} />
 
+      <MetricChart
+        title="배당금 · 시가배당률"
+        series={series}
+        specs={[
+          { key: "dps", name: "주당배당금", color: "var(--chart-stroke-kospi)", format: formatWon },
+          {
+            key: "dividendYield",
+            name: "시가배당률",
+            color: "var(--color-rise)",
+            type: "line",
+            axis: "right",
+            format: formatPercent,
+          },
+        ]}
+      />
+    </div>
+  );
+}
+
+/** 실적·현금흐름표·주당현금흐름 — DART 재무만으로 완성돼 먼저 그릴 수 있는 차트 */
+export function AnalysisFinancialCharts({
+  series,
+}: {
+  series: AnalysisSeriesSet;
+}) {
+  return (
+    <div className={styles.stack}>
       <MetricChart
         title="실적"
         series={series}
@@ -366,22 +400,6 @@ export function AnalysisCharts({
           {
             key: "operatingMargin",
             name: "영업이익률",
-            color: "var(--color-rise)",
-            type: "line",
-            axis: "right",
-            format: formatPercent,
-          },
-        ]}
-      />
-
-      <MetricChart
-        title="배당금 · 시가배당률"
-        series={series}
-        specs={[
-          { key: "dps", name: "주당배당금", color: "var(--chart-stroke-kospi)", format: formatWon },
-          {
-            key: "dividendYield",
-            name: "시가배당률",
             color: "var(--color-rise)",
             type: "line",
             axis: "right",
