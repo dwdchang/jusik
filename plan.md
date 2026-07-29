@@ -3477,6 +3477,22 @@ interface WatchItem {
 - **하위호환**: `:prefs` 키가 없으면 전부 켬 = **Phase 73 이전과 동작 동일**. 기존 사용자는 아무 설정 없이도 지금과 같은 알림을 받는다.
 - **상태**: **구현 완료(2026-07-29)**.
 
+### Phase 74 — 알림 on/off 표시를 스위치 UI로 통일 (2026-07-29, 구현 완료)
+
+- **요청 근거**: 사용자 — `/alerts`에서 **기기 알림과 개별 알림의 상태 표시가 서로 반대로 읽힌다**. "기기 알림은 「알림 끄기」가 보이면 켠 상태인데 개별 알림 버튼은 반대"라는 지적.
+- **원인(코드 작성 전 회신)**: 한 화면에 **버튼 라벨 관례 두 가지가 섞여** 있었다. `PushSubscriptionManager`는 **동작형**(누르면 일어날 일 — 켜져 있을 때 「알림 끄기」), `CategoryAlertToggles`·`StockAlertToggles`·`AlertToggleButton` 3종은 **상태형**(현재 상태 — 켜져 있을 때 「알림 켬」). 각각은 문법적으로 맞지만 같은 "켜짐"이 정반대 문구로 나온다. **색까지 반대**여서(기기 쪽은 켜짐=회색 secondary, 개별 쪽은 켜짐=파란 primary) 색으로 유추해도 어긋났다.
+- **선택지와 결정**: ① 문구를 상태형으로 통일(수정 1~2파일, 최소 범위) ② **스위치 UI로 통일** ← 사용자 선택. ①은 "「알림 켬」 버튼을 눌러야 꺼진다"는 어색함이 남는 반면, ②는 **문구로 상태를 표현하는 일 자체를 없애** 관례 충돌의 뿌리를 제거한다.
+- **구현**:
+  - `components/ui/ToggleSwitch.tsx`(+`.module.css`, 신규) — 트랙 46×28·손잡이 24, 켜짐 `--color-primary`·꺼짐 `--color-switch-off`, 손잡이 `translateX(18px)`. **트랙 안에 켬/끔 문구를 넣지 않는다**(문구를 넣으면 "지금 상태"인지 "누르면 될 상태"인지 다시 모호해진다 — 이번 혼동의 재발 경로). 상태는 **색과 손잡이 위치 두 축**으로만 표시.
+  - 접근성 — `role="switch"` + `aria-checked`. 기존 4종이 쓰던 `aria-pressed`는 토글 **버튼**용 속성이라 스위치에는 `aria-checked`가 맞다. `label` prop이 스크린리더 이름을 준다.
+  - 적용 4곳 — `PushSubscriptionManager`(상태 텍스트 「구독 중/꺼짐」은 스위치와 중복이라 정적 설명 한 줄로 교체, `buttonPrimary` 스타일 삭제·테스트 발송 버튼만 `buttonSecondary` 유지) / `CategoryAlertToggles` / `StockAlertToggles` / `AlertToggleButton`(스위치엔 문구가 없어 무엇을 켜는지 알 수 없으므로 앞에 「알림」 라벨 추가). 4개 CSS의 `buttonOn`/`buttonOff` 블록 제거.
+  - `tokens.css` — `--color-switch-off` 라이트 `#ced4da`/다크 `#414855`. 흰 surface 위에서 트랙이 보이도록 `--color-border`보다 진하고, 흰 손잡이와 대비되도록 `--color-text-tertiary`보다 연하게 잡았다.
+  - 모션 — 0.16s 전환 + `prefers-reduced-motion: reduce`에서 해제.
+- **낙관적 갱신 안 함**: 기기 스위치는 `subscribed`가 **권한 허용·구독 등록이 실제로 끝난 뒤에만** true가 된다. OS 권한이 거부되면 스위치는 꺼진 채 남고 사유만 메시지 줄에 뜬다(먼저 켜졌다가 되돌아오는 깜빡임 없음). Phase 73까지의 서버 액션·상태 흐름은 그대로라 저장 로직은 무변경.
+- **범위**: **표시 계층만**. 알림 판정·발송·Redis 키·잡 6종·KIS 콜 전부 불변.
+- **검증**: tsc·eslint·build 통과.
+- **상태**: **구현 완료(2026-07-29)**.
+
 ---
 
 ## 7. PR 분리 권장 (선택)

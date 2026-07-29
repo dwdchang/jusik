@@ -219,10 +219,11 @@
 | `nav/NavIconLink` | Server | 헤더 이동 아이콘 버튼(home/back) — 36px 아이콘 버튼 통일 규격 |
 | `nav/HeaderMenu` | Server | 햄버거 메뉴 조립 전용(Phase 18) — `MenuSidebar`에 `ThemeToggle`·`SignOutButton`을 슬롯으로 주입 (서버 액션 폼은 Client 안에서 정의 불가) |
 | `nav/MenuSidebar` | Client | 햄버거 버튼 + 우측 슬라이드 사이드바(Phase 18) — 열림 상태·오버레이·ESC 닫기, 화면 모드(위)/알림 설정(Phase 10)·DLQ 확인 링크(중간)/로그아웃(아래) |
-| `alerts/PushSubscriptionManager` | Client | 이 기기의 푸시 구독 on/off + 테스트 발송 (Phase 10) — 지원 감지(iOS 미설치 시 홈 화면 추가 안내), `sw.js` 등록→`pushManager.subscribe`→Server Action 저장. VAPID 공개키는 prop으로 수신 |
+| `ui/ToggleSwitch` | Client | **알림 on/off 스위치 공용 컴포넌트** (Phase 74) — `checked`·`onToggle`·`label`·`disabled`. 아래 알림 토글 4종이 전부 이것을 쓴다. 트랙 안에 켬/끔 **문구를 넣지 않고** 색(`--color-primary`/`--color-switch-off`)과 손잡이 위치로만 상태를 표시하며, 접근성은 `role="switch"`+`aria-checked`(토글 버튼용 `aria-pressed` 아님). §8.15 참고 |
+| `alerts/PushSubscriptionManager` | Client | 이 기기의 푸시 구독 on/off + 테스트 발송 (Phase 10) — 지원 감지(iOS 미설치 시 홈 화면 추가 안내), `sw.js` 등록→`pushManager.subscribe`→Server Action 저장. VAPID 공개키는 prop으로 수신. 스위치는 **낙관적으로 움직이지 않는다**(권한 허용·구독 등록이 끝난 뒤에만 켜짐 — 거부되면 꺼진 채 남고 사유는 메시지 줄) |
 | `alerts/StockAlertToggles` | Client | 보유·관심종목별 알림 on/off (Phase 10 2·3단계) — 서버가 내려준 목록·초기 상태를 로컬 상태로 토글, `setStockAlertEnabledAction` 저장. 끄면 시세·공시·시장경보 알림이 음소거되지만 **배당은 예외라 계속 온다**(Phase 73) |
 | `alerts/CategoryAlertToggles` | Client | 알림 종류별 on/off (Phase 73) — `CategoryAlertItem[]`(key·label·description·enabled)을 받아 토글, `setAlertCategoryEnabledAction` 저장. `/alerts`는 4종 전부, 배당 페이지 「내 배당」 탭은 `dividend` 1종만 넘겨 **같은 컴포넌트·같은 키를 재사용**한다 |
-| `alerts/AlertToggleButton` | Client | 종목 상세 화면 인라인 알림 토글 — 단일 종목 on/off, `setStockAlertEnabledAction` 재사용. 보유·관심종목 상세의 "종목 정보" 섹션 헤더에 배치(기존 /alerts 링크 대체) |
+| `alerts/AlertToggleButton` | Client | 종목 상세 화면 인라인 알림 토글 — 단일 종목 on/off, `setStockAlertEnabledAction` 재사용. 보유·관심종목 상세의 "종목 정보" 섹션 헤더에 배치(기존 /alerts 링크 대체). 스위치엔 문구가 없으므로 앞에 「알림」 라벨을 붙인다(Phase 74) |
 | `theme/ThemeToggle` | Client | `useSyncExternalStore`로 `data-theme` 구독·토글 (Phase 18부터 사이드바 안에 배치) |
 | `auth/SignOutButton` | Server | Server Action `signOut` 폼 — Phase 18에서 아이콘+텍스트 행 스타일(사이드바 하단용) |
 
@@ -751,6 +752,13 @@ QStash 스케줄 (매일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 * * *) → POST /a
 14. **chartPoints 매핑 3벌** — `{ fullDate, date: slice(5).replace("-","/"), totalValue,
     returnRate }` 변환이 `HoldingsOverview`와 종목 상세의 보유·관심 분기에서 거의 동일하게
     반복 — 새 차트 화면 추가 시 4번째 사본이 생기기 쉽다 (§8.6 수익률 산식 반복과 같은 지점).
+15. **on/off 표시는 `ui/ToggleSwitch` 하나로** (Phase 74) — 알림 토글 4종이 각자 버튼을
+    갖고 있던 시절, `PushSubscriptionManager`만 **동작형** 라벨(켜져 있을 때 「알림 끄기」)을
+    쓰고 나머지 3종은 **상태형** 라벨(켜져 있을 때 「알림 켬」)을 써서 같은 화면에서 같은
+    "켜짐"이 정반대 문구·정반대 색으로 보였다(사용자가 실제로 헷갈려 신고). 지금은 넷 다
+    스위치를 쓰므로 **새 on/off UI를 만들 때 자체 버튼을 만들지 말 것** — 문구로 상태를
+    표현하는 순간 이 혼동이 되살아난다. 스위치 트랙에 켬/끔 텍스트를 넣는 것도 같은 이유로
+    금지(「지금 상태」인지 「누르면 될 상태」인지 다시 모호해진다).
 
 ---
 
