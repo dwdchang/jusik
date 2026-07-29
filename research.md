@@ -84,7 +84,7 @@
 | `analysis/[symbolCode]/statements/page.tsx` | 종목분석 — 재무제표 전문 (Phase 64 화면을 Phase 72에서 이설) — `getFinancialAnalysis` read-through(6개년). 재무제표(재무상태표·손익·현금흐름 등)+재무지표 표(`FinancialSection` 공용). 계정이 회사당 수백 행이라 통합지표에서 분리, 뒤로가기는 `/analysis/{code}`. 재무지표는 DART가 2023년부터만 제공해 그 이전 연도는 빈다(화면 각주로 고지). 통합지표와 같은 `/^\d{6}$/` 게이트(Phase 76) |
 | `analysis/AnalysisSearch.tsx` | Client — 종목분석 검색 폼. `StockSearchInput`(hidden `symbolCode`) + 「분석」 버튼, submit 시 `router.push(/analysis/{code})` |
 | `dlq/page.tsx` | QStash DLQ 읽기 전용 목록 (Phase 18) — `ensureAllowedSession` + `listDlqMessages(cursor)` 직접 호출(Redis 아닌 QStash API — §4.3 예외), `?cursor=` 페이지네이션. 햄버거 사이드바 "DLQ 확인"에서 진입, 재발송·삭제 없음 |
-| `alerts/page.tsx` | 알림 설정 (Phase 10·73) — `ensureAllowedSession` + `VAPID_PUBLIC_KEY`를 `PushSubscriptionManager`에 prop 전달 + **알림 종류별 on/off**(`CategoryAlertToggles`, Phase 73 — `ALERT_CATEGORY_META` 4종을 `getAlertPrefs` 값과 합쳐 내려줌) + 보유·관심종목별 알림 on/off(`StockAlertToggles`, 3단계에서 관심종목까지 확장) + 등록 기기 수 표시. 종목별 토글 아래에 **배당은 음소거 예외**라는 안내 한 줄(`.cardNote`). 세 블록은 각각 try/catch로 격리돼 하나가 실패해도 나머지는 뜬다. 햄버거 사이드바 "알림 설정"에서 진입 |
+| `alerts/page.tsx` | 알림 설정 (Phase 10·73) — `ensureAllowedSession` + `VAPID_PUBLIC_KEY`를 `PushSubscriptionManager`에 prop 전달 + **알림 종류별 on/off**(`CategoryAlertToggles`, Phase 73 — `ALERT_CATEGORY_META` 4종을 `getAlertPrefs` 값과 합쳐 내려줌) + 보유·관심종목별 알림 on/off(`StockAlertToggles`, 3단계에서 관심종목까지 확장) + 등록 기기 수 표시. 종목별 토글 아래에 **종목을 끄면 그 종목의 4종이 모두 멈춘다**는 안내 한 줄(`.cardNote`, Phase 79). 세 블록은 각각 try/catch로 격리돼 하나가 실패해도 나머지는 뜬다. 햄버거 사이드바 "알림 설정"에서 진입 |
 | `alerts/actions.ts` | Server Actions: 푸시 구독 등록/해지(입력 형식 검증 — endpoint https·keys 필수)·테스트 발송·종목별 알림 on/off(`setStockAlertEnabledAction` — 보유·관심종목만 허용, `alerts:{email}:muted` 갱신)·**알림 종류별 on/off**(`setAlertCategoryEnabledAction`, Phase 73 — `isAlertCategory` 화이트리스트 검증 후 `alerts:{email}:prefs` 갱신, `revalidatePath`는 `/alerts`+`/dividends` 둘 다 — 같은 키를 배당 페이지 토글과 공유) |
 | `manifest.ts` | PWA 매니페스트(`/manifest.webmanifest`, Phase 10) — standalone·아이콘 192/512 + maskable 전용 `icon-512-maskable.png`(중앙 안전영역 여백). iOS 푸시의 전제 조건 |
 | `apple-icon.png` | iOS 홈 화면 아이콘 180×180 (파일 컨벤션 — link 태그 자동 생성). iOS는 투명 미지원이라 흰 배경 플랫·여백 없이 꽉 채움 |
@@ -177,8 +177,8 @@
 | `alerts/categories.ts` | **알림 종류 정의** (Phase 73) — `AlertCategory` 4종(`price`·`disclosure`·`marketWarn`·`dividend`)·`AlertCategoryPrefs`·기본값(전부 켬)·화면 메타 `ALERT_CATEGORY_META`(배열 순서=화면 순서)·`isAlertCategory` 화이트리스트. Redis·web-push를 물지 않는 순수 모듈이라 서버 컴포넌트·액션·클라이언트 토글이 함께 import한다 |
 | `alerts/store.ts` | 알림 store (Phase 10 2·3단계, §25, Phase 73) — 개인: `alerts:{email}:peaks`(신고가, 암호화)·`:muted`(음소거 종목, 암호화)·`:prefs`(알림 종류 on/off, **평문** — 보유종목을 드러내지 않는 취향 값이라 쿨다운 키와 같은 기준)·`:cooldown:{code}`(EX 7200 평문). `getAlertPrefs`는 **기본값 위에 저장값을 덮어** 반환하므로 카테고리가 늘어도 기존 사용자가 새 알림을 놓치지 않고, `saveAlertPrefs`는 전부 켬이면 키를 지운다(muted 관례). 전역(공개 데이터 파생, 평문): `alerts:disclosure:last:{code}`(마지막 통지 접수번호)·`alerts:marketwarn:last:{code}`(시장경보 상태 6필드)·`alerts:dividend:sent:{code}:{payDate}`(배당 지급일 알림 발송 마커, EX 2일) |
 | `alerts/evaluate.ts` | 시세 알림 판정·발송 (Phase 10 2단계, 관심종목 확장) — `evaluatePriceAlerts`: 보유+관심종목 union(`collectAlertTargets` — 종목 단위 dedupe, 보유 우선·같은 종목 보유 내역 합산) 대상으로 지수 MGET→조건 3종(기준가 −10%(보유=매입가/관심=등록가, 미확정 skip)/신고가 −10%/**종목 등락률 − 소속 지수 등락률 ≤ −10%p**) OR 판정→발송·쿨다운. **조건 3은 Phase 73에서 "지수 −2% AND 종목 −12%"(AND 2임계)에서 두 값의 차이 1임계로 교체** — 구 규칙은 지수가 −1.9%면 종목이 −20%여도 안 울리는 사각지대가 있었고, 구 임계쌍의 간격이 정확히 10%p라 기존 발동 지점은 그대로 포함된다. 종류 게이팅(`prefs.price`)은 **발송에만** 걸고 신고가 갱신·저장은 계속한다(다시 켰을 때 낡은 기준으로 오탐 방지). 순수 판정부 `evaluateTarget`·시장 매핑 `marketIndexOf` 분리 |
-| `alerts/feedAlerts.ts` | 공시·시장경보 알림 판정·발송 (Phase 10 3단계, Phase 73) — `evaluateFeedAlerts`(feeds 잡 훅 전용): 공시 8유형 키워드 분류기 `matchDisclosureCategories`(회사채는 "파생결합" 제외)·경보 상태 추출 `extractMarketWarnState`·diff `diffMarketWarnStates` 분리. **매칭 라벨에 「배당」이 있으면 공시가 아니라 배당 이벤트로 분류**(Phase 73 — 같은 공시가 두 번 가지 않게 배타 분기)해 제목 `배당 공시 — {종목}`으로 발송하고 **음소거를 보지 않는다**(링크는 공시 원문이 있는 `/feeds` 유지). 나머지 공시·시장경보는 종전대로 음소거 적용 + 각 종류 스위치(`prefs.disclosure`/`prefs.marketWarn`) 확인. 커서·상태는 발송 결과와 무관하게 전진(중복 방지 우선), 쿨다운 없음 |
-| `alerts/dividendAlerts.ts` | 배당 지급일 당일 알림 (§25, Phase 73) — `evaluateDividendAlerts`(feeds 잡 훅 전용): 보유종목 union(**관심종목 제외**)의 `rounds`에서 지급일=KST 오늘·주당배당금>0 회차 추출(같은 날 여러 회차는 합산) → 종목×지급일 전역 마커로 중복 차단(발송 전 기록 — 중복 방지 우선) → 보유 사용자에게만 발송(이메일 단위 실패 격리). **Phase 73에서 종목별 음소거 확인을 제거**하고 `prefs.dividend` 하나로만 가른다 — 배당 공시와 함께 「배당」 종류로 묶인 사용자 확정 예외. KIS 추가 호출 0 |
+| `alerts/feedAlerts.ts` | 공시·시장경보 알림 판정·발송 (Phase 10 3단계, Phase 73) — `evaluateFeedAlerts`(feeds 잡 훅 전용): 공시 8유형 키워드 분류기 `matchDisclosureCategories`(회사채는 "파생결합" 제외)·경보 상태 추출 `extractMarketWarnState`·diff `diffMarketWarnStates` 분리. **매칭 라벨에 「배당」이 있으면 공시가 아니라 배당 이벤트로 분류**(Phase 73 — 같은 공시가 두 번 가지 않게 배타 분기)해 제목 `배당 공시 — {종목}`으로 발송(링크는 공시 원문이 있는 `/feeds` 유지). **음소거는 3종 모두에 적용**된다(Phase 79 — Phase 73의 배당 예외 폐기, 리포트 `dividendDisclosures.mutedSkipped` 신설). 각 종류 스위치(`prefs.disclosure`/`prefs.dividend`/`prefs.marketWarn`)도 함께 확인. 커서·상태는 발송 결과와 무관하게 전진(중복 방지 우선), 쿨다운 없음 |
+| `alerts/dividendAlerts.ts` | 배당 지급일 당일 알림 (§25, Phase 73) — `evaluateDividendAlerts`(feeds 잡 훅 전용): 보유종목 union(**관심종목 제외**)의 `rounds`에서 지급일=KST 오늘·주당배당금>0 회차 추출(같은 날 여러 회차는 합산) → 종목×지급일 전역 마커로 중복 차단(발송 전 기록 — 중복 방지 우선) → 보유 사용자에게만 발송(이메일 단위 실패 격리). 「배당」 종류(`prefs.dividend`)와 **종목별 음소거를 둘 다 확인**한다(Phase 79 — Phase 73의 예외 폐기). 전역 마커는 회차 단위라 음소거와 무관하게 먼저 기록된다. KIS 추가 호출 0 |
 | `dividends/summary.ts` | 배당 일정 리더 (§25) — **보유종목만**(`getHoldings` 기반, 관심종목 제외) `getStockInfoBlocksMap`으로 `rounds` 병합. `getDividendSchedule`(상세 목록 — 예상 지급액=주당배당금×보유수량 읽기 시 계산, 지급일 미정 먼저→미래→과거 내림차순)·`getDividendCardSummary`(홈 카드 — 지급일 ≥ KST 오늘 오름차순 상위 4, 실패 시 null) |
 | `dividends/basis.ts` | 시가배당률 분자(사업연도 귀속) 공용 순수 로직 (Phase 60, Redis·KIS 무의존) — `computeDividendBasis<T extends BasisRound>(rounds, fund, oneYearAgo, today)`: 결산(kind=="결산") 회차를 사업연도 종점으로 보고 (직전 결산, 이 결산] 창 합=basis, `basisYear`(귀속 연도)·`priorFyTotals`(폭배 대조) 반환. 폴백(결산 없음·최신 결산 400일 초과·fund)은 [oneYearAgo, today] TTM. 헬퍼 `dayDiff`·`ymdDaysBefore`·`fiscalYearLabel`·상수 2종(FISCAL_YEAR_RECENCY/WINDOW_DAYS) 함께 export. `refreshDividendRanking`(순위)·`holdings/stockInfo`(per-종목) 공용 — 규칙 분기 방지 |
 | `push/store.ts` | 웹 푸시 구독 store (Phase 10) — `push:subs:{email}` `secureJson` 암호화(endpoint가 곧 발송 권한), endpoint 기준 dedup 등록/해지/`prunePushSubscriptions`(발송 경로 전용) |
@@ -225,7 +225,7 @@
 | `ui/ToggleSwitch` | Client | **알림 on/off 스위치 공용 컴포넌트** (Phase 74) — `checked`·`onToggle`·`label`·`disabled`. 아래 알림 토글 4종이 전부 이것을 쓴다. 트랙 안에 켬/끔 **문구를 넣지 않고** 색(`--color-primary`/`--color-switch-off`)과 손잡이 위치로만 상태를 표시하며, 접근성은 `role="switch"`+`aria-checked`(토글 버튼용 `aria-pressed` 아님). §8.15 참고 |
 | `ui/AutoRefresh` | Client | **갱신 회차 반영 시 자동 새로고침** (Phase 77) — 루트 `layout.tsx`에 배치(전 화면 커버), 렌더 출력 없음. 마운트 시 기준값 확보 → 예정 회차(`nextScheduledRefreshMs` 재사용)까지는 **서버를 부르지 않음** → 회차가 지나면 30초 간격으로 `/api/market/last-refresh` 확인 → `at`이 달라지면 `invalidateMarketRouterCache()` + `router.refresh()` → 5분 안에 안 바뀌면 그 회차 포기. **예정 시각만 보고 곧바로 새로고침하지 않는 이유**는 잡 실행·Redis 반영 편차(§9.4의 20분 유예와 같은 사정). **경로는 의존성이 아니라 ref로 읽는다** — 화면을 옮길 때마다 타이머를 다시 걸면 회차 대기 상태가 초기화돼 그 회차를 통째로 놓친다. 백그라운드 탭은 확인을 건너뛰고 `visibilitychange` 복귀 시 한 번 더 확인, `/login` 제외 |
 | `alerts/PushSubscriptionManager` | Client | 이 기기의 푸시 구독 on/off + 테스트 발송 (Phase 10) — 지원 감지(iOS 미설치 시 홈 화면 추가 안내), `sw.js` 등록→`pushManager.subscribe`→Server Action 저장. VAPID 공개키는 prop으로 수신. 스위치는 **낙관적으로 움직이지 않는다**(권한 허용·구독 등록이 끝난 뒤에만 켜짐 — 거부되면 꺼진 채 남고 사유는 메시지 줄) |
-| `alerts/StockAlertToggles` | Client | 보유·관심종목별 알림 on/off (Phase 10 2·3단계) — 서버가 내려준 목록·초기 상태를 로컬 상태로 토글, `setStockAlertEnabledAction` 저장. 끄면 시세·공시·시장경보 알림이 음소거되지만 **배당은 예외라 계속 온다**(Phase 73) |
+| `alerts/StockAlertToggles` | Client | 보유·관심종목별 알림 on/off (Phase 10 2·3단계) — 서버가 내려준 목록·초기 상태를 로컬 상태로 토글, `setStockAlertEnabledAction` 저장. 끄면 그 종목의 시세·공시·시장경보·**배당** 알림이 모두 음소거된다(Phase 79 — Phase 73의 배당 예외 폐기) |
 | `alerts/CategoryAlertToggles` | Client | 알림 종류별 on/off (Phase 73) — `CategoryAlertItem[]`(key·label·description·enabled)을 받아 토글, `setAlertCategoryEnabledAction` 저장. `/alerts`는 4종 전부, 배당 페이지 「내 배당」 탭은 `dividend` 1종만 넘겨 **같은 컴포넌트·같은 키를 재사용**한다 |
 | `alerts/AlertToggleButton` | Client | 종목 상세 화면 인라인 알림 토글 — 단일 종목 on/off, `setStockAlertEnabledAction` 재사용. 보유·관심종목 상세의 "종목 정보" 섹션 헤더에 배치(기존 /alerts 링크 대체). 스위치엔 문구가 없으므로 앞에 「알림」 라벨을 붙인다(Phase 74) |
 | `theme/ThemeToggle` | Client | `useSyncExternalStore`로 `data-theme` 구독·토글 (Phase 18부터 사이드바 안에 배치) |
@@ -422,19 +422,21 @@ QStash 스케줄 (매일 08~22시 정시 KST, CRON_TZ=Asia/Seoul 0 8-22 * * *)
             alerts:disclosure:last:{code}(마지막 통지 접수번호)와 비교 →
             새 공시만 8유형 키워드 분류 → 매칭분 발송. 첫 회차는 기준점만 저장.
             매칭 라벨에 「배당」이 있으면 배당 이벤트로 갈라(Phase 73) 제목
-            "배당 공시"로 발송하고 음소거를 건너뛴다(같은 공시 중복 발송 없음)
+            "배당 공시"로 발송한다(같은 공시 중복 발송 없음). 음소거는 다른
+            유형과 똑같이 적용(Phase 79 — Phase 73의 배당 예외 폐기)
          ② 시장경보: market:stock:{code} 스냅샷 raw의 경보 필드 6종을
             alerts:marketwarn:last:{code}와 비교(KIS 추가 호출 없음) →
             변화(지정·해제)만 발송. 첫 회차는 기준점만 저장
          발송 대상 = 각 사용자 보유+관심종목, 종류 스위치(alerts:{email}:prefs)와
-         음소거(alerts:{email}:muted) 공유(배당만 음소거 예외), 이메일 단위
-         실패 격리. 훅 실패는 로그만 — 잡 ok 게이팅 안 함
+         음소거(alerts:{email}:muted)를 3종 모두 통과해야 발송(Phase 79),
+         이메일 단위 실패 격리. 훅 실패는 로그만 — 잡 ok 게이팅 안 함
       6. 알림 훅 evaluateDividendAlerts(lib/alerts/dividendAlerts.ts) — Phase 25:
          보유종목 union(관심종목 제외)의 market:stockInfo:{code} rounds에서
          지급일=KST 오늘·주당배당금>0 회차 추출(KIS 추가 호출 없음, 같은 날
          여러 회차는 합산) → alerts:dividend:sent:{code}:{payDate} 마커(EX 2일)로
-         중복 차단 — 발송 전에 기록(중복 방지 우선) → 보유 사용자에게만
-         발송(prefs.dividend만 확인 — 음소거 예외, 이메일 단위 실패 격리).
+         중복 차단 — 발송 전에 기록(중복 방지 우선, 사용자와 무관한 회차 단위라
+         음소거와 별개) → 보유 사용자에게만 발송(prefs.dividend + 종목별
+         음소거 둘 다 확인 — Phase 79, 이메일 단위 실패 격리).
          훅 실패는 로그만 — ok 게이팅 안 함
   → 응답: report (실패 시 500 → QStash 재시도, 멱등)
 ```
@@ -878,9 +880,11 @@ QStash 스케줄 (매일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 * * *) → POST /a
 - **알림 on/off 축은 3개**(Phase 73): ① 기기 단위 푸시 구독(`PushSubscriptionManager` —
   해지하면 발송 주소 자체가 사라져 어떤 알림도 못 온다) ② **알림 종류**
   4종(`alerts:{email}:prefs` — 시세 급락·공시·시장경보·배당) ③ 종목 단위
-  음소거(`alerts:{email}:muted`). ②·③을 **둘 다 통과해야 발송**되지만
-  **배당만 ③을 무시한다**(사용자 확정 예외 — 종목 알림을 꺼도 배당 소식은 받겠다는
-  요청). 그래서 "전체 알림은 끄고 배당만 받기"는 구독을 유지한 채 종류 3개를 끄면 된다.
+  음소거(`alerts:{email}:muted`). **4종 모두 ②·③을 둘 다 통과해야 발송된다**
+  (Phase 79 — Phase 73의 배당 예외 폐기, 사용자 확정 번복). 두 축은 직교한다:
+  ②는 **모든 종목에** 걸리는 전역 축, ③은 그 위에 종목 단위로 걸리는 AND 게이트.
+  그래서 "전체 알림은 끄고 배당만 받기"는 구독을 유지한 채 종류 3개를 끄면 되고,
+  "이 종목만 조용히"는 종목별 토글 하나로 그 종목의 4종이 전부 멈춘다.
 - **배당 알림은 「배당 공시 + 지급일 당일」 한 종류로 묶여 있다**(Phase 73) — DART
   공시 8유형 중 「배당」 매칭분은 공시 알림에서 빠져나와 배당 쪽으로 가고(같은 공시가
   두 번 가지 않게 배타 분기), 지급일 알림과 같은 스위치(`prefs.dividend`)를 쓴다.
