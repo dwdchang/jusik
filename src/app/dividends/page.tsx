@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { CategoryAlertToggles } from "@/components/alerts/CategoryAlertToggles";
 import { NavIconLink } from "@/components/nav/NavIconLink";
+import { ALERT_CATEGORY_META } from "@/lib/alerts/categories";
+import { getAlertPrefs } from "@/lib/alerts/store";
 import { DIVIDEND_RANKING_LOOKBACK_YEARS } from "@/lib/api/kis/constants";
 import { ensureAllowedSession } from "@/lib/auth/ensureAllowedSession";
 import {
@@ -102,6 +105,22 @@ export default async function DividendsPage({
 
   const rankMeta = isRankingTab ? RANK_META[activeTab] : null;
 
+  // 「내 배당」 탭에만 배당 알림 토글을 노출한다 (Phase 73) — `/alerts`의 「알림
+  // 종류」 배당과 같은 키라 어느 쪽에서 바꿔도 동일하게 반영된다.
+  // 실패해도 목록은 그대로 보여야 하므로 토글만 숨긴다.
+  const dividendAlertEnabled =
+    activeTab === "schedule"
+      ? await getAlertPrefs(email)
+          .then((prefs) => prefs.dividend)
+          .catch((err): null => {
+            console.error("[DividendsPage] getAlertPrefs failed:", err);
+            return null;
+          })
+      : null;
+  const dividendAlertMeta = ALERT_CATEGORY_META.find(
+    (meta) => meta.key === "dividend"
+  );
+
   return (
     <main className={styles.page}>
       <div className={styles.container}>
@@ -133,52 +152,81 @@ export default async function DividendsPage({
         </nav>
 
         {activeTab === "schedule" ? (
-          <section className={styles.section} aria-label="보유종목 확정 배당">
-            <h2 className={styles.sectionTitle}>
-              보유종목 확정 배당 ({rows.length})
-            </h2>
-            {rows.length === 0 ? (
-              <p className={styles.emptyNotice}>
-                표시할 배당 일정이 없습니다. 보유종목의 확정 배당(최근 1년)이
-                다음 갱신 회차에 수집되면 여기에 표시됩니다.{" "}
-                <Link href="/stocks?mode=balance" className={styles.emptyLink}>
-                  보유종목 관리 →
-                </Link>
-              </p>
-            ) : (
-              <ul className={styles.itemList}>
-                {rows.map((row) => (
-                  <li
-                    key={`${row.symbolCode}-${row.recordDate}`}
-                    className={styles.item}
-                  >
-                    <div className={styles.itemHead}>
-                      {/* 종목명 링크 제거 (Phase 47) — 목록 터치 시 원치 않는 이동 방지 */}
-                      <span className={styles.itemName}>
-                        {row.name}
-                        <span className={`${styles.itemCode} numeric`}>
-                          {row.symbolCode}
+          <>
+            <section className={styles.section} aria-label="보유종목 확정 배당">
+              <h2 className={styles.sectionTitle}>
+                보유종목 확정 배당 ({rows.length})
+              </h2>
+              {rows.length === 0 ? (
+                <p className={styles.emptyNotice}>
+                  표시할 배당 일정이 없습니다. 보유종목의 확정 배당(최근 1년)이
+                  다음 갱신 회차에 수집되면 여기에 표시됩니다.{" "}
+                  <Link href="/stocks?mode=balance" className={styles.emptyLink}>
+                    보유종목 관리 →
+                  </Link>
+                </p>
+              ) : (
+                <ul className={styles.itemList}>
+                  {rows.map((row) => (
+                    <li
+                      key={`${row.symbolCode}-${row.recordDate}`}
+                      className={styles.item}
+                    >
+                      <div className={styles.itemHead}>
+                        {/* 종목명 링크 제거 (Phase 47) — 목록 터치 시 원치 않는 이동 방지 */}
+                        <span className={styles.itemName}>
+                          {row.name}
+                          <span className={`${styles.itemCode} numeric`}>
+                            {row.symbolCode}
+                          </span>
                         </span>
-                      </span>
-                      <span className={`${styles.itemAmount} numeric`}>
-                        예상 {formatKrw(row.expectedAmount)}
-                      </span>
-                    </div>
-                    <p className={`${styles.itemMeta} numeric`}>
-                      {row.kind !== null ? `${row.kind} · ` : ""}기준일{" "}
-                      {displayDate(row.recordDate)} · 지급일{" "}
-                      {row.payDate !== null ? (
-                        displayDate(row.payDate)
-                      ) : (
-                        <span className={styles.payPending}>미정</span>
-                      )}{" "}
-                      · 주당 {formatKrw(row.amountPerShare)} × {row.quantity}주
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+                        <span className={`${styles.itemAmount} numeric`}>
+                          예상 {formatKrw(row.expectedAmount)}
+                        </span>
+                      </div>
+                      <p className={`${styles.itemMeta} numeric`}>
+                        {row.kind !== null ? `${row.kind} · ` : ""}기준일{" "}
+                        {displayDate(row.recordDate)} · 지급일{" "}
+                        {row.payDate !== null ? (
+                          displayDate(row.payDate)
+                        ) : (
+                          <span className={styles.payPending}>미정</span>
+                        )}{" "}
+                        · 주당 {formatKrw(row.amountPerShare)} × {row.quantity}주
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+
+            {dividendAlertEnabled !== null && dividendAlertMeta !== undefined ? (
+              <section className={styles.section} aria-label="배당 알림 설정">
+                <h2 className={styles.sectionTitle}>배당 알림</h2>
+                <div className={styles.alertCard}>
+                  <CategoryAlertToggles
+                    items={[
+                      {
+                        key: dividendAlertMeta.key,
+                        label: "배당 소식 알림",
+                        description: dividendAlertMeta.description,
+                        enabled: dividendAlertEnabled,
+                      },
+                    ]}
+                  />
+                  <p className={styles.alertNote}>
+                    다른 알림(시세 급락·공시·시장경보)을 모두 꺼도 이 항목만
+                    켜 두면 배당 소식은 계속 받습니다. 기기에서 푸시를 아직 켜지
+                    않았다면{" "}
+                    <Link href="/alerts" className={styles.emptyLink}>
+                      알림 설정 →
+                    </Link>
+                    에서 먼저 켜 주세요.
+                  </p>
+                </div>
+              </section>
+            ) : null}
+          </>
         ) : (
           <section className={styles.section} aria-label="배당률 순위">
             <h2 className={styles.sectionTitle}>

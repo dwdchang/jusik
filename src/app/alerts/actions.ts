@@ -3,8 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
+import { isAlertCategory } from "@/lib/alerts/categories";
 import {
+  getAlertPrefs,
   getMutedSymbols,
+  saveAlertPrefs,
   saveMutedSymbols,
 } from "@/lib/alerts/store";
 import { isEmailAllowed } from "@/lib/auth/allowedEmails";
@@ -120,6 +123,34 @@ export async function setStockAlertEnabledAction(
     message: enabled
       ? "이 종목의 알림을 켰습니다."
       : "이 종목의 알림을 껐습니다.",
+  };
+}
+
+/**
+ * 알림 종류별 on/off — Phase 73. `/alerts`의 「알림 종류」 섹션과
+ * 배당 페이지 「내 배당」 탭의 배당 토글이 공유한다(같은 키를 쓰므로 어느 쪽에서
+ * 바꿔도 즉시 반영). 카테고리 값은 화이트리스트 검증 후에만 저장한다.
+ */
+export async function setAlertCategoryEnabledAction(
+  category: string,
+  enabled: boolean
+): Promise<PushActionResult> {
+  const email = await requireEmail();
+
+  if (typeof category !== "string" || !isAlertCategory(category)) {
+    return { ok: false, message: "알림 종류가 올바르지 않습니다." };
+  }
+
+  const prefs = await getAlertPrefs(email);
+  await saveAlertPrefs(email, { ...prefs, [category]: enabled });
+
+  revalidatePath("/alerts");
+  revalidatePath("/dividends");
+  return {
+    ok: true,
+    message: enabled
+      ? "이 종류의 알림을 켰습니다."
+      : "이 종류의 알림을 껐습니다.",
   };
 }
 

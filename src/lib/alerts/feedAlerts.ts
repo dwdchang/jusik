@@ -4,6 +4,7 @@ import { sendPushToEmail } from "@/lib/push/send";
 import type { Holding } from "@/types/holdings";
 import type { WatchItem } from "@/types/watchlist";
 import {
+  getAlertPrefs,
   getDisclosureCursors,
   getMarketWarnStates,
   getMutedSymbols,
@@ -46,6 +47,12 @@ const DISCLOSURE_CATEGORIES: DisclosureCategory[] = [
     keywords: ["채무보증", "담보제공", "대여", "차입", "대출"],
   },
 ];
+
+/**
+ * 「배당」 유형은 공시가 아니라 **배당 알림 종류**로 발송한다 (Phase 73) —
+ * 지급일 당일 알림과 한 스위치로 묶고, 종목별 음소거의 예외로 둔다.
+ */
+const DIVIDEND_CATEGORY_LABEL = "배당";
 
 /** 보고서명 → 매칭된 알림 유형 라벨 (없으면 빈 배열 = 알림 대상 아님) */
 export function matchDisclosureCategories(reportNm: string): string[] {
@@ -127,12 +134,20 @@ export interface FeedAlertsReport {
   disclosures: {
     /** 커서가 없어 기준점만 저장한 종목 수 (첫 회차 — 발송 안 함) */
     baselined: number;
-    /** 새 공시 중 유형 매칭된 건수 */
+    /** 새 공시 중 유형 매칭된 건수 (배당 공시 제외 — 아래 별도 집계) */
     matched: number;
     /** 발송 성공(도달 기기 ≥1) 건수 — 이메일×공시 단위 */
     sent: number;
     /** 음소거로 건너뛴 건수 */
     mutedSkipped: number;
+    /** 「공시」 알림 종류를 꺼 둬 건너뛴 건수 (Phase 73) */
+    prefSkipped: number;
+  };
+  /** 배당 공시 — 「배당」 알림 종류로 발송, 음소거 예외 (Phase 73) */
+  dividendDisclosures: {
+    matched: number;
+    sent: number;
+    prefSkipped: number;
   };
   marketWarnings: {
     baselined: number;
@@ -140,6 +155,7 @@ export interface FeedAlertsReport {
     changed: number;
     sent: number;
     mutedSkipped: number;
+    prefSkipped: number;
   };
 }
 
@@ -169,12 +185,26 @@ export async function evaluateFeedAlerts(context: {
   names: Map<string, string>;
 }): Promise<FeedAlertsReport> {
   const report: FeedAlertsReport = {
-    disclosures: { baselined: 0, matched: 0, sent: 0, mutedSkipped: 0 },
-    marketWarnings: { baselined: 0, changed: 0, sent: 0, mutedSkipped: 0 },
+    disclosures: {
+      baselined: 0,
+      matched: 0,
+      sent: 0,
+      mutedSkipped: 0,
+      prefSkipped: 0,
+    },
+    dividendDisclosures: { matched: 0, sent: 0, prefSkipped: 0 },
+    marketWarnings: {
+      baselined: 0,
+      changed: 0,
+      sent: 0,
+      mutedSkipped: 0,
+      prefSkipped: 0,
+    },
   };
 
   // 1. 공시 — 종목별 커서(마지막 통지 접수번호) 이후의 새 공시만 유형 매칭
   const disclosureEvents: DisclosureEvent[] = [];
+  const dividendEvents: DisclosureEvent[] = [];
   const disclosureCodes = [...context.disclosuresBySymbol.keys()];
   const cursors = await getDisclosureCursors(disclosureCodes);
 
@@ -202,7 +232,14 @@ export async function evaluateFeedAlerts(context: {
         continue;
       }
       const categories = matchDisclosureCategories(item.reportNm);
-      if (categories.length > 0) {
+      if (categories.length === 0) {
+        continue;
+      }
+      // 배당이 섞인 공시는 배당 쪽으로만 보낸다 — 같은 공시가 두 번 오지 않게
+      if (categories.includes(DIVIDEND_CATEGORY_LABEL)) {
+        dividendEvents.push({ symbolCode, item, categories });
+        report.dividendDisclosures.matched += 1;
+      } else {
         disclosureEvents.push({ symbolCode, item, categories });
         report.disclosures.matched += 1;
       }
@@ -253,11 +290,16 @@ export async function evaluateFeedAlerts(context: {
     }
   }
 
-  if (disclosureEvents.length === 0 && warnEvents.length === 0) {
+  if (
+    disclosureEvents.length === 0 &&
+    dividendEvents.length === 0 &&
+    warnEvents.length === 0
+  ) {
     return report;
   }
 
   // 3. 발송 — 사용자별 보유+관심종목에 해당하는 이벤트만, 음소거 공유 적용
+  //    (배당 공시만 음소거 예외 — 알림 종류 스위치만 본다, Phase 73)
   const emails = new Set([
     ...context.holdingsByEmail.keys(),
     ...context.watchlistsByEmail.keys(),
@@ -279,21 +321,36 @@ export async function evaluateFeedAlerts(context: {
     const myDisclosures = disclosureEvents.filter((event) =>
       owned.has(event.symbolCode)
     );
+    const myDividends = dividendEvents.filter((event) =>
+      owned.has(event.symbolCode)
+    );
     const myWarnings = warnEvents.filter((event) =>
       owned.has(event.symbolCode)
     );
-    if (myDisclosures.length === 0 && myWarnings.length === 0) {
+    if (
+      myDisclosures.length === 0 &&
+      myDividends.length === 0 &&
+      myWarnings.length === 0
+    ) {
       continue;
     }
 
     try {
-      const mutedSet = new Set(await getMutedSymbols(email));
+      const [muted, prefs] = await Promise.all([
+        getMutedSymbols(email),
+        getAlertPrefs(email),
+      ]);
+      const mutedSet = new Set(muted);
       const nameOf = (symbolCode: string): string => {
         const name = context.names.get(symbolCode)?.trim() ?? "";
         return name === "" ? symbolCode : name;
       };
 
       for (const event of myDisclosures) {
+        if (!prefs.disclosure) {
+          report.disclosures.prefSkipped += 1;
+          continue;
+        }
         if (mutedSet.has(event.symbolCode)) {
           report.disclosures.mutedSkipped += 1;
           continue;
@@ -309,7 +366,28 @@ export async function evaluateFeedAlerts(context: {
         }
       }
 
+      // 배당 공시 — 음소거를 보지 않는다. 링크는 공시 원문이 있는 피드로 둔다
+      for (const event of myDividends) {
+        if (!prefs.dividend) {
+          report.dividendDisclosures.prefSkipped += 1;
+          continue;
+        }
+        const sendReport = await sendPushToEmail(email, {
+          title: `배당 공시 — ${nameOf(event.symbolCode)}`,
+          body: `[${event.categories.join("·")}] ${event.item.reportNm}`,
+          url: "/feeds",
+          tag: `disclosure-${event.symbolCode}-${event.item.rceptNo}`,
+        });
+        if (sendReport.sent > 0) {
+          report.dividendDisclosures.sent += 1;
+        }
+      }
+
       for (const event of myWarnings) {
+        if (!prefs.marketWarn) {
+          report.marketWarnings.prefSkipped += 1;
+          continue;
+        }
         if (mutedSet.has(event.symbolCode)) {
           report.marketWarnings.mutedSkipped += 1;
           continue;

@@ -62,6 +62,21 @@
   text-decoration: underline;
 }
 
+/* 「내 배당」 탭 배당 알림 토글 카드 (Phase 73) */
+.alertCard {
+  padding: var(--card-padding);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.alertNote {
+  margin-top: var(--space-8);
+  font-size: var(--text-micro);
+  line-height: 1.5;
+  color: var(--color-text-tertiary);
+}
+
 .itemList {
   list-style: none;
   display: flex;

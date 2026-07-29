@@ -55,6 +55,14 @@
   color: var(--color-text-secondary);
 }
 
+/* 토글 목록 아래 보조 안내 — 목록과 한 덩어리로 보이게 위 여백만 준다 */
+.cardNote {
+  margin-top: var(--space-8);
+  font-size: var(--text-caption);
+  line-height: 1.5;
+  color: var(--color-text-tertiary);
+}
+
 .error {
   font-size: var(--text-caption);
   color: var(--color-critical);

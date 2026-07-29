@@ -4,6 +4,10 @@ import {
   isEncrypted,
 } from "@/lib/crypto/secureJson";
 import { getRedis } from "@/lib/redis/client";
+import {
+  type AlertCategoryPrefs,
+  DEFAULT_ALERT_PREFS,
+} from "./categories";
 
 /**
  * 시세 알림 Redis 저장소 — Phase 10 2단계 (plan.md §10.2~10.3).
@@ -65,6 +69,42 @@ function mutedKey(email: string): string {
 
 function cooldownKey(email: string, symbolCode: string): string {
   return `alerts:${normalizeEmail(email)}:cooldown:${symbolCode}`;
+}
+
+function prefsKey(email: string): string {
+  return `alerts:${normalizeEmail(email)}:prefs`;
+}
+
+/**
+ * 알림 종류별 on/off (Phase 73) — 보유종목을 드러내지 않는 순수 취향 값이라
+ * peaks·muted와 달리 **평문**으로 둔다(쿨다운 키와 같은 기준).
+ * 키가 없거나 일부 카테고리만 저장돼 있으면 기본값(전부 켬)으로 메운다 —
+ * 카테고리가 늘어나도 기존 사용자가 새 알림을 놓치지 않는다.
+ */
+export async function getAlertPrefs(
+  email: string
+): Promise<AlertCategoryPrefs> {
+  const stored = await getRedis().get<Partial<AlertCategoryPrefs>>(
+    prefsKey(email)
+  );
+
+  if (stored == null || typeof stored !== "object") {
+    return { ...DEFAULT_ALERT_PREFS };
+  }
+  return { ...DEFAULT_ALERT_PREFS, ...stored };
+}
+
+export async function saveAlertPrefs(
+  email: string,
+  prefs: AlertCategoryPrefs
+): Promise<void> {
+  const redis = getRedis();
+  // 전부 켬 = 기본값이라 키를 지운다 (muted 목록이 비면 지우는 것과 같은 관례)
+  if (Object.values(prefs).every((enabled) => enabled)) {
+    await redis.del(prefsKey(email));
+    return;
+  }
+  await redis.set(prefsKey(email), prefs);
 }
 
 export async function getStockPeaks(email: string): Promise<StockPeakMap> {

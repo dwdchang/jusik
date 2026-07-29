@@ -1,11 +1,16 @@
 import type { Metadata } from "next";
+import {
+  CategoryAlertToggles,
+  type CategoryAlertItem,
+} from "@/components/alerts/CategoryAlertToggles";
 import { PushSubscriptionManager } from "@/components/alerts/PushSubscriptionManager";
 import {
   StockAlertToggles,
   type StockAlertItem,
 } from "@/components/alerts/StockAlertToggles";
 import { NavIconLink } from "@/components/nav/NavIconLink";
-import { getMutedSymbols } from "@/lib/alerts/store";
+import { ALERT_CATEGORY_META } from "@/lib/alerts/categories";
+import { getAlertPrefs, getMutedSymbols } from "@/lib/alerts/store";
 import { ensureAllowedSession } from "@/lib/auth/ensureAllowedSession";
 import { getHoldings } from "@/lib/holdings/store";
 import { getPushSubscriptions } from "@/lib/push/store";
@@ -19,7 +24,8 @@ export const metadata: Metadata = {
 
 /**
  * 알림 설정 화면 — 햄버거 메뉴에서 진입.
- * 기기별 푸시 구독 등록·해지·테스트 발송(1단계) + 보유종목별 알림 on/off(2단계).
+ * 기기별 푸시 구독 등록·해지·테스트 발송(1단계) + 알림 종류별 on/off(Phase 73) +
+ * 보유종목별 알림 on/off(2단계).
  * 시세 알림 판정·발송은 시세 갱신 잡(evaluateAlertsHook → lib/alerts/evaluate.ts)이 수행한다.
  */
 export default async function AlertsPage() {
@@ -35,6 +41,19 @@ export default async function AlertsPage() {
   } catch (error) {
     console.error("[AlertsPage] getPushSubscriptions failed:", error);
     storeError = true;
+  }
+
+  let categoryItems: CategoryAlertItem[] = [];
+  let categoryError = false;
+  try {
+    const prefs = await getAlertPrefs(email);
+    categoryItems = ALERT_CATEGORY_META.map((meta) => ({
+      ...meta,
+      enabled: prefs[meta.key],
+    }));
+  } catch (error) {
+    console.error("[AlertsPage] alert category prefs load failed:", error);
+    categoryError = true;
   }
 
   let stockItems: StockAlertItem[] = [];
@@ -75,8 +94,8 @@ export default async function AlertsPage() {
         </header>
 
         <p className={styles.description}>
-          보유종목 급락·공시 알림을 웹 푸시로 받습니다. 기기(브라우저)마다
-          한 번씩 켜 주세요.
+          보유종목 급락·공시·배당 알림을 웹 푸시로 받습니다. 기기(브라우저)마다
+          한 번씩 켠 뒤, 받고 싶은 종류만 골라 두면 됩니다.
         </p>
 
         <section className={styles.card}>
@@ -86,6 +105,17 @@ export default async function AlertsPage() {
             </p>
           ) : (
             <PushSubscriptionManager vapidPublicKey={vapidPublicKey} />
+          )}
+        </section>
+
+        <section className={styles.card}>
+          <p className={styles.cardTitle}>알림 종류</p>
+          {categoryError ? (
+            <p className={styles.error} role="alert">
+              알림 종류 설정을 불러오지 못했습니다.
+            </p>
+          ) : (
+            <CategoryAlertToggles items={categoryItems} />
           )}
         </section>
 
@@ -101,7 +131,14 @@ export default async function AlertsPage() {
               끌 수 있습니다.
             </p>
           ) : (
-            <StockAlertToggles items={stockItems} />
+            <>
+              <StockAlertToggles items={stockItems} />
+              <p className={styles.cardNote}>
+                종목을 끄면 시세·공시·시장경보 알림이 멈춥니다.{" "}
+                <strong>배당 알림은 예외</strong>라 위 「알림 종류」의 배당을
+                끄기 전까지 계속 옵니다.
+              </p>
+            </>
           )}
         </section>
 

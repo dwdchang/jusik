@@ -5,6 +5,7 @@ import { sendPushToEmail } from "@/lib/push/send";
 import type { Holding } from "@/types/holdings";
 import type { WatchItem } from "@/types/watchlist";
 import {
+  getAlertPrefs,
   getMutedSymbols,
   getStockPeaks,
   isInCooldown,
@@ -25,10 +26,15 @@ import {
 const LOSS_RATE_THRESHOLD = -10;
 /** 조건 2 — 신고가 대비 하락률 상한(%) */
 const PEAK_DROP_THRESHOLD = 10;
-/** 조건 3 — 당일 지수 등락률 하한(%) */
-const INDEX_DROP_THRESHOLD = -2;
-/** 조건 3 — 당일 종목 등락률 하한(%) */
-const STOCK_DROP_THRESHOLD = -12;
+/**
+ * 조건 3 — 종목 등락률 − 소속 지수 등락률의 하한(%p) (Phase 73).
+ * 구 규칙은 "지수 ≤ −2% **AND** 종목 ≤ −12%"라 지수가 −1.9%면 종목이 −20%여도
+ * 안 울렸다. 두 값의 **차이**만 보면 그 사각지대가 사라진다(구 임계쌍의 간격이
+ * 정확히 10%p라 기존 발동 지점은 그대로 포함된다).
+ * 지수가 크게 오른 날은 종목이 보합이어도 발동할 수 있으나, 지수 +10% 이상은
+ * 사실상 나오지 않는 값이라 실동작에서는 하락 국면 판정과 같다.
+ */
+const RELATIVE_DROP_THRESHOLD = -10;
 
 interface IndexState {
   close: number;
@@ -177,18 +183,17 @@ export function evaluateTarget(input: {
     }
   }
 
-  // 조건 3 — 소속 시장 지수 ≤ −2% AND 종목 등락률 ≤ −12%
+  // 조건 3 — 종목 등락률이 소속 시장 지수보다 10%p 이상 뒤처짐 (Phase 73)
   const indexKey = marketIndexOf(snapshot.marketName);
   const index = indexes[indexKey];
-  if (
-    index !== null &&
-    index.changeRate <= INDEX_DROP_THRESHOLD &&
-    snapshot.changeRate <= STOCK_DROP_THRESHOLD
-  ) {
-    const indexLabel = indexKey === "kosdaq" ? "코스닥" : "코스피";
-    reasons.push(
-      `${indexLabel} ${formatChangeRate(index.changeRate)} · 종목 ${formatChangeRate(snapshot.changeRate)} 동반 하락`
-    );
+  if (index !== null) {
+    const gap = snapshot.changeRate - index.changeRate;
+    if (gap <= RELATIVE_DROP_THRESHOLD) {
+      const indexLabel = indexKey === "kosdaq" ? "코스닥" : "코스피";
+      reasons.push(
+        `${indexLabel} ${formatChangeRate(index.changeRate)} 대비 종목 ${formatChangeRate(snapshot.changeRate)} (${gap.toFixed(1)}%p 열위)`
+      );
+    }
   }
 
   return { nextPeak, reasons };
@@ -203,6 +208,8 @@ export interface PriceAlertsReport {
   cooldownSkipped: number;
   /** 조건 충족했지만 종목별 알림 꺼짐으로 건너뛴 종목 수 */
   mutedSkipped: number;
+  /** 「시세 급락」 알림 종류를 꺼 둔 사용자라 통째로 건너뛴 사용자 수 (Phase 73) */
+  prefSkipped: number;
 }
 
 /**
@@ -220,6 +227,7 @@ export async function evaluatePriceAlerts(context: {
     sent: 0,
     cooldownSkipped: 0,
     mutedSkipped: 0,
+    prefSkipped: 0,
   };
 
   const [kospiDetail, kosdaqDetail] = await getMarketDetails([
@@ -256,9 +264,10 @@ export async function evaluatePriceAlerts(context: {
     }
 
     try {
-      const [peaks, muted] = await Promise.all([
+      const [peaks, muted, prefs] = await Promise.all([
         getStockPeaks(email),
         getMutedSymbols(email),
+        getAlertPrefs(email),
       ]);
       const mutedSet = new Set(muted);
 
@@ -292,6 +301,15 @@ export async function evaluatePriceAlerts(context: {
 
       if (JSON.stringify(nextPeaks) !== JSON.stringify(peaks)) {
         await saveStockPeaks(email, nextPeaks);
+      }
+
+      // 종류 게이팅은 발송에만 건다 — 꺼 둔 동안에도 신고가는 계속 갱신해야
+      // 다시 켰을 때 낡은 기준으로 오탐이 나지 않는다 (Phase 73)
+      if (!prefs.price) {
+        if (triggered.length > 0) {
+          report.prefSkipped += 1;
+        }
+        continue;
       }
 
       for (const { target, reasons } of triggered) {
