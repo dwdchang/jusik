@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { FinancialSection } from "@/components/analysis/FinancialSection";
 import { NavIconLink } from "@/components/nav/NavIconLink";
 import { getFinancialAnalysis } from "@/lib/analysis/financials";
@@ -68,6 +69,11 @@ export default async function AnalysisStatementsPage({
 }) {
   await ensureAllowedSession();
   const { symbolCode } = await params;
+
+  // 통합지표 화면과 같은 형식 게이트 — 여기서도 코드가 그대로 캐시 키·링크에 쓰인다
+  if (!/^\d{6}$/.test(symbolCode)) {
+    redirect("/analysis");
+  }
 
   const [name, result] = await Promise.all([
     resolveName(symbolCode),

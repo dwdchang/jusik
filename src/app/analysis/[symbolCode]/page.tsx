@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { AnalysisChartsClient } from "@/components/analysis/AnalysisChartsClient";
 import { InvestmentIndicators } from "@/components/analysis/InvestmentIndicators";
 import { KeyMetricsTable } from "@/components/analysis/KeyMetricsTable";
@@ -62,6 +63,13 @@ export default async function AnalysisDetailPage({
 }) {
   await ensureAllowedSession();
   const { symbolCode } = await params;
+
+  // 6자리 숫자 코드만 통과 — `/stocks/[symbolCode]`·`/indices/trade/[yyyymm]`와 같은 관례.
+  // overview는 corpCode 매핑에서 걸러지지만 quote는 그 게이트를 지나지 않고 곧바로
+  // 금융위 API를 부른다(likeSrtnCd가 부분일치라 임의 문자열도 400행을 받아 쿼터만 태운다).
+  if (!/^\d{6}$/.test(symbolCode)) {
+    redirect("/analysis");
+  }
 
   const [name, result, quote] = await Promise.all([
     resolveName(symbolCode),
