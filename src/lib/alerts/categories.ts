@@ -4,9 +4,9 @@
  * 토글이 함께 import한다 (store.ts는 I/O만 담당).
  *
  * 종목별 음소거(`alerts:{email}:muted`)와는 축이 다르다 — 음소거는 "어떤 종목을",
- * 이 카테고리는 "어떤 종류의 알림을" 받을지 고른다. 둘 다 통과해야 발송되는 것이
- * 원칙이나 **배당(dividend)만 음소거를 무시한다**(사용자 확정 — 종목 알림을 꺼도
- * 배당 소식은 놓치고 싶지 않다는 요청).
+ * 이 카테고리는 "어떤 종류의 알림을" 받을지 고른다. **4종 모두 둘 다 통과해야
+ * 발송된다** — Phase 73의 배당 예외(음소거를 무시하고 발송)는 Phase 79에서
+ * 폐기됐다(사용자 확정 — 종목별 알림을 끄면 그 종목은 4종 전부 멈추는 게 맞다).
  */
 
 export type AlertCategory = "price" | "disclosure" | "marketWarn" | "dividend";
@@ -47,8 +47,7 @@ export const ALERT_CATEGORY_META: ReadonlyArray<{
   {
     key: "dividend",
     label: "배당",
-    description:
-      "배당 공시 + 보유종목 배당 지급일 당일 알림. 종목별 알림을 꺼도 배당은 계속 받습니다",
+    description: "배당 공시 + 보유종목 배당 지급일 당일 알림",
   },
 ];
 

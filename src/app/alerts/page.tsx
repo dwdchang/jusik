@@ -134,9 +134,9 @@ export default async function AlertsPage() {
             <>
               <StockAlertToggles items={stockItems} />
               <p className={styles.cardNote}>
-                종목을 끄면 시세·공시·시장경보 알림이 멈춥니다.{" "}
-                <strong>배당 알림은 예외</strong>라 위 「알림 종류」의 배당을
-                끄기 전까지 계속 옵니다.
+                종목을 끄면 그 종목의 <strong>시세·공시·시장경보·배당 알림이
+                모두</strong> 멈춥니다. 위 「알림 종류」는 모든 종목에 함께
+                적용됩니다.
               </p>
             </>
           )}

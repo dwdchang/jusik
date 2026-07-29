@@ -5,6 +5,7 @@ import { sendPushToEmail } from "@/lib/push/send";
 import type { Holding } from "@/types/holdings";
 import {
   getAlertPrefs,
+  getMutedSymbols,
   markDividendAlertSent,
   wasDividendAlertSent,
 } from "./store";
@@ -17,8 +18,11 @@ import {
  * 종목을 찾아 발송한다. 중복 방지는 종목×지급일 전역 마커(EX 2일)로, 공시·시장경보
  * 훅의 "중복 방지 우선" 관례대로 발송 결과와 무관하게 먼저 기록한다.
  *
- * Phase 73 — 배당 공시와 함께 「배당」 알림 종류 하나로 묶였고, **종목별 음소거는
- * 보지 않는다**(사용자 확정 예외). 발송 여부는 `alerts:{email}:prefs.dividend`만 가른다.
+ * Phase 73 — 배당 공시와 함께 「배당」 알림 종류 하나로 묶였다.
+ * Phase 79 — 다른 3종과 같이 **종목별 음소거도 적용**한다(Phase 73의 예외 폐기):
+ * `prefs.dividend`와 `alerts:{email}:muted`를 둘 다 통과해야 발송된다.
+ * 종목×지급일 전역 마커는 사용자와 무관한 회차 단위라 음소거와 별개로 먼저 기록한다
+ * (음소거한 사용자가 있어도 다른 사용자 발송에는 영향이 없다).
  */
 
 export interface DividendAlertsReport {
@@ -30,6 +34,8 @@ export interface DividendAlertsReport {
   sent: number;
   /** 「배당」 알림 종류를 꺼 둔 사용자라 건너뛴 사용자 수 (Phase 73) */
   prefSkipped: number;
+  /** 종목별 알림을 꺼 둬 건너뛴 건수 — 이메일×종목 단위 (Phase 79) */
+  mutedSkipped: number;
 }
 
 interface DueDividend {
@@ -50,6 +56,7 @@ export async function evaluateDividendAlerts(context: {
     alreadySent: 0,
     sent: 0,
     prefSkipped: 0,
+    mutedSkipped: 0,
   };
 
   // 1. 보유종목 union(관심종목 제외)에서 지급일이 오늘인 확정 회차 추출
@@ -104,7 +111,8 @@ export async function evaluateDividendAlerts(context: {
     return report;
   }
 
-  // 3. 보유 사용자에게만 발송 — 「배당」 종류만 확인(음소거 예외), 이메일 단위 실패 격리
+  // 3. 보유 사용자에게만 발송 — 「배당」 종류 + 종목별 음소거 확인(Phase 79),
+  //    이메일 단위 실패 격리
   for (const [email, holdings] of context.holdingsByEmail) {
     const quantityByCode = new Map(
       holdings.map((holding) => [holding.symbolCode, holding.quantity])
@@ -121,7 +129,13 @@ export async function evaluateDividendAlerts(context: {
         continue;
       }
 
+      const mutedSet = new Set(await getMutedSymbols(email));
+
       for (const due of myDue) {
+        if (mutedSet.has(due.symbolCode)) {
+          report.mutedSkipped += 1;
+          continue;
+        }
         const name =
           context.names.get(due.symbolCode)?.trim() || due.symbolCode;
         const quantity = quantityByCode.get(due.symbolCode) ?? 0;

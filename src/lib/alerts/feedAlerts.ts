@@ -50,7 +50,8 @@ const DISCLOSURE_CATEGORIES: DisclosureCategory[] = [
 
 /**
  * 「배당」 유형은 공시가 아니라 **배당 알림 종류**로 발송한다 (Phase 73) —
- * 지급일 당일 알림과 한 스위치로 묶고, 종목별 음소거의 예외로 둔다.
+ * 지급일 당일 알림과 한 스위치로 묶는다. 종목별 음소거는 다른 유형과 똑같이
+ * 적용된다 (Phase 79 — Phase 73의 예외 폐기).
  */
 const DIVIDEND_CATEGORY_LABEL = "배당";
 
@@ -143,10 +144,11 @@ export interface FeedAlertsReport {
     /** 「공시」 알림 종류를 꺼 둬 건너뛴 건수 (Phase 73) */
     prefSkipped: number;
   };
-  /** 배당 공시 — 「배당」 알림 종류로 발송, 음소거 예외 (Phase 73) */
+  /** 배당 공시 — 「배당」 알림 종류로 발송 (Phase 73), 음소거도 적용 (Phase 79) */
   dividendDisclosures: {
     matched: number;
     sent: number;
+    mutedSkipped: number;
     prefSkipped: number;
   };
   marketWarnings: {
@@ -192,7 +194,7 @@ export async function evaluateFeedAlerts(context: {
       mutedSkipped: 0,
       prefSkipped: 0,
     },
-    dividendDisclosures: { matched: 0, sent: 0, prefSkipped: 0 },
+    dividendDisclosures: { matched: 0, sent: 0, mutedSkipped: 0, prefSkipped: 0 },
     marketWarnings: {
       baselined: 0,
       changed: 0,
@@ -298,8 +300,8 @@ export async function evaluateFeedAlerts(context: {
     return report;
   }
 
-  // 3. 발송 — 사용자별 보유+관심종목에 해당하는 이벤트만, 음소거 공유 적용
-  //    (배당 공시만 음소거 예외 — 알림 종류 스위치만 본다, Phase 73)
+  // 3. 발송 — 사용자별 보유+관심종목에 해당하는 이벤트만.
+  //    음소거는 배당 공시를 포함한 3종 모두에 적용된다 (Phase 79)
   const emails = new Set([
     ...context.holdingsByEmail.keys(),
     ...context.watchlistsByEmail.keys(),
@@ -366,10 +368,14 @@ export async function evaluateFeedAlerts(context: {
         }
       }
 
-      // 배당 공시 — 음소거를 보지 않는다. 링크는 공시 원문이 있는 피드로 둔다
+      // 배당 공시 — 링크는 공시 원문이 있는 피드로 둔다
       for (const event of myDividends) {
         if (!prefs.dividend) {
           report.dividendDisclosures.prefSkipped += 1;
+          continue;
+        }
+        if (mutedSet.has(event.symbolCode)) {
+          report.dividendDisclosures.mutedSkipped += 1;
           continue;
         }
         const sendReport = await sendPushToEmail(email, {

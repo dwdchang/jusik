@@ -6,9 +6,9 @@ import { ToggleSwitch } from "@/components/ui/ToggleSwitch";
 import styles from "./StockAlertToggles.module.css";
 
 /**
- * 보유·관심종목별 알림 on/off — 끄면 시세·공시·시장경보 알림이 음소거된다.
- * **배당 알림은 음소거를 무시**하므로(Phase 73) 여기서 종목을 꺼도 계속 온다 —
- * 배당을 끄려면 「알림 종류」의 배당 토글(`CategoryAlertToggles`)을 써야 한다.
+ * 보유·관심종목별 알림 on/off — 끄면 그 종목의 시세·공시·시장경보·**배당** 알림이
+ * 모두 음소거된다(Phase 79 — Phase 73의 배당 예외 폐기).
+ * 종목과 무관하게 종류 자체를 끄려면 「알림 종류」 토글(`CategoryAlertToggles`)을 쓴다.
  * 목록·초기 상태는 서버 컴포넌트(alerts/page.tsx)가 내려주고,
  * 토글은 서버 액션으로 저장한 뒤 로컬 상태를 맞춘다.
  */

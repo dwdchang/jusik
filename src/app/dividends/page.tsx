@@ -216,8 +216,9 @@ export default async function DividendsPage({
                   />
                   <p className={styles.alertNote}>
                     다른 알림(시세 급락·공시·시장경보)을 모두 꺼도 이 항목만
-                    켜 두면 배당 소식은 계속 받습니다. 기기에서 푸시를 아직 켜지
-                    않았다면{" "}
+                    켜 두면 배당 소식은 계속 받습니다. 다만 「알림 설정」에서
+                    종목별 알림을 끈 종목은 배당도 오지 않습니다. 기기에서
+                    푸시를 아직 켜지 않았다면{" "}
                     <Link href="/alerts" className={styles.emptyLink}>
                       알림 설정 →
                     </Link>
