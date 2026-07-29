@@ -3,7 +3,7 @@ import {
   type FscDailyPrice,
 } from "@/lib/api/fsc/stockPrice";
 import { getRedis } from "@/lib/redis/client";
-import { DART_CONCURRENCY, mapLimit } from "./financials";
+import { mapLimit } from "./financials";
 
 /**
  * 종목분석 시세 파생 read-through 캐시 — Phase 72 (plan.md §72).
@@ -18,10 +18,41 @@ import { DART_CONCURRENCY, mapLimit } from "./financials";
  *
  * ⚠️ 값은 **직전 영업일 확정 종가** 기준이다(장중 실시간 아님). 화면은 기준일을 함께
  * 표기해야 한다. 재무(TTL 30일)와 달리 매일 바뀌므로 **TTL 6시간**으로 따로 캐시한다.
+ *
+ * 캐시는 두 층이다 (Phase 78) — 파생 지표 묶음 전체(`analysis:quote:v1:*`, TTL 6시간)와
+ * 그 안에서 재료로 쓰는 **확정 기간말 종가**(`analysis:closes:v1:*`, TTL 1년). 뒤엣것을
+ * 나눠 둔 이유는 § `CLOSE_CACHE_KEY_PREFIX`에 적었다.
  */
 
 const QUOTE_TTL_SECONDS = 6 * 60 * 60; // 6시간
 const QUOTE_KEY_PREFIX = "analysis:quote:v1:";
+
+/**
+ * 확정 기간말 종가 캐시 — 종목당 한 키에 `{"2023Q2": 71500, ...}` 꼴로 모은다.
+ *
+ * 지나간 기간말의 종가는 다시 변하지 않는데(무수정주가라 액면분할에도 소급 조정이 없다)
+ * 여기 없으면 TTL 6시간이 만료될 때마다 2020년치까지 전부 다시 받는다. 그 재조회가
+ * 첫 열람 지연의 대부분이었다(2026-07-29 실측: 15콜 5~15초).
+ *
+ * 값이 불변이라 TTL은 사실상 없어도 되지만, 한 번 열어보고 마는 종목의 키가 영원히
+ * 남지 않도록 1년을 건다 — 만료돼도 다음 열람 때 다시 채우면 그만이다.
+ */
+const CLOSE_CACHE_TTL_SECONDS = 365 * 24 * 60 * 60;
+const CLOSE_CACHE_KEY_PREFIX = "analysis:closes:v1:";
+/**
+ * 기간말이 이 일수만큼 지나야 확정으로 보고 캐시에 넣는다. 금융위는 영업일+1 오후 1시에
+ * 확정 종가를 올리므로, 갓 지난 기간말은 아직 데이터가 없어 **직전 거래일 종가**가
+ * 잡힌다 — 그 값을 영구 캐시하면 틀린 종가가 1년간 고정된다.
+ */
+const CLOSE_SETTLE_DAYS = 7;
+
+/**
+ * 기간말 종가 조회 동시성. 재무(`DART_CONCURRENCY` = 5)와 달리 크게 잡는다 —
+ * 금융위 API는 콜당 지연이 130ms 또는 5.2초로 갈리는데(2026-07-29 실측, 순차 호출에서도
+ * 나타나 스로틀이 아니라 백엔드 편차다) 동시 15콜의 총 시간이 최악 콜 하나(5.2초)와
+ * 같았다. 5로 나누면 3라운드가 각자 자기 라운드의 최악 콜에 묶여 15초를 문다.
+ */
+const QUOTE_CONCURRENCY = 20;
 
 /** 일별 시세를 받아올 창(달력일) — 1년 변동률·52주 계산에 여유를 둔다 */
 const QUOTE_WINDOW_DAYS = 400;
@@ -185,11 +216,23 @@ async function buildQuote(symbolCode: string): Promise<AnalysisQuote | null> {
   }
 
   const today8 = todayKstYyyymmdd();
+  const redis = getRedis();
+  const closeCacheKey = `${CLOSE_CACHE_KEY_PREFIX}${symbolCode}`;
+  const closeCache =
+    (await redis
+      .get<Record<string, number>>(closeCacheKey)
+      .catch(() => null)) ?? {};
+
   const resolved = await mapLimit(
     // 아직 오지 않은 기간말은 조회할 값이 없다
     periodEnds.filter((period) => period.end <= today8),
-    DART_CONCURRENCY,
+    QUOTE_CONCURRENCY,
     async (period) => {
+      // 지난 회차에 확정해 둔 종가가 있으면 그걸로 끝 — 콜도, 시계열 탐색도 없다
+      const settled = closeCache[period.key];
+      if (typeof settled === "number") {
+        return { ...period, close: settled };
+      }
       // 보유 시계열로 해결되면 콜을 아낀다(최근 1년 남짓은 대부분 여기서 걸린다)
       const cached = series[0] && period.end >= series[0].date
         ? priceAsOf(series, period.end)
@@ -206,6 +249,27 @@ async function buildQuote(symbolCode: string): Promise<AnalysisQuote | null> {
       return { ...period, close: rows.at(-1)?.close ?? null };
     }
   );
+
+  // 확정 구간에 들어온 새 종가만 캐시에 보탠다. 갓 지난 기간말은 아직 미확정이라
+  // 다음 열람으로 미룬다(§ `CLOSE_SETTLE_DAYS`).
+  const settledBefore = yyyymmddDaysBefore(today8, CLOSE_SETTLE_DAYS);
+  const freshCloses: Record<string, number> = {};
+  for (const { key, end, close } of resolved) {
+    if (close !== null && end <= settledBefore && closeCache[key] === undefined) {
+      freshCloses[key] = close;
+    }
+  }
+  if (Object.keys(freshCloses).length > 0) {
+    await redis
+      .set(
+        closeCacheKey,
+        { ...closeCache, ...freshCloses },
+        { ex: CLOSE_CACHE_TTL_SECONDS }
+      )
+      .catch((err) =>
+        console.error("[analysis] period close cache write failed:", err)
+      );
+  }
 
   const yearEndCloses: Record<string, number> = {};
   const quarterEndCloses: Record<string, number> = {};
