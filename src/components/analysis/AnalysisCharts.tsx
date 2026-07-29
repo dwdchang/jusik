@@ -20,8 +20,8 @@ import {
 import styles from "./AnalysisCharts.module.css";
 
 /**
- * 종목분석 차트 묶음 — Phase 72. 주가 변동률 막대 + 6종 차트(실적·배당금&시가배당률·
- * 배당성향&배당금·분기배당금·현금흐름표·주당현금흐름)를 한 청크로 묶는다.
+ * 종목분석 차트 묶음 — Phase 72. 주가 변동률 막대 + 4종 차트(실적·배당금&시가배당률·
+ * 현금흐름표·주당현금흐름)를 한 청크로 묶는다.
  * 차트마다 연환산/연간/분기 탭을 따로 들고 있어(서로 독립) 관심 있는 지표만 바꿔 본다.
  *
  * recharts는 클라이언트 전용이라 이 파일 전체가 `'use client'`이고, 페이지는
@@ -148,14 +148,12 @@ function MetricChart({
   title,
   series,
   specs,
-  defaultMode = "annual",
 }: {
   title: string;
   series: AnalysisSeriesSet;
   specs: SeriesSpec[];
-  defaultMode?: AnalysisPeriodMode;
 }) {
-  const [mode, setMode] = useState<AnalysisPeriodMode>(defaultMode);
+  const [mode, setMode] = useState<AnalysisPeriodMode>("annual");
   const points = series[mode];
 
   const hasValue = points.some((point) =>
@@ -335,7 +333,7 @@ function PriceChangeChart({ changes }: { changes: PriceChangeEntry[] }) {
   );
 }
 
-// ── 차트 6종 조립 ────────────────────────────────────────
+// ── 차트 4종 조립 ────────────────────────────────────────
 
 export function AnalysisCharts({
   changes,
@@ -393,37 +391,30 @@ export function AnalysisCharts({
       />
 
       <MetricChart
-        title="배당성향 · 배당금"
-        series={series}
-        specs={[
-          { key: "dps", name: "주당배당금", color: "var(--chart-stroke-kospi)", format: formatWon },
-          {
-            key: "payoutRatio",
-            name: "배당성향",
-            color: "var(--color-holding-name)",
-            type: "line",
-            axis: "right",
-            format: formatPercent,
-          },
-        ]}
-      />
-
-      <MetricChart
-        title="분기배당금"
-        series={series}
-        defaultMode="quarter"
-        specs={[
-          { key: "dps", name: "주당배당금", color: "var(--color-holding-name)", format: formatWon },
-        ]}
-      />
-
-      <MetricChart
         title="현금흐름표"
         series={series}
         specs={[
-          { key: "cfo", name: "영업활동", color: "var(--chart-stroke-kospi)", format: formatEok },
-          { key: "cfi", name: "투자활동", color: "var(--color-rise)", format: formatEok },
-          { key: "cff", name: "재무활동", color: "var(--chart-bar)", format: formatEok },
+          {
+            key: "cfo",
+            name: "영업활동",
+            color: "var(--chart-stroke-kospi)",
+            type: "line",
+            format: formatEok,
+          },
+          {
+            key: "cfi",
+            name: "투자활동",
+            color: "var(--color-rise)",
+            type: "line",
+            format: formatEok,
+          },
+          {
+            key: "cff",
+            name: "재무활동",
+            color: "var(--chart-bar)",
+            type: "line",
+            format: formatEok,
+          },
         ]}
       />
 
@@ -431,7 +422,13 @@ export function AnalysisCharts({
         title="주당현금흐름"
         series={series}
         specs={[
-          { key: "cfps", name: "주당 영업현금흐름", color: "var(--chart-stroke-kospi)", format: formatWon },
+          {
+            key: "cfps",
+            name: "주당 영업현금흐름",
+            color: "var(--chart-stroke-kospi)",
+            type: "line",
+            format: formatWon,
+          },
         ]}
       />
     </div>

@@ -16,7 +16,7 @@ import { currentKstYear, DART_CONCURRENCY, mapLimit } from "./financials";
 /**
  * 종목분석 통합지표 read-through 캐시 — Phase 72 (plan.md §72).
  *
- * 「주요 재무지표 표 + 차트 6종」이 쓰는 **기간 시계열**을 만든다. 재무제표 전문
+ * 「주요 재무지표 표 + 차트 4종」이 쓰는 **기간 시계열**을 만든다. 재무제표 전문
  * (`financials.ts`)과 달리 계정 전체가 아니라 지표에 필요한 계정만 뽑아 연간·분기·
  * 연환산(TTM) 세 벌로 환산해 둔다.
  *
