@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { AutoRefresh } from "@/components/ui/AutoRefresh";
 import { THEME_STORAGE_KEY } from "@/lib/theme";
 import "@/styles/tokens.css";
 import "./globals.css";
@@ -38,7 +39,11 @@ export default function RootLayout({
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
-      <body>{children}</body>
+      <body>
+        {/* 시세 갱신 회차 반영 시 자동 새로고침 (Phase 77) — 렌더 출력 없음 */}
+        <AutoRefresh />
+        {children}
+      </body>
     </html>
   );
 }
