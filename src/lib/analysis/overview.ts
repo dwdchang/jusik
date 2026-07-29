@@ -29,12 +29,27 @@ import { currentKstYear, DART_CONCURRENCY, mapLimit } from "./financials";
  */
 
 const OVERVIEW_TTL_SECONDS = 30 * 24 * 60 * 60; // 30일
-const OVERVIEW_KEY_PREFIX = "analysis:overview:v1:";
+// v2 (§80) — 분기 시계열에 진행 연도가 들어가 모양이 바뀌었다. v1 캐시는 TTL 30일이라
+// 프리픽스를 올리지 않으면 최대 한 달 동안 옛 시계열(진행 연도 없음)을 계속 내려준다.
+const OVERVIEW_KEY_PREFIX = "analysis:overview:v2:";
 
 /** 표시 연수 — 사용자 확정(2026-07-28). 금융위 시세 제공 시작(2020)과도 맞물린다 */
 export const OVERVIEW_ANNUAL_YEARS = 6;
-/** 분기·연환산 시계열을 만들 연수 — 6개년 전부 받으면 콜이 24개라 최근 3년만 */
+/**
+ * 분기·연환산 시계열을 만들 **확정 사업연도** 수 — 6개년 전부 받으면 콜이 24개라 3년만.
+ * 진행 중인 올해는 이 수에 더해 별도로 붙인다(`buildQuarterJobs`).
+ */
 const OVERVIEW_QUARTER_YEARS = 3;
+
+/**
+ * 분기보고서 법정 제출기한(MMDD) — 진행 중인 연도에 어느 분기까지 공시돼 있는지 가른다.
+ * 4분기는 사업보고서(이듬해 3월 제출)가 담당해 진행 연도에는 결코 없다.
+ */
+const QUARTER_FILING_DEADLINES: Readonly<Record<number, string>> = {
+  1: "0515",
+  2: "0814",
+  3: "1114",
+};
 
 // ── 표준 계정 코드 ───────────────────────────────────────
 // 계정명(account_nm)은 회사마다 "매출액"/"영업수익"/"수익(매출액)"으로 갈려서
@@ -193,6 +208,14 @@ export type AnalysisOverviewResult =
   | { status: "error" };
 
 // ── 파싱 유틸 ────────────────────────────────────────────
+
+/** KST 오늘 "MMDD" — 분기보고서 제출기한 통과 여부 판정용 */
+function kstTodayMmdd(): string {
+  return new Date(Date.now() + 9 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(5, 10)
+    .replace("-", "");
+}
 
 /** 콤마·공백 제거 후 수치화. 빈값·"-"·비수치는 null (0은 유효값) */
 function parseNumeric(raw: string | undefined): number | null {
@@ -635,17 +658,51 @@ async function collectAnnual(
     });
 }
 
-/** 분기 원자료 수집 — (연도 × 보고서 4종) 재무제표 + 배당 */
-async function collectQuarterly(
-  corpCode: string,
-  years: string[],
-  basisDiv: DartFsDiv,
-  sharesByYear: Map<string, number | null>
-): Promise<QuarterRaw[]> {
-  const jobs = years.flatMap((year) =>
+/** 받아올 (연도 × 분기보고서) 한 칸 */
+interface QuarterJob {
+  year: string;
+  code: string;
+  quarter: 1 | 2 | 3 | 4;
+}
+
+/**
+ * 받아올 (연도 × 분기보고서) 조합. 확정 사업연도는 4개 분기를 전부 받고, **진행 중인
+ * 올해**는 제출기한이 지난 분기만 덧붙인다 — 아직 없는 보고서까지 부르면 콜만 버린다.
+ *
+ * ⚠️ 연간 시계열의 연도 배열(직전 사업연도 기준)을 분기에 그대로 쓰면 안 된다. 사업보고서는
+ * 이듬해 제출이라 "직전 연도가 최신"이지만 분기보고서는 **당해 연도에 나오므로**, 올해를
+ * 빼면 최신 분기가 통째로 사라진다 (2026-07-29 실측: 삼성전자·SK하이닉스·카카오 모두
+ * 2026 1분기보고서가 DART에 있는데 화면은 2025Q4에서 멈춰 있었다 — §80).
+ *
+ * 기한을 갓 넘긴 시점에는 아직 안 낸 회사도 함께 부르게 되지만, 빈 응답은 호출부가
+ * `rows.length > 0`으로 걸러 낸다.
+ */
+function buildQuarterJobs(confirmedYears: string[]): QuarterJob[] {
+  const jobs: QuarterJob[] = confirmedYears.flatMap((year) =>
     DART_QUARTER_REPRTS.map((reprt) => ({ year, ...reprt }))
   );
 
+  const currentYear = String(currentKstYear());
+  const today = kstTodayMmdd();
+  for (const reprt of DART_QUARTER_REPRTS) {
+    const deadline = QUARTER_FILING_DEADLINES[reprt.quarter];
+    if (deadline !== undefined && today >= deadline) {
+      jobs.push({ year: currentYear, ...reprt });
+    }
+  }
+
+  return jobs;
+}
+
+/** 분기 원자료 수집 — (연도 × 보고서) 재무제표 + 배당 */
+async function collectQuarterly(
+  corpCode: string,
+  jobs: QuarterJob[],
+  basisDiv: DartFsDiv,
+  sharesByYear: Map<string, number | null>,
+  /** 주식총수를 못 구한 연도(=진행 연도)의 대체값 — 사업보고서가 아직 없다 */
+  fallbackShares: number | null
+): Promise<QuarterRaw[]> {
   const [statements, dividends] = await Promise.all([
     mapLimit(jobs, DART_CONCURRENCY, async (job) => ({
       ...job,
@@ -680,7 +737,12 @@ async function collectQuarterly(
         cumulativeDps: dividends.dps,
         payoutRatio: dividends.payoutRatio,
         dividendYield: dividends.dividendYield,
-        shares: sharesByYear.get(year) ?? null,
+        // 진행 연도는 사업보고서가 없어 주식총수도 없다(분기보고서의 stockTotqySttus는
+        // 값이 "-"로 비어 온다, 2026-07-29 실측). 직전 사업연도 말 주식수로 대신한다 —
+        // 어차피 확정 연도에서도 한 해의 4개 분기가 연말 주식수를 함께 쓰고 있다.
+        shares: sharesByYear.has(year)
+          ? sharesByYear.get(year) ?? null
+          : fallbackShares,
       };
     })
     .sort((a, b) =>
@@ -718,12 +780,18 @@ async function buildOverview(corpCode: string): Promise<AnalysisOverview> {
     annualRaws.map((raw) => [raw.year, raw.shares] as const)
   );
 
-  const quarterYears = annualYears.slice(0, OVERVIEW_QUARTER_YEARS);
+  const latestKnownShares =
+    [...annualRaws].reverse().find((raw) => raw.shares !== null)?.shares ?? null;
+
+  const quarterJobs = buildQuarterJobs(
+    annualYears.slice(0, OVERVIEW_QUARTER_YEARS)
+  );
   const quarterRaws = await collectQuarterly(
     corpCode,
-    quarterYears,
+    quarterJobs,
     basisDiv,
-    sharesByYear
+    sharesByYear,
+    latestKnownShares
   );
 
   const annual = buildAnnualPoints(annualRaws);
