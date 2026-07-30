@@ -12,8 +12,10 @@ import {
   DART_PBLNTF_PERIODIC,
   fetchDartCorpCodeMap,
   fetchDartDisclosures,
+  fetchDartDividendDetail,
   fetchDartEarningsDetail,
   fetchDartIrDetail,
+  isDividendDecisionReport,
 } from "@/lib/api/dart/client";
 import { fetchNaverNews } from "@/lib/api/naver/client";
 import {
@@ -31,15 +33,19 @@ import {
 } from "@/lib/feeds/earnings";
 import {
   getCorpCodeMap,
+  getDividendDecisionSnapshots,
   getEarningsSnapshots,
   getTradeStats,
   setCorpCodeMap,
   setDisclosures,
+  setDividendDecisions,
   setEarnings,
   setNews,
   setTradeStats,
   type DisclosureItem,
+  type DividendDecisionItem,
   type EarningsItem,
+  type StoredDividendDecisions,
   type StoredEarnings,
   type NewsItem,
   type TradeStatMonth,
@@ -93,6 +99,19 @@ const EARNINGS_PAGE_COUNT = 30;
  * 회차당 최대 30콜(간격 150ms)이라 잡 시간에 4.5초를 더할 뿐이다.
  */
 const EARNINGS_DOC_BUDGET = 30;
+/** 종목당 저장하는 최근 배당결정 공시 건수 — 분기배당사도 90일에 1~2건이라 넉넉하다 */
+const DIVIDEND_DECISION_MAX_ITEMS = 6;
+/**
+ * 한 회차에 새로 받는 배당결정 공시 원문(zip) 최대 건수 (Phase 83).
+ * 실적 원문 예산과 분리해 둔다 — 실적 시즌에 예산을 다 쓰면 배당이 계속 밀린다.
+ * 종목당 90일에 0~2건이고 파싱 결과를 굳혀 재사용하므로 정상 회차엔 0~1건만 쓴다.
+ */
+const DIVIDEND_DOC_BUDGET = 8;
+/**
+ * 배당결정 공시 파서 버전 — 올리면 저장분이 다음 회차부터 다시 파싱된다
+ * (실적 공시 `EARNINGS_PARSER_VERSION`과 같은 장치).
+ */
+const DIVIDEND_PARSER_VERSION = 1;
 /** DART 분당 과다 호출 차단 대비 종목 간 유량 제한 */
 const DART_CALL_INTERVAL_MS = 150;
 /** 네이버 검색 API 종목 간 유량 제한 (일 25,000콜 내 여유) */
@@ -160,6 +179,18 @@ export interface RefreshFeedsReport {
     /** 이번 회차에 원문을 새로 파싱한 건수 */
     parsed?: number;
     skipped?: "unlisted";
+    error?: string;
+  }>;
+  /**
+   * 배당결정 공시 갱신 결과 (Phase 83) — 실적과 **같은 거래소공시 목록**에서 뽑으므로
+   * 목록 조회는 추가되지 않고, 원문(zip)만 새 건에 한해 받는다.
+   */
+  dividendDecisions: Array<{
+    symbolCode: string;
+    ok: boolean;
+    count?: number;
+    /** 이번 회차에 원문을 새로 파싱한 건수 */
+    parsed?: number;
     error?: string;
   }>;
   /** 수출입 월간 통계 갱신 결과 — 월 1회성 (§17-4) */
@@ -364,6 +395,10 @@ async function refreshNews(
  * 정기공시(A, 분기·반기·사업보고서) 2회. 잠정실적은 수치표를, IR 개최는 일정을(Phase 82)
  * 원문(zip)에서 파싱해 굳히되, **직전 회차에 같은 파서 버전으로 파싱한 접수번호는 결과를
  * 그대로 물려받아** 원문을 다시 받지 않는다(회차당 신규 파싱은 EARNINGS_DOC_BUDGET건 제한).
+ *
+ * Phase 83 — **배당결정 공시도 같은 목록에서 함께 뽑는다.** 「현금ㆍ현물배당결정」은
+ * 실적 공시와 같은 거래소공시(`pblntf_ty=I`)라 이미 받아 둔 `rows`에 들어 있어(실측
+ * 2026-07-30 삼성전자) 목록 조회가 늘지 않는다. 저장은 성격이 달라 별도 키로 나눈다.
  */
 async function refreshEarnings(
   symbolCodes: string[],
@@ -371,14 +406,16 @@ async function refreshEarnings(
   fetchedAt: string
 ): Promise<{
   results: RefreshFeedsReport["earnings"];
+  dividendResults: RefreshFeedsReport["dividendDecisions"];
   itemsBySymbol: Map<string, EarningsItem[]>;
 }> {
   const results: RefreshFeedsReport["earnings"] = [];
+  const dividendResults: RefreshFeedsReport["dividendDecisions"] = [];
   const itemsBySymbol = new Map<string, EarningsItem[]>();
   const bgnDe = kstYyyyMmDdDaysAgo(EARNINGS_WINDOW_DAYS);
   const endDe = kstYyyyMmDdDaysAgo(0);
 
-  // 직전 회차 스냅샷 — 접수번호별 파싱 결과 재사용 기준 (MGET 1회)
+  // 직전 회차 스냅샷 — 접수번호별 파싱 결과 재사용 기준 (MGET 1회씩)
   const previous = await getEarningsSnapshots(symbolCodes).catch(
     (error: unknown) => {
       // 읽기 실패는 "직전 결과 없음"으로 격리 — 파싱만 다시 할 뿐 수집은 계속된다
@@ -386,8 +423,15 @@ async function refreshEarnings(
       return new Map<string, StoredEarnings>();
     }
   );
+  const previousDividends = await getDividendDecisionSnapshots(
+    symbolCodes
+  ).catch((error: unknown) => {
+    console.error("[job] dividend decision snapshot read failed:", error);
+    return new Map<string, StoredDividendDecisions>();
+  });
 
   let docBudget = EARNINGS_DOC_BUDGET;
+  let dividendDocBudget = DIVIDEND_DOC_BUDGET;
 
   for (const symbolCode of symbolCodes) {
     const corpCode = corpCodeMap[symbolCode];
@@ -490,13 +534,118 @@ async function refreshEarnings(
       await setEarnings({ symbolCode, items, fetchedAt });
       itemsBySymbol.set(symbolCode, items);
       results.push({ symbolCode, ok: true, count: items.length, parsed });
+
+      // 배당결정 공시 — 같은 rows에서 추린다. 실패해도 실적 수집은 이미 끝나 있다.
+      try {
+        const decisions = await collectDividendDecisions(
+          rows,
+          previousDividends.get(symbolCode)?.items ?? [],
+          () => {
+            if (dividendDocBudget <= 0) {
+              return false;
+            }
+            dividendDocBudget -= 1;
+            return true;
+          }
+        );
+        await setDividendDecisions({
+          symbolCode,
+          items: decisions.items,
+          fetchedAt,
+        });
+        dividendResults.push({
+          symbolCode,
+          ok: true,
+          count: decisions.items.length,
+          parsed: decisions.parsed,
+        });
+      } catch (error) {
+        console.error(
+          `[job] dividend decision refresh failed (${symbolCode}):`,
+          error
+        );
+        dividendResults.push({
+          symbolCode,
+          ok: false,
+          error: errorMessage(error),
+        });
+      }
     } catch (error) {
       console.error(`[job] earnings refresh failed (${symbolCode}):`, error);
       results.push({ symbolCode, ok: false, error: errorMessage(error) });
     }
   }
 
-  return { results, itemsBySymbol };
+  return { results, dividendResults, itemsBySymbol };
+}
+
+/**
+ * 거래소공시 목록에서 배당결정 공시만 추려 원문을 파싱한다 (Phase 83).
+ * 실적과 같은 규칙 — 접수번호 단위로 직전 결과를 물려받고, 새 건만 `takeBudget()`이
+ * 허락하는 만큼 원문을 받는다. 예산이 없으면 제목·접수번호만 남기고 다음 회차로 넘긴다.
+ */
+async function collectDividendDecisions(
+  rows: Awaited<ReturnType<typeof fetchDartDisclosures>>,
+  previousItems: DividendDecisionItem[],
+  takeBudget: () => boolean
+): Promise<{ items: DividendDecisionItem[]; parsed: number }> {
+  const byRceptNo = new Map<string, DividendDecisionItem>();
+  for (const row of rows) {
+    const reportNm = row.report_nm?.trim() ?? "";
+    const rceptNo = row.rcept_no ?? "";
+    if (rceptNo === "" || !isDividendDecisionReport(reportNm)) {
+      continue;
+    }
+    byRceptNo.set(rceptNo, {
+      rceptNo,
+      rceptDt: row.rcept_dt ?? "",
+      kind: null,
+      perShare: null,
+      recordDate: null,
+      payDate: null,
+    });
+  }
+
+  const items = [...byRceptNo.values()]
+    .sort((a, b) => (a.rceptNo < b.rceptNo ? 1 : a.rceptNo > b.rceptNo ? -1 : 0))
+    .slice(0, DIVIDEND_DECISION_MAX_ITEMS);
+
+  const carried = new Map(previousItems.map((item) => [item.rceptNo, item]));
+
+  let parsed = 0;
+  for (const item of items) {
+    const before = carried.get(item.rceptNo);
+    if (before?.parsedV === DIVIDEND_PARSER_VERSION) {
+      item.parsedV = before.parsedV;
+      item.kind = before.kind;
+      item.perShare = before.perShare;
+      item.recordDate = before.recordDate;
+      item.payDate = before.payDate;
+      continue;
+    }
+    if (!takeBudget()) {
+      continue;
+    }
+
+    try {
+      const detail = await fetchDartDividendDetail(item.rceptNo);
+      item.kind = detail.kind;
+      item.perShare = detail.perShare;
+      item.recordDate = detail.recordDate;
+      item.payDate = detail.payDate;
+      item.parsedV = DIVIDEND_PARSER_VERSION;
+      parsed += 1;
+    } catch (error) {
+      // 버전을 안 남겨 다음 회차가 다시 시도한다 (실적 원문 파싱과 같은 방침)
+      console.error(
+        `[job] dividend decision parse failed (${item.rceptNo}):`,
+        error
+      );
+    }
+    await sleep(DART_CALL_INTERVAL_MS);
+  }
+
+  return { items, parsed };
 }
 
 /**
@@ -594,6 +743,7 @@ export async function refreshFeeds(
       disclosures: [],
       news: [],
       earnings: [],
+      dividendDecisions: [],
       tradeStats,
       alerts: { evaluated: false, reason: "no target symbols" },
       dividendAlerts: { evaluated: false, reason: "no target symbols" },
@@ -616,8 +766,12 @@ export async function refreshFeeds(
   const news = await refreshNews(codeNames, startedAt);
 
   // 5. 종목별 실적 공시 조회(유형 한정 2회 + 잠정실적 원문) → market:earnings:{code}
-  const { results: earnings, itemsBySymbol: earningsBySymbol } =
-    await refreshEarnings(symbolCodes, map, startedAt);
+  //    같은 거래소공시 목록에서 배당결정 공시도 함께 추린다 → market:dividendDecision:{code}
+  const {
+    results: earnings,
+    dividendResults: dividendDecisions,
+    itemsBySymbol: earningsBySymbol,
+  } = await refreshEarnings(symbolCodes, map, startedAt);
 
   // 6. 공시·시장경보·실적 알림 훅 — 실패해도 로그만 남기고 잡 ok는 게이팅하지 않는다
   let alerts: RefreshFeedsReport["alerts"];
@@ -650,6 +804,8 @@ export async function refreshFeeds(
 
   // tradeStats는 ok 게이팅에서 제외 — 월간 소스 실패로 뉴스·공시 파이프라인을
   // 반복 재실행시키지 않고, 가드가 다음 회차에 자연히 재시도한다 (§17-4).
+  // dividendDecisions도 같은 이유로 제외한다 — 예탁원 회차를 보완하는 부가 소스라
+  // 실패해도 「내 배당」은 예탁원 값으로 돌아가고, 다음 회차가 원문을 다시 받는다.
   const ok =
     corpCodeMap.ok &&
     disclosures.every((row) => row.ok) &&
@@ -665,6 +821,7 @@ export async function refreshFeeds(
     disclosures,
     news,
     earnings,
+    dividendDecisions,
     tradeStats,
     alerts,
     dividendAlerts,

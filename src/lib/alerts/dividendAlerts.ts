@@ -1,6 +1,6 @@
 import { todayKstDate } from "@/lib/date/kst";
+import { getDividendRoundsMap } from "@/lib/dividends/rounds";
 import { formatKrw } from "@/lib/format/krw";
-import { getStockInfoBlocksMap } from "@/lib/market/store";
 import { sendPushToEmail } from "@/lib/push/send";
 import type { Holding } from "@/types/holdings";
 import {
@@ -14,8 +14,8 @@ import {
  * 배당 지급일 당일 알림 — Phase 25 (plan.md §25). feeds 갱신 잡(refreshFeeds)의
  * 알림 훅에서만 호출된다 (매일 08~22시 매시 실행 — 첫 회차 08시에 당일 발송).
  * 대상은 보유 사용자만(관심종목 제외 — 사용자 확정). KIS 추가 호출 없이
- * 저장된 `market:stockInfo:{code}`의 확정 회차(rounds)에서 지급일이 KST 오늘인
- * 종목을 찾아 발송한다. 중복 방지는 종목×지급일 전역 마커(EX 2일)로, 공시·시장경보
+ * 저장된 확정 회차(예탁원 `market:stockInfo:{code}` + 배당결정 공시 보완, Phase 83)에서
+ * 지급일이 KST 오늘인 종목을 찾아 발송한다. 중복 방지는 종목×지급일 전역 마커(EX 2일)로, 공시·시장경보
  * 훅의 "중복 방지 우선" 관례대로 발송 결과와 무관하게 먼저 기록한다.
  *
  * Phase 73 — 배당 공시와 함께 「배당」 알림 종류 하나로 묶였다.
@@ -72,11 +72,13 @@ export async function evaluateDividendAlerts(context: {
   }
 
   const today = todayKstDate();
-  const blocksBySymbol = await getStockInfoBlocksMap(heldCodes);
+  // 예탁원 + 배당결정 공시 병합 회차 (Phase 83) — 예탁원이 아직 반영하지 않은
+  // 지급일도 공시로 알 수 있어, 당일 알림이 예탁원 반영 속도에 묶이지 않는다
+  const roundsBySymbol = await getDividendRoundsMap(heldCodes);
 
   const dueBySymbol = new Map<string, DueDividend>();
-  for (const [symbolCode, blocks] of blocksBySymbol) {
-    const todayRounds = (blocks.dividend?.rounds ?? []).filter(
+  for (const [symbolCode, rounds] of roundsBySymbol) {
+    const todayRounds = rounds.filter(
       (round) => round.payDate === today && round.amountPerShare > 0
     );
     if (todayRounds.length === 0) {

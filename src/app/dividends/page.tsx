@@ -185,6 +185,15 @@ export default async function DividendsPage({
                         </span>
                       </div>
                       <p className={`${styles.itemMeta} numeric`}>
+                        {/* 예탁원이 아직 반영하지 않아 공시로 메운 회차 (Phase 83) */}
+                        {row.source === "dart" ? (
+                          <span
+                            className={styles.sourceBadge}
+                            title="예탁원 배당일정에 아직 반영되지 않아 DART 배당결정 공시에서 가져온 회차입니다"
+                          >
+                            공시
+                          </span>
+                        ) : null}
                         {row.kind !== null ? `${row.kind} · ` : ""}기준일{" "}
                         {displayDate(row.recordDate)} · 지급일{" "}
                         {row.payDate !== null ? (
@@ -271,13 +280,24 @@ export default async function DividendsPage({
 
         <footer className={styles.footer}>
           {activeTab === "schedule" ? (
-            <p className={styles.notice}>
-              예상 지급액은 <strong>현재 보유수량 기준</strong>입니다 — 실제
-              수령 자격은 배당 기준일 시점 보유 여부로 결정되며, 수량 변경
-              이력은 반영되지 않습니다. 금액은 <strong>세전</strong>(배당소득세
-              15.4% 원천징수 전) 기준입니다. 지급일이 미정인 회차는 공시로
-              확정되면 자동으로 채워집니다.
-            </p>
+            <>
+              <p className={styles.notice}>
+                예상 지급액은 <strong>현재 보유수량 기준</strong>입니다 — 실제
+                수령 자격은 배당 기준일 시점 보유 여부로 결정되며, 수량 변경
+                이력은 반영되지 않습니다. 금액은{" "}
+                <strong>세전</strong>(배당소득세 15.4% 원천징수 전) 기준입니다.
+                지급일이 미정인 회차는 공시로 확정되면 자동으로 채워집니다.
+              </p>
+              <p className={styles.notice}>
+                회차는 <strong>예탁원 배당일정</strong>이 기준이며, 예탁원이
+                아직 반영하지 않은 회차는{" "}
+                <strong>DART 배당결정 공시</strong>에서 가져와{" "}
+                <strong>공시</strong> 표시를 답니다 — 이사회 결의 직후에는
+                공시가 며칠 빠릅니다. 예탁원에 반영되면 그쪽 값으로 자동
+                교체됩니다. 우선주는 DART 고유번호가 없어 이 보완이 적용되지
+                않습니다.
+              </p>
+            </>
           ) : (
             <>
               <p className={styles.notice}>

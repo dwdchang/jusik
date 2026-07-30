@@ -98,6 +98,40 @@ export interface StoredEarnings {
   fetchedAt: string;
 }
 
+/**
+ * 배당결정 공시 1건 (Phase 83) — 「현금ㆍ현물배당결정」 원문에서 뽑은 확정 회차.
+ *
+ * 「내 배당」의 본 소스는 KIS 예탁원 배당일정이지만 예탁원은 이사회 결의를 며칠 늦게
+ * 반영한다(실측 2026-07-30: 삼성전자 26.2Q 분기배당이 DART엔 있는데 예탁원은
+ * `per_sto_divi_amt=0`). 그 빈 회차를 메우려고 공시 쪽 값을 따로 굳혀 둔다.
+ */
+export interface DividendDecisionItem {
+  rceptNo: string;
+  /** 접수일자 "YYYYMMDD" */
+  rceptDt: string;
+  /** 배당구분 — "분기"·"중간"·"결산" (예탁원 `divi_kind`와 같은 어휘) */
+  kind: string | null;
+  /** 1주당 배당금(원, 보통주) */
+  perShare: number | null;
+  /** 배당기준일 "YYYY-MM-DD" */
+  recordDate: string | null;
+  /** 배당금지급 예정일자 "YYYY-MM-DD" */
+  payDate: string | null;
+  /**
+   * 원문 파싱을 시도한 파서 버전 — 실적 공시(`EarningsItem.parsedV`)와 같은 방식으로
+   * 성공·실패 모두 굳혀 매 회차 원문(zip)을 다시 받지 않게 한다.
+   */
+  parsedV?: number;
+}
+
+/** market:dividendDecision:{symbolCode} — 최근 배당결정 공시 스냅샷 (SET 덮어쓰기) */
+export interface StoredDividendDecisions {
+  symbolCode: string;
+  /** 접수 순서 내림차순 최대 6건 */
+  items: DividendDecisionItem[];
+  fetchedAt: string;
+}
+
 /** dart:corpCodeMap — 종목코드(6자리)→DART 고유번호(8자리), 30일 주기 저빈도 갱신 */
 export interface StoredCorpCodeMap {
   map: Record<string, string>;
@@ -213,6 +247,11 @@ export function earningsKey(symbolCode: string): string {
   return `market:earnings:${symbolCode}`;
 }
 
+/** market:dividendDecision:{code} 키 조립 — 라이터(refreshFeeds)·리더·고아 정리 잡이 공유 */
+export function dividendDecisionsKey(symbolCode: string): string {
+  return `market:dividendDecision:${symbolCode}`;
+}
+
 const CORP_CODE_MAP_KEY = "dart:corpCodeMap";
 
 /** market:tradeStats — 종목 무관 단일 키 (수출입은 시장 전체 지표) */
@@ -264,6 +303,36 @@ export async function getEarningsSnapshots(
 
 export async function setEarnings(value: StoredEarnings): Promise<void> {
   await getRedis().set(earningsKey(value.symbolCode), value);
+}
+
+/**
+ * 종목별 배당결정 공시 스냅샷 일괄 조회 (MGET 1회) — 갱신 잡의 원문 재사용 기준이자
+ * 「내 배당」 화면·지급일 알림의 예탁원 폴백 소스 (Phase 83).
+ */
+export async function getDividendDecisionSnapshots(
+  symbolCodes: string[]
+): Promise<Map<string, StoredDividendDecisions>> {
+  if (symbolCodes.length === 0) {
+    return new Map();
+  }
+
+  const rows = await getRedis().mget<Array<StoredDividendDecisions | null>>(
+    ...symbolCodes.map(dividendDecisionsKey)
+  );
+
+  const byCode = new Map<string, StoredDividendDecisions>();
+  rows.forEach((row, i) => {
+    if (row !== null) {
+      byCode.set(symbolCodes[i], row);
+    }
+  });
+  return byCode;
+}
+
+export async function setDividendDecisions(
+  value: StoredDividendDecisions
+): Promise<void> {
+  await getRedis().set(dividendDecisionsKey(value.symbolCode), value);
 }
 
 export async function getCorpCodeMap(): Promise<StoredCorpCodeMap | null> {

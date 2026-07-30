@@ -1,6 +1,6 @@
 import { todayKstDate } from "@/lib/date/kst";
 import { getHoldings } from "@/lib/holdings/store";
-import { getStockInfoBlocksMap } from "@/lib/market/store";
+import { getDividendRoundsMap } from "./rounds";
 
 /**
  * 배당 일정 리더 — Phase 25 (plan.md §25).
@@ -9,6 +9,9 @@ import { getStockInfoBlocksMap } from "@/lib/market/store";
  * 상세 목록(/dividends)과 홈 카드 요약을 만든다 — KIS 호출 0건.
  * 예상 지급액은 읽기 시 곱셈만(주당배당금 × 현재 보유수량) — 공용 rounds에
  * 개인 수량을 섞지 않는다 (쓰기/읽기 분리 유지).
+ *
+ * Phase 83 — 회차 조회를 `dividends/rounds.ts`로 옮겼다. 예탁원이 아직 반영하지 않은
+ * 회차를 DART 배당결정 공시로 메우므로, 이 리더는 병합 결과만 받아 수량과 합류한다.
  */
 
 /** /dividends 상세 목록 1행 — 보유종목의 확정 배당 회차 */
@@ -28,6 +31,8 @@ export interface DividendScheduleRow {
   quantity: number;
   /** 예상 지급액(원, 세전) = 주당배당금 × 현재 보유수량 */
   expectedAmount: number;
+  /** 값의 출처 — 예탁원 / 배당결정 공시(예탁원 미반영분 보완, Phase 83) */
+  source: "ksd" | "dart";
 }
 
 /** 홈 "배당 일정" 카드 1행 — 다가오는 지급일 */
@@ -58,13 +63,13 @@ export async function getDividendSchedule(
     return [];
   }
 
-  const blocksBySymbol = await getStockInfoBlocksMap(
-    [...new Set(holdings.map((holding) => holding.symbolCode))]
-  );
+  const roundsBySymbol = await getDividendRoundsMap([
+    ...new Set(holdings.map((holding) => holding.symbolCode)),
+  ]);
 
   const rows: DividendScheduleRow[] = [];
   for (const holding of holdings) {
-    const rounds = blocksBySymbol.get(holding.symbolCode)?.dividend?.rounds;
+    const rounds = roundsBySymbol.get(holding.symbolCode);
     if (rounds === undefined) {
       continue;
     }
@@ -78,6 +83,7 @@ export async function getDividendSchedule(
         amountPerShare: round.amountPerShare,
         quantity: holding.quantity,
         expectedAmount: round.amountPerShare * holding.quantity,
+        source: round.source,
       });
     }
   }

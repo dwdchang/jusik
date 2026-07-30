@@ -155,16 +155,78 @@ export async function fetchDartDisclosures(
   return data.list ?? [];
 }
 
-/** 배당결정 공시에서 추출한 정형 수치 — Phase 44 폭배 enrichment */
-export interface DartDividendDecision {
-  /** 접수번호 — 원문 딥링크 (`dart.fss.or.kr/dsaf001/main.do?rcpNo=`) */
-  rceptNo: string;
+/**
+ * 「현금ㆍ현물배당결정」 공시 원문에서 뽑은 정형 항목.
+ * Phase 44에서 폭배 enrichment용으로 3칸만 쓰다가, Phase 83에서 배당 일정 보완을 위해
+ * 배당구분·지급예정일자를 더 받는다(같은 원문이라 추가 호출 없음).
+ */
+export interface DartDividendDetail {
+  /** 배당구분 — "분기"·"중간"·"결산" (서식의 "분기배당"에서 접미 "배당"을 뗀 값) */
+  kind: string | null;
   /** 1주당 배당금(원, 보통주) */
   perShare: number | null;
-  /** 시가배당율(%, 보통주) — DART 공식(KRX 기준가), 앱 산출값과 분모가 다름 */
+  /** 시가배당률(%, 보통주) — DART 공식(KRX 기준가), 앱 산출값과 분모가 다름 */
   officialYield: number | null;
   /** 배당기준일 "YYYY-MM-DD" */
   recordDate: string | null;
+  /** 배당금지급 예정일자 "YYYY-MM-DD" — 서식에 "-"로 오면 null */
+  payDate: string | null;
+}
+
+/** 배당결정 공시 1건 — 정형 항목 + 원문 딥링크용 접수번호 */
+export interface DartDividendDecision extends DartDividendDetail {
+  /** 접수번호 — 원문 딥링크 (`dart.fss.or.kr/dsaf001/main.do?rcpNo=`) */
+  rceptNo: string;
+}
+
+/** 보고서명이 (자회사 건이 아닌) 본사 현금·현물배당결정인가 */
+export function isDividendDecisionReport(reportNm: string): boolean {
+  return (
+    reportNm.includes("현금") &&
+    reportNm.includes("배당결정") &&
+    !reportNm.includes("자회사")
+  );
+}
+
+function toFiniteNumber(raw: string | undefined): number | null {
+  if (raw === undefined) {
+    return null;
+  }
+  const parsed = Number(raw.replace(/,/g, ""));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
+ * 배당결정 공시 평문 → 정형 항목. 표준 서식이라 라벨 인접 값으로 뽑는다.
+ *
+ * ⚠️ 시가배당률 라벨은 **「시가배당률(%)」**이다 — Phase 44의 `시가배당율?`은 "율"만
+ * 받아 실서식과 어긋났고, 2026-07-15~30 배당결정 표본 8건에서 **8건 모두 실패**했다
+ * (주당배당금·기준일은 정상이라 폭배 툴팁의 공식 시가배당률만 조용히 비어 있었다).
+ * 문서 하단 유의사항 문구는 "시가배당율은…"처럼 "(%)"가 붙지 않아 여기 걸리지 않는다.
+ */
+export function parseDartDividendDetail(text: string): DartDividendDetail {
+  const kindRaw = text.match(/배당구분\s*(\S+)/)?.[1] ?? null;
+
+  return {
+    // "분기배당"·"중간배당"·"결산배당" → 예탁원(KIS) `divi_kind`와 같은 어휘로 맞춘다
+    kind: kindRaw === null ? null : kindRaw.replace(/배당$/, "") || null,
+    perShare: toFiniteNumber(
+      text.match(/1주당 배당금\(원\)\s*보통주식\s*([\d,]+)/)?.[1]
+    ),
+    officialYield: toFiniteNumber(
+      text.match(/시가배당[율률]\(%\)\s*보통주식\s*([\d.]+)/)?.[1]
+    ),
+    recordDate: text.match(/배당기준일\s*(\d{4}-\d{2}-\d{2})/)?.[1] ?? null,
+    payDate:
+      text.match(/배당금지급 예정일자\s*(\d{4}-\d{2}-\d{2})/)?.[1] ?? null,
+  };
+}
+
+/** 접수번호를 이미 아는 배당결정 공시의 원문을 받아 파싱한다 (Phase 83) */
+export async function fetchDartDividendDetail(
+  rceptNo: string
+): Promise<DartDividendDetail> {
+  return parseDartDividendDetail(await fetchDartDocumentText(rceptNo));
 }
 
 /** 공시 원문(document.xml, zip) → 태그 제거 평문. 서식 XML/HTML 혼재라 태그만 걷어낸다. */
@@ -216,45 +278,28 @@ export async function fetchDartDividendDecision(
     pageCount: 100,
   });
 
-  const hit = list.find((row) => {
-    const nm = row.report_nm ?? "";
-    return (
-      nm.includes("현금") && nm.includes("배당결정") && !nm.includes("자회사")
-    );
-  });
+  const hit = list.find((row) =>
+    isDividendDecisionReport(row.report_nm?.trim() ?? "")
+  );
 
   if (!hit?.rcept_no) {
     return null;
   }
 
   const rceptNo = hit.rcept_no;
-  let text: string;
   try {
-    text = await fetchDartDocumentText(rceptNo);
+    return { rceptNo, ...(await fetchDartDividendDetail(rceptNo)) };
   } catch {
     // 링크만이라도 유효하게 — 수치 없이 접수번호만 반환
-    return { rceptNo, perShare: null, officialYield: null, recordDate: null };
+    return {
+      rceptNo,
+      kind: null,
+      perShare: null,
+      officialYield: null,
+      recordDate: null,
+      payDate: null,
+    };
   }
-
-  const perShareRaw = text.match(
-    /1주당 배당금\(원\)\s*보통주식\s*([\d,]+)/
-  )?.[1];
-  const yieldRaw = text.match(/시가배당율?\(%\)\s*보통주식\s*([\d.]+)/)?.[1];
-  const recordDate = text.match(/배당기준일\s*(\d{4}-\d{2}-\d{2})/)?.[1] ?? null;
-
-  const perShare =
-    perShareRaw !== undefined ? Number(perShareRaw.replace(/,/g, "")) : null;
-  const officialYield = yieldRaw !== undefined ? Number(yieldRaw) : null;
-
-  return {
-    rceptNo,
-    perShare: perShare !== null && Number.isFinite(perShare) ? perShare : null,
-    officialYield:
-      officialYield !== null && Number.isFinite(officialYield)
-        ? officialYield
-        : null,
-    recordDate,
-  };
 }
 
 /** 잠정실적 공시에서 뽑은 계정 1행 — Phase 81, 전기(전분기) 3칸은 Phase 82 */

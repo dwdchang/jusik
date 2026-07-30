@@ -136,6 +136,18 @@
   color: var(--color-text-tertiary);
 }
 
+/* 예탁원 미반영 → DART 배당결정 공시로 메운 회차 표시 (Phase 83) */
+.sourceBadge {
+  display: inline-block;
+  margin-right: 4px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background-color: var(--color-bg);
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-tertiary);
+}
+
 .footer {
   margin-top: var(--space-24);
   padding: var(--card-padding);
