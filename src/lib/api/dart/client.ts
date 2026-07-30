@@ -1,4 +1,5 @@
 import { unzipSync } from "fflate";
+import { toSafeHttpUrl } from "@/lib/format/url";
 
 /**
  * DART OpenAPI 클라이언트 — Phase 17-1 (plan.md §17.1).
@@ -322,7 +323,23 @@ export interface DartEarningsFigure {
   turnaround: string | null;
 }
 
-/** 잠정실적 공시 원문 파싱 결과 — Phase 81 */
+/**
+ * 잠정실적 공시 「2. 정보제공내역」 (Phase 84) — 실적발표 컨퍼런스콜 일정이 여기 있다.
+ *
+ * **자유서술 칸이라 값을 정규화하지 않는다.** 실측(2026-07 잠정실적 25건)에
+ * `2026년 7월 30일(목)`·`2026-07-30`·`공정공시 후 수시제공`·`공정공시 이후`가 섞여 오고,
+ * 파싱해서 날짜로 재조립하려 들면 오히려 값을 망가뜨린다 — 원문 문자열 그대로 싣는다.
+ */
+export interface DartEarningsBriefing {
+  /** 정보제공(예정)일자 — "2026년 7월 30일 공정공시 이후" 등 */
+  date: string;
+  /** 정보제공(예정)시간 — "14:10"·"-" 등 */
+  time: string;
+  /** 행사명(장소) — "2026년 2분기 경영실적 발표 (Conference Call)" 등 */
+  event: string;
+}
+
+/** 잠정실적 공시 원문 파싱 결과 — Phase 81, 발표 안내 3종은 Phase 84 */
 export interface DartEarningsDetail {
   /** 금액 단위 라벨 ("백만원"·"억원"·"원" 등) — 서식 헤더 실측값 그대로 */
   unit: string;
@@ -330,6 +347,12 @@ export interface DartEarningsDetail {
   period: string;
   /** 값이 하나라도 있는 계정 행만 (전 항목 "-"인 월간 IR 공시는 빈 배열) */
   figures: DartEarningsFigure[];
+  /** 「2. 정보제공내역」 (Phase 84) — 서식이 없으면 null */
+  briefing: DartEarningsBriefing | null;
+  /** 「3. 정정사유」 — `[기재정정]` 건에만 있다 (Phase 84) */
+  correctionReason: string | null;
+  /** 「4. 기타 투자판단…」에 적힌 회사 IR 홈페이지 URL (Phase 84) — http(s)만 */
+  irUrl: string | null;
 }
 
 /**
@@ -393,7 +416,47 @@ function isTurnaroundCell(token: string): boolean {
  * 나열이라 같은 정규식이 엉뚱한 7칸에 걸린다(실측 서울반도체 20260512900204:
  * `["당기실적(2026.1Q)","235,094",…]`). 7칸이 숫자·전환라벨 모양을 만족하지 않으면
  * 표준 서식이 아니라고 보고 그 행을 버린다.
+ *
+ * Phase 84 — 같은 원문에서 **발표 안내 3종**(정보제공내역·정정사유·IR 홈페이지 URL)도
+ * 함께 뽑는다. 원문은 이미 받아 놓은 것이라 DART 호출이 늘지 않는다.
  */
+/**
+ * 「2. 정보제공내역」 3칸 (Phase 84). 서식은 완전 정형이라 라벨 사이를 그대로 집는다
+ * — 실측 25/25 파싱 성공. 다만 **값이 채워진 건은 5/25**로, 나머지는 "-"나
+ * "공정공시 후 수시제공"이다. 비어 있는지 판단은 화면이 한다(여기서는 원문 그대로).
+ */
+function parseEarningsBriefing(text: string): DartEarningsBriefing | null {
+  const match = text.match(
+    /정보제공\(예정\)일자\s*(.+?)\s*정보제공\(예정\)시간\s*(.+?)\s*행사명\(장소\)\s*(.+?)\s*3\.\s*연락처/
+  );
+  if (match === null) {
+    return null;
+  }
+  return {
+    date: match[1].trim(),
+    time: match[2].trim(),
+    event: match[3].trim(),
+  };
+}
+
+/**
+ * 회사 IR 홈페이지 URL — 「4. 기타 투자판단과 관련한 중요사항」 안에 안내 문구로 들어온다
+ * (실측 4/25: SK하이닉스·현대차·포스코인터내셔널·LG에너지솔루션).
+ *
+ * **마지막 등장 위치부터** 찾는다 — 정정 공시는 이 라벨이 "정정전/정정후"에도 나와
+ * 앞쪽을 집으면 정정 **전** 문구의 URL이 잡힌다. 링크는 화면에서 `<a href>`로 나가므로
+ * `http(s)`가 아니면 버린다(네이버 뉴스 링크와 같은 방침).
+ */
+function parseEarningsIrUrl(text: string): string | null {
+  const from = text.lastIndexOf("기타 투자판단과 관련한 중요사항");
+  if (from < 0) {
+    return null;
+  }
+  // 서식이 태그 제거 평문이라 URL 뒤는 공백·괄호로 끝난다
+  const url = text.slice(from).match(/https?:\/\/[^\s)\]]+/)?.[0] ?? null;
+  return url === null ? null : toSafeHttpUrl(url);
+}
+
 export function parseDartEarningsDetail(text: string): DartEarningsDetail {
   const unit = text.match(/단위\s*:\s*([가-힣]+)/)?.[1] ?? "";
   const periodMatch = text.match(
@@ -439,7 +502,15 @@ export function parseDartEarningsDetail(text: string): DartEarningsDetail {
     }
   }
 
-  return { unit, period, figures };
+  return {
+    unit,
+    period,
+    figures,
+    briefing: parseEarningsBriefing(text),
+    correctionReason:
+      text.match(/3\.\s*정정사유\s*(.+?)\s*4\.\s*정정사항/)?.[1]?.trim() ?? null,
+    irUrl: parseEarningsIrUrl(text),
+  };
 }
 
 /** 접수번호로 잠정실적 원문을 받아 파싱한다. 원문 조회 실패는 호출부로 throw. */

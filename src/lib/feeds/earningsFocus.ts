@@ -1,8 +1,13 @@
 import { getAnalysisOverview } from "@/lib/analysis/overview";
+import { todayKstDate } from "@/lib/date/kst";
+import { formatBriefingWhen, isBlankDartCell } from "@/lib/feeds/earnings";
+import { visibleEarningsNews } from "@/lib/feeds/earningsNews";
 import {
   getCorpCodeMap,
+  getEarningsNews,
   getEarningsSnapshots,
   type EarningsItem,
+  type EarningsNewsItem,
   type StoredEarnings,
 } from "@/lib/feeds/store";
 import { getHoldings } from "@/lib/holdings/store";
@@ -64,6 +69,25 @@ export interface EarningsProvisionalSource {
   period: string;
 }
 
+/**
+ * 실적발표 안내 (Phase 84) — 잠정실적 공시 「2. 정보제공내역」에서 온다.
+ *
+ * **IR 개최 공시를 따로 내지 않는 회사도 여기엔 컨퍼런스콜 일정을 적는다** — Phase 82의
+ * IR 일정 카드가 비는 종목을 메우는 자리다. 값은 원문 문자열 그대로이므로
+ * "-"·"공정공시 후 수시제공" 같은 무의미 값을 화면에 내보내지 않도록 여기서 걸러 둔다.
+ */
+export interface EarningsBriefingNotice {
+  rceptNo: string;
+  /** 공시 접수일 "YYYYMMDD" */
+  rceptDt: string;
+  /** 행사명 — 이 값이 의미 있을 때만 안내를 만든다 */
+  event: string;
+  /** 일시 한 줄 — 일자/시간이 같은 문구로 중복되면 하나만 남긴다. 없으면 빈 문자열 */
+  when: string;
+  /** 회사 IR 홈페이지 (없으면 null) */
+  irUrl: string | null;
+}
+
 /** IR 개최 일정 1건 (화면 표시용 — 스냅샷 항목 + 링크) */
 export interface EarningsIrEvent {
   rceptNo: string;
@@ -95,12 +119,18 @@ export type EarningsFocus =
       latestProvisional: boolean;
       provisionalSource: EarningsProvisionalSource | null;
       irEvents: EarningsIrEvent[];
+      /** 실적발표 안내 (Phase 84) — 값이 있는 잠정실적 공시만 */
+      briefings: EarningsBriefingNotice[];
+      /** 실적 관련 보도 (Phase 84) — 발표 후 오래됐으면 빈 배열 */
+      news: EarningsNewsItem[];
     }
   | {
       /** 확정 재무를 못 구한 경우 — 잠정·IR만이라도 있으면 함께 싣는다 */
       status: "not_listed" | "no_data" | "error";
       symbolCode: string;
       irEvents: EarningsIrEvent[];
+      briefings: EarningsBriefingNotice[];
+      news: EarningsNewsItem[];
     };
 
 /**
@@ -110,6 +140,8 @@ export type EarningsFocus =
 const FOCUS_QUARTERS = 9;
 /** 종목별로 보여줄 IR 일정 수 */
 const IR_EVENT_LIMIT = 4;
+/** 종목별로 보여줄 실적발표 안내 수 (Phase 84) — 최근 분기 것만 보이면 충분하다 */
+const BRIEFING_LIMIT = 2;
 
 /**
  * 잠정실적 원문 헤더의 단위 라벨 → 억원 환산 배수.
@@ -337,6 +369,35 @@ function buildHighlights(
   });
 }
 
+/**
+ * 잠정실적 공시 → 실적발표 안내 (Phase 84). **행사명이 있는 건만** 만든다.
+ *
+ * 실측(2026-07 잠정실적 25건)에서 서식은 25/25 파싱되지만 값이 채워진 건 5건뿐이고
+ * 나머지는 "-"나 "공정공시 후 수시제공"이다 — 전부 렌더하면 빈 줄 20개가 생긴다.
+ * 행사명("2026년 2분기 경영실적설명회 (Conference Call)")이 이 안내의 본체라, 그것이
+ * 없으면 안내 자체를 만들지 않는다.
+ */
+function collectBriefings(items: EarningsItem[]): EarningsBriefingNotice[] {
+  const notices: EarningsBriefingNotice[] = [];
+
+  for (const item of items) {
+    const briefing = item.briefing;
+    if (briefing === undefined || isBlankDartCell(briefing.event)) {
+      continue;
+    }
+
+    notices.push({
+      rceptNo: item.rceptNo,
+      rceptDt: item.rceptDt,
+      event: briefing.event.trim(),
+      when: formatBriefingWhen(briefing) ?? "",
+      irUrl: item.irUrl ?? null,
+    });
+  }
+
+  return notices.slice(0, BRIEFING_LIMIT);
+}
+
 /** 종목 선택 칩 1개 */
 export interface EarningsStockOption {
   symbolCode: string;
@@ -400,19 +461,35 @@ export async function getEarningsStockOptions(
 export async function getEarningsFocus(
   symbolCode: string
 ): Promise<EarningsFocus> {
-  const [overviewResult, snapshots] = await Promise.all([
+  const [overviewResult, snapshots, newsSnapshot] = await Promise.all([
     getAnalysisOverview(symbolCode),
     getEarningsSnapshots([symbolCode]).catch((error: unknown) => {
       console.error("[earningsFocus] snapshot read failed:", error);
       return new Map<string, StoredEarnings>();
     }),
+    getEarningsNews(symbolCode).catch((error: unknown) => {
+      console.error("[earningsFocus] news read failed:", error);
+      return null;
+    }),
   ]);
 
   const items = snapshots.get(symbolCode)?.items ?? [];
   const irEvents = collectIrEvents(items);
+  const briefings = collectBriefings(items);
+  // 발표 후 오래된 스냅샷은 여기서 걸러진다 (다음 발표 때 덮어써질 때까지 남아 있으므로)
+  const news = visibleEarningsNews(
+    newsSnapshot,
+    todayKstDate().replaceAll("-", "")
+  );
 
   if (overviewResult.status !== "ok") {
-    return { status: overviewResult.status, symbolCode, irEvents };
+    return {
+      status: overviewResult.status,
+      symbolCode,
+      irEvents,
+      briefings,
+      news,
+    };
   }
 
   const provisional = collectProvisional(items);
@@ -454,5 +531,7 @@ export async function getEarningsFocus(
     latestProvisional: latest?.provisional ?? false,
     provisionalSource: latestEntry?.source ?? null,
     irEvents,
+    briefings,
+    news,
   };
 }

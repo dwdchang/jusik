@@ -5,6 +5,7 @@ import {
   earningsKey,
   newsKey,
   type EarningsFigure,
+  type EarningsBriefing,
   type EarningsIr,
   type StoredDisclosures,
   type StoredEarnings,
@@ -132,6 +133,10 @@ export interface EarningsBoardItem extends FeedBoardItem {
   unit?: string;
   /** IR 개최 일정 (Phase 82) — 「IR」 유형만 */
   ir?: EarningsIr;
+  /** 실적발표 안내 (Phase 84) — 잠정실적 「2. 정보제공내역」 */
+  briefing?: EarningsBriefing;
+  /** 정정 공시의 정정사유 (Phase 84) */
+  correctionReason?: string;
 }
 
 /**
@@ -174,6 +179,8 @@ export async function getEarningsBoard(
         period: e.period,
         unit: e.unit,
         ir: e.ir,
+        briefing: e.briefing,
+        correctionReason: e.correctionReason,
       });
     }
   });

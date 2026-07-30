@@ -4,6 +4,8 @@
  * 인증키(NAVER_CLIENT_ID/SECRET)는 서버 전용 — NEXT_PUBLIC_ 금지.
  */
 
+import { toSafeHttpUrl } from "@/lib/format/url";
+
 const NAVER_NEWS_URL = "https://openapi.naver.com/v1/search/news.json";
 const NAVER_FETCH_TIMEOUT_MS = 15_000;
 
@@ -28,6 +30,12 @@ export interface NaverNewsItem {
   link: string;
   /** 발행 시각 ms (정렬용) */
   pubDateMs: number;
+  /**
+   * 기사 발췌 2~3줄 (Phase 84) — 네이버가 검색어 주변을 잘라 주는 요약문이다.
+   * **실적 보도에서는 이 한 문단이 본체다**(임원 발언·수치 해설이 여기 담긴다).
+   * 뉴스 탭은 제목만 쓰므로 저장하지 않고, 실적 뉴스(`market:earningsNews:{code}`)만 굳힌다.
+   */
+  summary: string;
 }
 
 function getNaverCredentials(): { id: string; secret: string } {
@@ -52,42 +60,32 @@ function stripHtml(raw: string): string {
     .trim();
 }
 
-/**
- * http(s) URL만 통과 — 링크는 화면에서 <a href>로 그대로 렌더링되므로
- * `javascript:` 등 다른 스킴은 저장 단계에서 차단한다 (보안 검토 2026-07-18).
- */
-function toSafeHttpUrl(raw: string | undefined): string | null {
-  const trimmed = raw?.trim() ?? "";
-  if (trimmed === "") {
-    return null;
-  }
-  try {
-    const { protocol } = new URL(trimmed);
-    return protocol === "http:" || protocol === "https:" ? trimmed : null;
-  } catch {
-    return null;
-  }
-}
-
 /** 필터·정렬 여유분을 두고 API에서 받아오는 원본 건수 (반환은 display로 컷) */
 const NAVER_FETCH_SIZE = 20;
 
 /**
- * 종목명 키워드로 최신 뉴스 조회 — 최신순(sort=date) 상위 display건.
+ * 종목명 키워드로 뉴스 조회 — 기본은 최신순(sort=date) 상위 display건.
  *
  * sort=date만으로는 본문에만 종목명이 스치는 저관련 기사가 섞여, 실데이터 확인 결과
  * (§17.13) **제목+요약에 종목명이 실제로 포함된 기사만** 남기는 경량 필터를 둔다.
  * 네이버가 이미 검색어를 제목/본문에서 매칭하므로 대부분 통과하지만, 동명이의
  * 오탐(예: 검색어와 무관한 기사)을 걸러내는 안전망이다. pubDate 파싱 불가 항목도 제외.
+ *
+ * Phase 84 — 실적 뉴스는 **검색어와 매칭 키워드가 다르다**(쿼리는 `"종목명" "영업이익"`
+ * 인데 종목명만으로 걸러야 한다). 그래서 `match`로 필터 키워드를 따로 받고, 정렬도
+ * 관련도순(`sim`)을 고를 수 있게 열어 뒀다 — 실측상 발표 직후 `date`는 시황·정치 기사가
+ * 앞을 채워 실적 보도가 밀린다.
  */
 export async function fetchNaverNews(
   query: string,
-  display = 10
+  display = 10,
+  options: { sort?: "date" | "sim"; match?: string } = {}
 ): Promise<NaverNewsItem[]> {
   const { id, secret } = getNaverCredentials();
+  const { sort = "date", match = query } = options;
   const url = `${NAVER_NEWS_URL}?query=${encodeURIComponent(
     query
-  )}&display=${NAVER_FETCH_SIZE}&sort=date`;
+  )}&display=${NAVER_FETCH_SIZE}&sort=${sort}`;
 
   const response = await fetch(url, {
     headers: {
@@ -111,8 +109,9 @@ export async function fetchNaverNews(
       continue;
     }
     const title = stripHtml(item.title);
+    const summary = stripHtml(item.description);
     // 제목+요약에 종목명이 실제로 있는 기사만 (저관련·오탐 제거)
-    if (!`${title} ${stripHtml(item.description)}`.includes(query)) {
+    if (!`${title} ${summary}`.includes(match)) {
       continue;
     }
     // 원문 링크 우선, 부적합하면 네이버 링크 폴백 — 둘 다 http(s)가 아니면
@@ -121,7 +120,7 @@ export async function fetchNaverNews(
     if (link === null) {
       continue;
     }
-    parsed.push({ title, link, pubDateMs });
+    parsed.push({ title, link, pubDateMs, summary });
     if (parsed.length >= display) {
       break;
     }

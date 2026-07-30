@@ -28,23 +28,33 @@ import {
   EARNINGS_PARSER_VERSION,
   hasEarningsFigures,
   hasIrSchedule,
+  isEarningsNewsTarget,
   matchEarningsCategories,
   needsEarningsDocument,
 } from "@/lib/feeds/earnings";
 import {
+  EARNINGS_NEWS_WINDOW_DAYS,
+  daysBetweenYyyyMmDd,
+  earningsNewsQuery,
+  rankEarningsArticles,
+} from "@/lib/feeds/earningsNews";
+import {
   getCorpCodeMap,
   getDividendDecisionSnapshots,
+  getEarningsNews,
   getEarningsSnapshots,
   getTradeStats,
   setCorpCodeMap,
   setDisclosures,
   setDividendDecisions,
   setEarnings,
+  setEarningsNews,
   setNews,
   setTradeStats,
   type DisclosureItem,
   type DividendDecisionItem,
   type EarningsItem,
+  type EarningsNewsItem,
   type StoredDividendDecisions,
   type StoredEarnings,
   type NewsItem,
@@ -112,6 +122,11 @@ const DIVIDEND_DOC_BUDGET = 8;
  * (실적 공시 `EARNINGS_PARSER_VERSION`과 같은 장치).
  */
 const DIVIDEND_PARSER_VERSION = 1;
+/**
+ * 실적 보도 검색에서 API로부터 받아오는 원본 건수 (Phase 84) — 점수 필터로 걸러낼
+ * 여유분을 두고 넉넉히 받는다. 실제 저장은 `EARNINGS_NEWS_MAX_ITEMS`(5)건.
+ */
+const NAVER_FETCH_MAX = 20;
 /** DART 분당 과다 호출 차단 대비 종목 간 유량 제한 */
 const DART_CALL_INTERVAL_MS = 150;
 /** 네이버 검색 API 종목 간 유량 제한 (일 25,000콜 내 여유) */
@@ -179,6 +194,18 @@ export interface RefreshFeedsReport {
     /** 이번 회차에 원문을 새로 파싱한 건수 */
     parsed?: number;
     skipped?: "unlisted";
+    error?: string;
+  }>;
+  /**
+   * 실적 보도 갱신 결과 (Phase 84) — **실적 발표 직후 종목만** 나온다.
+   * 발표가 없는 회차에는 빈 배열이고, 그게 정상이다(네이버 콜 0).
+   */
+  earningsNews: Array<{
+    symbolCode: string;
+    ok: boolean;
+    count?: number;
+    /** 같은 공시로 이미 모아 둔 스냅샷이 있어 재검색하지 않음 */
+    skipped?: "already_collected";
     error?: string;
   }>;
   /**
@@ -498,6 +525,9 @@ async function refreshEarnings(
           item.period = before.period;
           item.unit = before.unit;
           item.ir = before.ir;
+          item.briefing = before.briefing;
+          item.correctionReason = before.correctionReason;
+          item.irUrl = before.irUrl;
           continue;
         }
         if (!needsEarningsDocument(item.categories) || docBudget <= 0) {
@@ -512,6 +542,17 @@ async function refreshEarnings(
             item.unit = detail.unit;
             if (detail.figures.length > 0) {
               item.figures = detail.figures;
+            }
+            // 발표 안내 3종 (Phase 84) — 같은 원문에서 나오므로 추가 호출이 없다.
+            // 값이 "-"인 회사가 다수라 있는 것만 담는다(빈 필드를 굳히지 않는다).
+            if (detail.briefing !== null) {
+              item.briefing = detail.briefing;
+            }
+            if (detail.correctionReason !== null) {
+              item.correctionReason = detail.correctionReason;
+            }
+            if (detail.irUrl !== null) {
+              item.irUrl = detail.irUrl;
             }
           } else if (hasIrSchedule(item.categories)) {
             const ir = await fetchDartIrDetail(item.rceptNo);
@@ -577,6 +618,84 @@ async function refreshEarnings(
   }
 
   return { results, dividendResults, itemsBySymbol };
+}
+
+/**
+ * 실적 발표 직후 종목만 「실적 관련 보도」 수집 → market:earningsNews:{code} (Phase 84).
+ *
+ * **평상시 네이버 콜은 0이다.** 전 종목을 매 회차 부르지 않고, 방금 수집한 실적 공시 중
+ * **최근 EARNINGS_NEWS_WINDOW_DAYS일 안에 접수된 수치 공시**(잠정실적·정기보고서·실적변동)가
+ * 있는 종목만 부른다 — 실적 보도는 발표 시점에만 쏟아지고, 그 밖의 날에 종목명을 검색해
+ * 봐야 뉴스 탭과 같은 결과가 나올 뿐이다.
+ *
+ * 같은 공시로 이미 모아 둔 스냅샷이 있으면 건너뛴다(`basisRceptNo` 대조) — 발표 후 7일
+ * 동안 회차마다(하루 15번) 같은 검색을 반복하지 않기 위한 것이고, 그래서 발표 종목당
+ * 네이버 콜은 **분기에 1번**이 된다.
+ */
+async function refreshEarningsNews(
+  earningsBySymbol: Map<string, EarningsItem[]>,
+  codeNames: Map<string, string>,
+  fetchedAt: string
+): Promise<RefreshFeedsReport["earningsNews"]> {
+  const results: RefreshFeedsReport["earningsNews"] = [];
+  const today = kstYyyyMmDdDaysAgo(0);
+
+  for (const [symbolCode, items] of earningsBySymbol) {
+    const name = codeNames.get(symbolCode) ?? "";
+    if (name === "") {
+      continue; // 종목명이 없으면 검색어를 만들 수 없다 (뉴스 탭과 같은 방침)
+    }
+
+    // 가장 최근의 "수치가 공개된" 실적 공시 — items는 접수번호 내림차순이라 첫 매치가 최신
+    const basis = items.find((item) => isEarningsNewsTarget(item.categories));
+    if (basis === undefined) {
+      continue;
+    }
+    const age = daysBetweenYyyyMmDd(basis.rceptDt, today);
+    if (age === null || age > EARNINGS_NEWS_WINDOW_DAYS || age < 0) {
+      continue;
+    }
+
+    try {
+      const stored = await getEarningsNews(symbolCode);
+      if (stored?.basisRceptNo === basis.rceptNo) {
+        results.push({ symbolCode, ok: true, skipped: "already_collected" });
+        continue;
+      }
+
+      const articles = await fetchNaverNews(
+        earningsNewsQuery(name),
+        NAVER_FETCH_MAX,
+        { sort: "sim", match: name }
+      );
+      const newsItems: EarningsNewsItem[] = rankEarningsArticles(
+        articles,
+        name
+      ).map((article) => ({
+        title: article.title,
+        link: article.link,
+        summary: article.summary,
+        pubDateMs: article.pubDateMs,
+        pubDateKst: kstYyyyMmDd(article.pubDateMs),
+      }));
+
+      await setEarningsNews({
+        symbolCode,
+        items: newsItems,
+        basisRceptNo: basis.rceptNo,
+        basisRceptDt: basis.rceptDt,
+        fetchedAt,
+      });
+      results.push({ symbolCode, ok: true, count: newsItems.length });
+    } catch (error) {
+      console.error(`[job] earnings news refresh failed (${symbolCode}):`, error);
+      results.push({ symbolCode, ok: false, error: errorMessage(error) });
+    }
+
+    await sleep(NAVER_CALL_INTERVAL_MS);
+  }
+
+  return results;
 }
 
 /**
@@ -743,6 +862,7 @@ export async function refreshFeeds(
       disclosures: [],
       news: [],
       earnings: [],
+      earningsNews: [],
       dividendDecisions: [],
       tradeStats,
       alerts: { evaluated: false, reason: "no target symbols" },
@@ -773,7 +893,18 @@ export async function refreshFeeds(
     itemsBySymbol: earningsBySymbol,
   } = await refreshEarnings(symbolCodes, map, startedAt);
 
-  // 6. 공시·시장경보·실적 알림 훅 — 실패해도 로그만 남기고 잡 ok는 게이팅하지 않는다
+  // 6. 실적 발표 직후 종목만 실적 보도 수집 → market:earningsNews:{code} (Phase 84)
+  //    발표가 없으면 네이버를 아예 부르지 않는다. 실패해도 로그만 남긴다.
+  const earningsNews = await refreshEarningsNews(
+    earningsBySymbol,
+    codeNames,
+    startedAt
+  ).catch((error: unknown) => {
+    console.error("[job] earnings news step failed:", error);
+    return [] as RefreshFeedsReport["earningsNews"];
+  });
+
+  // 7. 공시·시장경보·실적 알림 훅 — 실패해도 로그만 남기고 잡 ok는 게이팅하지 않는다
   let alerts: RefreshFeedsReport["alerts"];
   try {
     const summary = await evaluateFeedAlerts({
@@ -789,7 +920,7 @@ export async function refreshFeeds(
     alerts = { evaluated: false, reason: errorMessage(error) };
   }
 
-  // 7. 배당 지급일 당일 알림 훅 — 보유 사용자만 대상 (Phase 25), 실패해도 로그만
+  // 8. 배당 지급일 당일 알림 훅 — 보유 사용자만 대상 (Phase 25), 실패해도 로그만
   let dividendAlerts: RefreshFeedsReport["dividendAlerts"];
   try {
     const summary = await evaluateDividendAlerts({
@@ -806,6 +937,8 @@ export async function refreshFeeds(
   // 반복 재실행시키지 않고, 가드가 다음 회차에 자연히 재시도한다 (§17-4).
   // dividendDecisions도 같은 이유로 제외한다 — 예탁원 회차를 보완하는 부가 소스라
   // 실패해도 「내 배당」은 예탁원 값으로 돌아가고, 다음 회차가 원문을 다시 받는다.
+  // earningsNews(Phase 84)도 마찬가지 — 실적 수치는 이미 earnings에 들어와 있고
+  // 보도는 곁들이는 자료라, 네이버 장애로 공시 파이프라인을 재실행시키지 않는다.
   const ok =
     corpCodeMap.ok &&
     disclosures.every((row) => row.ok) &&
@@ -821,6 +954,7 @@ export async function refreshFeeds(
     disclosures,
     news,
     earnings,
+    earningsNews,
     dividendDecisions,
     tradeStats,
     alerts,

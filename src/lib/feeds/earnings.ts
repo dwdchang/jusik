@@ -72,14 +72,51 @@ export function needsEarningsDocument(categories: string[]): boolean {
 }
 
 /**
+ * DART 서식의 빈 칸인가 (Phase 84).
+ *
+ * 서식은 값이 없는 칸을 **하이픈으로 채워서** 보낸다 — 문자열이 있다는 것만으로는
+ * 값이 들어왔는지 알 수 없다. 실적발표 안내는 서식이 25/25 파싱되지만 값이 실제로
+ * 채워진 건 5/25뿐이라(실측 2026-07), 이 판정을 빠뜨리면 화면에 빈 줄이 줄줄이 생긴다.
+ */
+export function isBlankDartCell(value: string | undefined): boolean {
+  const trimmed = value?.trim() ?? "";
+  return trimmed === "" || trimmed === "-" || trimmed === "－";
+}
+
+/**
+ * 실적발표 안내의 일시 한 줄 (Phase 84) — 일자 + 시간, 빈 칸은 빼고 조립한다.
+ * **일자 칸과 시간 칸에 같은 문구가 중복돼 오는 회사가 있어**(실측: 둘 다
+ * "공정공시 후 수시제공") 같으면 한 번만 남긴다. 조립할 게 없으면 null.
+ */
+export function formatBriefingWhen(
+  briefing: { date: string; time: string } | undefined
+): string | null {
+  if (briefing === undefined) {
+    return null;
+  }
+
+  const parts: string[] = [];
+  const date = briefing.date.trim();
+  const time = briefing.time.trim();
+  if (!isBlankDartCell(date)) {
+    parts.push(date);
+  }
+  if (!isBlankDartCell(time) && time !== date) {
+    parts.push(time);
+  }
+  return parts.length === 0 ? null : parts.join(" ");
+}
+
+/**
  * 원문 파서 버전 (Phase 82) — 올리면 저장된 항목이 다음 회차부터 다시 파싱된다.
  *
  * v1: 잠정실적 표(당기·전년동기·전년동기대비) — Phase 81
  * v2: 잠정실적 표에 **전기(전분기) 3칸** 추가 + IR 개최 일정 파싱 — Phase 82
+ * v3: 잠정실적 **발표 안내 3종**(정보제공내역·정정사유·IR 홈페이지 URL) — Phase 84
  *
  * 재파싱은 회차당 `EARNINGS_DOC_BUDGET`건으로 제한돼 있어 한 번에 몰리지 않는다.
  */
-export const EARNINGS_PARSER_VERSION = 2;
+export const EARNINGS_PARSER_VERSION = 3;
 
 /**
  * 푸시 알림을 보낼 유형 (Phase 81-1) — **화면 탭은 6유형 전부 보여주되 알림은 좁힌다.**
@@ -97,4 +134,16 @@ const ALERTABLE_LABELS = new Set(["잠정실적", "정기보고서", "실적변�
 /** 이 공시가 푸시 알림 대상인가 — 매칭 유형 중 하나라도 알림 대상이면 보낸다 */
 export function isAlertableEarnings(categories: string[]): boolean {
   return categories.some((label) => ALERTABLE_LABELS.has(label));
+}
+
+/**
+ * 이 공시를 계기로 **실적 보도를 모을** 유형인가 (Phase 84).
+ *
+ * 알림 대상 3종과 같은 기준이다 — 기사가 쏟아지는 건 실적 수치가 실제로 공개될 때이고,
+ * IR 개최·실적예고는 "언제 발표하겠다"는 일정 안내라 그 시점에 보도가 없다
+ * (Phase 81-1이 알림에서 뺀 것과 같은 근거). 판정을 별도 함수로 둔 이유는 **두 규칙이
+ * 나중에 갈릴 수 있어서**다 — 알림은 사용자 취향, 이쪽은 API 예산 문제라 축이 다르다.
+ */
+export function isEarningsNewsTarget(categories: string[]): boolean {
+  return isAlertableEarnings(categories);
 }

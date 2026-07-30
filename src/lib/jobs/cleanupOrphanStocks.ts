@@ -12,6 +12,7 @@ import {
   disclosuresKey,
   dividendDecisionsKey,
   earningsKey,
+  earningsNewsKey,
   newsKey,
 } from "@/lib/feeds/store";
 import {
@@ -52,6 +53,7 @@ function orphanKeysFor(code: string): string[] {
     disclosuresKey(code),
     newsKey(code),
     earningsKey(code),
+    earningsNewsKey(code),
     dividendDecisionsKey(code),
     disclosureCursorKey(code),
     earningsCursorKey(code),
@@ -69,7 +71,7 @@ export interface CleanupOrphanStocksReport {
   scannedCount?: number;
   /** 고아로 판정된 종목 수 */
   orphanCount?: number;
-  /** 실제로 삭제된 키 총수 (종목당 최대 10개, 미존재 키는 제외) */
+  /** 실제로 삭제된 키 총수 (종목당 최대 11개, 미존재 키는 제외) */
   deletedKeys?: number;
   /** 고아 종목코드 (로그·점검용) */
   orphanCodes?: string[];

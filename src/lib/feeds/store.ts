@@ -48,6 +48,16 @@ export interface EarningsFigure {
   turnaround: string | null;
 }
 
+/**
+ * 잠정실적 공시 「2. 정보제공내역」 (Phase 84) — `DartEarningsBriefing`과 같은 모양.
+ * 값은 원문 문자열 그대로다(자유서술 칸이라 정규화하지 않는다).
+ */
+export interface EarningsBriefing {
+  date: string;
+  time: string;
+  event: string;
+}
+
 /** 기업설명회(IR) 개최 공시에서 뽑은 일정 (Phase 82) — `DartIrDetail`과 같은 모양 */
 export interface EarningsIr {
   /** 개최 일시 "2026-07-30 10:00" (시각 미정이면 "--:--") */
@@ -88,6 +98,12 @@ export interface EarningsItem {
   unit?: string;
   /** IR 개최 일정 (Phase 82) — 「IR」 유형이고 표준 서식일 때만 */
   ir?: EarningsIr;
+  /** 실적발표 안내 (Phase 84) — 잠정실적 「2. 정보제공내역」, 값이 "-"일 수도 있다 */
+  briefing?: EarningsBriefing;
+  /** 정정 공시의 「3. 정정사유」 (Phase 84) */
+  correctionReason?: string;
+  /** 회사 IR 홈페이지 URL (Phase 84) — 잠정실적 원문에 안내가 있을 때만 */
+  irUrl?: string;
 }
 
 /** market:earnings:{symbolCode} — 최근 실적 공시 스냅샷 (SET 덮어쓰기) */
@@ -95,6 +111,43 @@ export interface StoredEarnings {
   symbolCode: string;
   /** 접수 순서 내림차순 최대 10건 */
   items: EarningsItem[];
+  fetchedAt: string;
+}
+
+/**
+ * 실적 관련 보도 1건 (Phase 84) — 네이버 뉴스 검색 결과에서 실적 발표 직후 것만 추린다.
+ *
+ * 뉴스 탭(`market:news:{code}`)과 **일부러 분리했다** — 수집 시점(발표 직후에만)·쿼리
+ * (`"종목명" "영업이익"`)·정렬(관련도순)·보관 필드(요약문 포함)가 전부 다르다.
+ * 저작권상 저장하는 것은 **네이버가 주는 발췌와 원문 링크까지**이며 본문은 담지 않는다.
+ */
+export interface EarningsNewsItem {
+  title: string;
+  /** 원문 링크 (http(s) 검증 완료) */
+  link: string;
+  /** 기사 발췌 2~3줄 — 실적 멘트가 담기는 자리 */
+  summary: string;
+  /** 발행 시각 ms */
+  pubDateMs: number;
+  /** 발행일 KST "YYYYMMDD" — 표시용(저장 시점에 굳힘) */
+  pubDateKst: string;
+}
+
+/**
+ * market:earningsNews:{symbolCode} — 실적 발표 직후 보도 스냅샷 (SET 덮어쓰기).
+ *
+ * 발표가 없는 기간에는 갱신되지 않으므로(=네이버를 부르지 않는다) **어느 공시를 계기로
+ * 모았는지**(`basisRceptNo`/`basisRceptDt`)를 함께 굳힌다. 화면은 이 접수일을 근거로
+ * 오래된 스냅샷을 숨긴다 — 그러지 않으면 다음 분기까지 묵은 기사가 남는다.
+ */
+export interface StoredEarningsNews {
+  symbolCode: string;
+  /** 관련도 점수 → 최신순 상위 N건 */
+  items: EarningsNewsItem[];
+  /** 수집 계기가 된 실적 공시 접수번호 */
+  basisRceptNo: string;
+  /** 그 공시의 접수일자 "YYYYMMDD" */
+  basisRceptDt: string;
   fetchedAt: string;
 }
 
@@ -247,6 +300,11 @@ export function earningsKey(symbolCode: string): string {
   return `market:earnings:${symbolCode}`;
 }
 
+/** market:earningsNews:{code} 키 조립 — 라이터(refreshFeeds)·리더·고아 정리 잡이 공유 */
+export function earningsNewsKey(symbolCode: string): string {
+  return `market:earningsNews:${symbolCode}`;
+}
+
 /** market:dividendDecision:{code} 키 조립 — 라이터(refreshFeeds)·리더·고아 정리 잡이 공유 */
 export function dividendDecisionsKey(symbolCode: string): string {
   return `market:dividendDecision:${symbolCode}`;
@@ -303,6 +361,22 @@ export async function getEarningsSnapshots(
 
 export async function setEarnings(value: StoredEarnings): Promise<void> {
   await getRedis().set(earningsKey(value.symbolCode), value);
+}
+
+/**
+ * 종목 하나의 실적 보도 스냅샷 (Phase 84). 실적 탭은 한 번에 한 종목만 보여주므로
+ * 게시판(MGET)과 달리 단건 GET이면 충분하다.
+ */
+export async function getEarningsNews(
+  symbolCode: string
+): Promise<StoredEarningsNews | null> {
+  return getRedis().get<StoredEarningsNews>(earningsNewsKey(symbolCode));
+}
+
+export async function setEarningsNews(
+  value: StoredEarningsNews
+): Promise<void> {
+  await getRedis().set(earningsNewsKey(value.symbolCode), value);
 }
 
 /**

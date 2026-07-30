@@ -2,10 +2,12 @@ import { Suspense } from "react";
 import { formatBasDtDisplay } from "@/lib/format/basDt";
 import {
   getEarningsFocus,
+  type EarningsBriefingNotice,
   type EarningsChange,
   type EarningsIrEvent,
   type EarningsQuarterPoint,
 } from "@/lib/feeds/earningsFocus";
+import type { EarningsNewsItem } from "@/lib/feeds/store";
 import { EarningsFocusChartClient } from "./EarningsFocusChartClient";
 import styles from "./EarningsFocusPanel.module.css";
 
@@ -191,6 +193,89 @@ function IrEvents({ events }: { events: EarningsIrEvent[] }) {
   );
 }
 
+/**
+ * 실적발표 안내 (Phase 84) — 잠정실적 공시 「2. 정보제공내역」에 적힌 컨퍼런스콜 일정.
+ * IR 개최 공시를 따로 내지 않는 회사도 여기엔 적으므로 위 IR 카드의 빈자리를 메운다.
+ */
+function Briefings({ items }: { items: EarningsBriefingNotice[] }) {
+  if (items.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className={styles.irBlock}>
+      <h3 className={styles.blockTitle}>실적 발표 안내</h3>
+      <ul className={styles.irList}>
+        {items.map((item) => (
+          <li key={item.rceptNo} className={styles.irItem}>
+            {item.when !== "" ? (
+              <div className={styles.irHead}>
+                <span className={`${styles.irWhen} numeric`}>{item.when}</span>
+              </div>
+            ) : null}
+            <p className={styles.irPurpose}>{item.event}</p>
+            <p className={styles.irMeta}>
+              {formatBasDtDisplay(item.rceptDt)} 잠정실적 공시 기준
+            </p>
+            {item.irUrl !== null ? (
+              <a
+                href={item.irUrl}
+                target="_blank"
+                rel="noreferrer"
+                className={styles.irLink}
+              >
+                회사 IR 페이지 →
+              </a>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * 실적 관련 보도 (Phase 84) — 발표 직후 모아 둔 기사의 **제목 + 네이버 발췌**.
+ *
+ * 회사·애널리스트의 실적 코멘트가 실리는 유일한 자리다(DART 원문에는 면책 문구뿐이다).
+ * 저작권상 여기까지가 선이라 본문은 담지 않고 **원문 링크로 넘긴다**.
+ */
+function EarningsNews({ items }: { items: EarningsNewsItem[] }) {
+  if (items.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className={styles.newsBlock}>
+      <h3 className={styles.blockTitle}>실적 관련 보도</h3>
+      <ul className={styles.newsList}>
+        {items.map((item) => (
+          <li key={item.link} className={styles.newsItem}>
+            <a
+              href={item.link}
+              target="_blank"
+              rel="noreferrer"
+              className={styles.newsTitle}
+            >
+              {item.title}
+            </a>
+            <p className={styles.newsSummary}>{item.summary}</p>
+            <p className={styles.newsMeta}>
+              <span className="numeric">
+                {formatBasDtDisplay(item.pubDateKst)}
+              </span>
+            </p>
+          </li>
+        ))}
+      </ul>
+      <p className={styles.caption}>
+        네이버 뉴스 검색 결과이며 발췌·링크만 표시합니다. 기사 내용의 정확성은 각
+        언론사 원문을 확인해주세요.
+      </p>
+    </div>
+  );
+}
+
 /** 확정 재무를 기다리는 동안 자리를 지킨다 — 높이를 미리 잡아 레이아웃 점프를 막는다 */
 function FocusPending() {
   return <div className={styles.pending}>실적 자료를 불러오는 중…</div>;
@@ -204,6 +289,8 @@ async function FocusBody({ symbolCode }: { symbolCode: string }) {
       <>
         <p className={styles.status}>{STATUS_MESSAGE[focus.status]}</p>
         <IrEvents events={focus.irEvents} />
+        <Briefings items={focus.briefings} />
+        <EarningsNews items={focus.news} />
       </>
     );
   }
@@ -227,6 +314,8 @@ async function FocusBody({ symbolCode }: { symbolCode: string }) {
           : ""}
       </p>
       <IrEvents events={focus.irEvents} />
+      <Briefings items={focus.briefings} />
+      <EarningsNews items={focus.news} />
     </>
   );
 }

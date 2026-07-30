@@ -11,6 +11,10 @@ import {
   formatYyyymm,
 } from "@/lib/format/trade";
 import type { EarningsStockOption } from "@/lib/feeds/earningsFocus";
+import {
+  formatBriefingWhen,
+  isBlankDartCell,
+} from "@/lib/feeds/earnings";
 import type { EarningsBoardItem, FeedBoardItem } from "@/lib/feeds/homeFeed";
 import type { EarningsFigure } from "@/lib/feeds/store";
 import type { TradeStatsView } from "@/lib/feeds/tradeStats";
@@ -388,6 +392,13 @@ function EarningsBoard({
           const isOpen = openId === item.id;
           const figures: EarningsFigure[] = item.figures ?? [];
           const showQoq = hasQoqColumns(figures);
+          // 행사명이 이 안내의 본체라 그것이 비면 줄 자체를 만들지 않는다 (Phase 84)
+          const briefingEvent =
+            item.briefing !== undefined &&
+            !isBlankDartCell(item.briefing.event)
+              ? item.briefing.event.trim()
+              : null;
+          const briefingWhen = formatBriefingWhen(item.briefing);
           return (
             <li key={item.id} className={styles.item}>
               <button
@@ -437,6 +448,23 @@ function EarningsBoard({
                         {formatBasDtDisplay(item.date)}
                       </dd>
                     </div>
+                    {/* 발표 안내 (Phase 84) — 회사가 채운 건만. "-"로 온 칸은 걸러진다 */}
+                    {briefingEvent !== null ? (
+                      <div className={styles.metaRow}>
+                        <dt>실적발표</dt>
+                        <dd>
+                          {briefingEvent}
+                          {briefingWhen !== null ? ` · ${briefingWhen}` : ""}
+                        </dd>
+                      </div>
+                    ) : null}
+                    {item.correctionReason !== undefined &&
+                    item.correctionReason !== "" ? (
+                      <div className={styles.metaRow}>
+                        <dt>정정사유</dt>
+                        <dd>{item.correctionReason}</dd>
+                      </div>
+                    ) : null}
                   </dl>
 
                   {figures.length > 0 ? (
