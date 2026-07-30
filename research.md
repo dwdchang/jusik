@@ -194,7 +194,7 @@
 
 | 컴포넌트 | 종류 | 역할 |
 |---|---|---|
-| `indices/IndexDashboard` | Server | 홈 카드 조립(§28 원/달러 분리 + §85 그 카드에 달러 인덱스 보조줄 `dollarIndexNote`, §33 글로벌 지표 `MarketCard`, **Phase 64에서 「종목분석」 진입 `SummaryCard`(`/analysis`, placeholder형) 추가**) + 헤더(좌 `NavIconLink` 홈 아이콘 + `<h1>Dashboard</h1>` + 우 햄버거 `HeaderMenu` — Phase 26에서 제거했던 제목을 §36에서 영어 제목으로 복원, 설명 문구는 그대로 없음) |
+| `indices/IndexDashboard` | Server | 홈 카드 조립(§28 원/달러 분리 + §85 그 카드에 달러 인덱스 보조줄 `dollarIndexNote`(`DXY 101.45 (+0.02%)` — §85.1에서 한글 표기·기준일 병기 제거), §33 글로벌 지표 `MarketCard`, **Phase 64에서 「종목분석」 진입 `SummaryCard`(`/analysis`, placeholder형) 추가**) + 헤더(좌 `NavIconLink` 홈 아이콘 + `<h1>Dashboard</h1>` + 우 햄버거 `HeaderMenu` — Phase 26에서 제거했던 제목을 §36에서 영어 제목으로 복원, 설명 문구는 그대로 없음) |
 | `indices/SummaryCard` | Server | **홈 요약 카드 공용 프리미티브** — value/change/**note**/placeholder/staleness 배지(§35에서 `footnote` prop 폐지 — 홈 각주 전면 제거. §71의 `note`는 각주가 아니라 **기준이 다른 부가 지표 한 줄**로, 색상 없이 tertiary 대비. 현재 변동성 카드만 사용). 카드 전체가 Link |
 | `indices/MarketCard` | Server | 「글로벌 지표」 전용 카드 (§33, 제목은 §37에서 `시장`→`글로벌 지표`) — 금리·유가·금·비트코인(USD) 4행 동등 목록, 행마다 지표명·값·등락률. 지표명은 §34에서 축약(`美 금리`·`WTI`·`GOLD`·`BTC`) — 4행 모두 값 열은 숫자만(전부 USD 기준이라 §37에서 BTC의 `($)`도 제거, 통화 안내는 상세 화면 각주에만). 각주는 §35에서 제거, 등락률만 `--text-caption-sm`(12px)로 1pt 축소. §30 추가 지표는 null이면 행 생략. 골격·배지는 SummaryCard composes, 리스트 폼은 MyStocksCard(구 WatchlistCard)와 동일 관례, 카드 전체 `/indices/market` 링크 |
 | `indices/HotStocksCard` | Server | 핫종목 전용 카드 — 당일 등락률 TOP 4 리스트 (§33에서 4행 통일, SummaryCard 미사용) |
@@ -959,8 +959,9 @@ QStash 스케줄 (매일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 * * *) → POST /a
   표시하지만 판정에는 넣지 않는 건 btcUsd와 같은 취급이다.
 - **dxy의 기준일은 원/달러보다 하루 밀리는 것이 정상이다**(§85 실측 2026-07-30: usdkrw
   `20260730` vs dxy `20260729`). 통화쌍 6종의 기준일 교집합에서만 계산하는 구조라(§28)
-  장중에는 당일 행이 아직 6종 모두 채워지지 않는다 — 원/달러 카드 보조줄이 기준일을
-  병기하는 이유이며, 두 값의 등락 방향이 어긋나 보이는 것도 이 시차 때문이다.
+  장중에는 당일 행이 아직 6종 모두 채워지지 않는다. **원/달러 카드 보조줄은 기준일을
+  표시하지 않으므로**(§85.1 사용자 확정 — §85에서는 병기했다가 제거) 장중에 원/달러
+  하락과 `DXY` 상승이 한 카드에 동시에 보일 수 있다 — 버그가 아니라 이 시차다.
 - 비트코인은 24시간 거래 자산이지만 갱신은 시세 잡 시간창(평일 09:00~18:40)에만 —
   주말·야간 화면은 마지막 회차 시세(각주 안내, 사용자 확정 §30). 달러 표기는 업비트
   USDT-BTC 마켓 시세(USDT≈USD).
