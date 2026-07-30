@@ -1,0 +1,92 @@
+/* 홈 코스피/코스닥 카드의 거래대금·수급 보조 블록 (§86).
+   등락률 줄 아래에 붙는 보조 정보라 대표 수치보다 작고 낮은 대비로 둔다
+   (§85 원/달러 카드 DXY 보조줄과 같은 위계). */
+/* 위 간격은 앞 요소가 갖는다 — 등락률(`.change`)의 margin-bottom 8px이 그대로
+   구분 여백이 되므로 여기서 margin-top을 더하면 16px로 벌어진다. */
+.block {
+  min-width: 0;
+}
+
+/* 거래대금 한 줄 — 무채색. 증감 부호에 색을 주지 않는다(§86 색상 정책) */
+.trading {
+  font-size: var(--text-caption-sm);
+  color: var(--color-text-tertiary);
+  line-height: 1.4;
+}
+
+/* 개·외·기 3열 — 430px 뷰포트에서 열당 53.7px뿐이라 갭을 4px로 좁힌다 (§86 폭 실측).
+   min-width: 0으로 열이 서로를 밀지 않게 하고, nowrap을 걸지 않아 극단값(9,999억대
+   + 20일 연속)은 잘리는 대신 셀 안에서 줄바꿈된다. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.cell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* 라벨과 값 — 좁으면 라벨 아래로 값이 접힌다(wrap). 숫자를 줄이는 대신 접는 선택 */
+.cellTop {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 3px;
+  min-width: 0;
+}
+
+/* 숫자 한 덩이 — 중간에서 쪼개지지 않게. 열이 좁으면 조각 경계에서만 접힌다 */
+.piece {
+  white-space: nowrap;
+}
+
+/* 1자 축약 라벨 — 값보다 한 단 더 낮은 대비로 두어 숫자가 먼저 읽히게 */
+.label {
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+}
+
+/* 순매수 금액 — 카드 안에서 색을 갖는 유일한 보조 수치(부호가 정보의 핵심) */
+.cellValue {
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+}
+
+/* 전일 같은 시각 대비 증감 + 연속 거래일 수 — 무채색.
+   두 조각을 flex로 두고 좁으면 아래로 흐르게 한다(430px 뷰포트에서 억 4자리 +
+   연속일수는 열폭 53.7px을 넘는다 — §86 실측). 잘리는 것보다 접히는 쪽을 택했다. */
+.cellSub {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 3px;
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+  line-height: 1.4;
+}
+
+.rise {
+  color: var(--color-rise);
+}
+
+.fall {
+  color: var(--color-fall);
+}
+
+.flat {
+  color: var(--color-flat);
+}
+
+/* 스크린리더 전용 — 「개·외·기」 축약과 전일 대비 기준의 의미를 여기서만 준다
+   (MyStocksCard.module.css와 같은 패턴) */
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}

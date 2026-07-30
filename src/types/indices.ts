@@ -80,6 +80,12 @@ export interface IndexDashboardData {
    * 실패해도 잡 ok에 영향이 없어(§28) 첫 갱신 전·계산 실패 시 null이 될 수 있다.
    */
   dxy: IndexSnapshot | null;
+  /**
+   * 코스피·코스닥 카드의 거래대금·수급 보조 블록 (§86). 수급 스냅샷이 아직 없거나
+   * 거래대금도 없으면 null — 카드가 보조줄 없이 기존 모습대로 그려진다.
+   */
+  kospiFlow: HomeIndexFlow | null;
+  kosdaqFlow: HomeIndexFlow | null;
 }
 
 /** 상세 페이지 일별 시세 리스트 행 */
@@ -147,6 +153,33 @@ export interface IntradayFlowSlot {
   institution: number;
   /** 시장 전체 누적 거래대금(백만원) — 지수 스냅샷이 없던 회차는 생략 */
   tradingValue?: number;
+}
+
+/**
+ * 홈 지수 카드(코스피·코스닥)의 거래대금·수급 보조 블록 (Phase 86).
+ * 상세 「거래대금 · 수급」(§69·§70)과 같은 스냅샷을 홈 카드 폭에 맞춰 압축한 것.
+ * 금액은 전부 **백만원**(원값) — 표기 변환은 화면에서 `formatFlowCompact`로 한다.
+ */
+export interface HomeIndexFlow {
+  /** 스냅샷 시각 KST "HHMM" — 표시 값이 "몇 시 기준 누적"인지 */
+  asOfHhmm: string;
+  /** 전일 대비의 기준 — "전일 14:00"(같은 시각 슬롯) 또는 "전일 종일"(폴백) */
+  basisLabel: string;
+  /** 시장 전체 거래대금 — 스냅샷에 거래대금이 없으면 null */
+  trading: { value: number; change: number | null } | null;
+  /** 개·외·기 3열 — 수급 스냅샷이 아직 없으면 null */
+  investors: HomeIndexFlowInvestor[] | null;
+}
+
+/** 홈 카드 수급 3열 중 한 열 (Phase 86) — 라벨은 「개」·「외」·「기」 1자 축약 */
+export interface HomeIndexFlowInvestor {
+  label: string;
+  /** 당일 누적 순매수 금액(백만원, + 순매수 / − 순매도) */
+  value: number;
+  /** 전일 같은 시각 대비 증감 — 기준 슬롯도 전일 행도 없으면 null */
+  change: number | null;
+  /** 같은 부호가 이어진 거래일 수 — capped면 20거래일 창을 소진해 "20일+" */
+  streak: { days: number; capped: boolean } | null;
 }
 
 /**

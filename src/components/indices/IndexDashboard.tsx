@@ -17,6 +17,7 @@ import type {
 } from "@/lib/market/staleness";
 import type { MyStocksCardSummary } from "@/lib/stocks/myStocksCard";
 import type {
+  HomeIndexFlow,
   IndexDashboardData,
   IndexSnapshot,
   VolatilityCardSummary,
@@ -25,6 +26,7 @@ import { DataAsOfFooter } from "./DataAsOfFooter";
 import { DividendCard } from "./DividendCard";
 import { FeedSummaryCard } from "./FeedSummaryCard";
 import { HotStocksCard } from "./HotStocksCard";
+import { IndexFlowNote } from "./IndexFlowNote";
 import styles from "./IndexDashboard.module.css";
 import { MarketCard } from "./MarketCard";
 import { MyStocksCard } from "./MyStocksCard";
@@ -79,7 +81,9 @@ function refreshStatusText(incident: RefreshIncident): {
 function indexSummaryProps(
   snapshot: IndexSnapshot,
   href: string,
-  staleness: StalenessLevel | null
+  staleness: StalenessLevel | null,
+  /** 코스피·코스닥만 — 거래대금·수급 보조 블록 (§86). 시딩 전이면 null */
+  flow: HomeIndexFlow | null = null
 ) {
   return {
     title: snapshot.name,
@@ -89,6 +93,7 @@ function indexSummaryProps(
       text: formatChange(snapshot.changeAmount, snapshot.changeRate),
       direction: snapshot.direction,
     },
+    ...(flow !== null ? { flow: <IndexFlowNote flow={flow} /> } : {}),
     staleness,
   };
 }
@@ -203,13 +208,19 @@ export function IndexDashboard({
 
       <section className={styles.cards} aria-label="지표 요약">
         <SummaryCard
-          {...indexSummaryProps(data.kospi, "/indices/kospi", staleness.kospi)}
+          {...indexSummaryProps(
+            data.kospi,
+            "/indices/kospi",
+            staleness.kospi,
+            data.kospiFlow
+          )}
         />
         <SummaryCard
           {...indexSummaryProps(
             data.kosdaq,
             "/indices/kosdaq",
-            staleness.kosdaq
+            staleness.kosdaq,
+            data.kosdaqFlow
           )}
         />
         <SummaryCard

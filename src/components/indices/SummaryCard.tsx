@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import type { StalenessLevel } from "@/lib/market/staleness";
 import type { PriceDirection } from "@/types/indices";
 import styles from "./SummaryCard.module.css";
@@ -25,6 +26,7 @@ export function SummaryCard({
   valueDirection,
   change,
   note,
+  flow,
   placeholder = "데이터 준비 중",
   staleness = null,
 }: {
@@ -36,6 +38,11 @@ export function SummaryCard({
   change?: SummaryCardChange;
   /** change 아래 보조 한 줄 — 기준이 다른 부가 지표(변동성 카드의 월평균 등, §71) */
   note?: string;
+  /**
+   * note 아래 보조 블록 — 한 줄로 안 담기는 보조 정보용 슬롯 (§86 코스피·코스닥
+   * 거래대금·수급). 문자열 한 줄인 `note`와 달리 여러 줄·그리드를 넣을 수 있다.
+   */
+  flow?: ReactNode;
   placeholder?: string;
   staleness?: StalenessLevel | null;
 }) {
@@ -73,6 +80,7 @@ export function SummaryCard({
           {note !== undefined ? (
             <p className={`${styles.note} numeric`}>{note}</p>
           ) : null}
+          {flow}
         </>
       ) : (
         <p className={styles.placeholder}>{placeholder}</p>

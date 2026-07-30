@@ -1,9 +1,12 @@
 import {
+  getIntradayBaseline,
+  getInvestorFlows,
   getMarketDetails,
   type MarketDetailKey,
   type StoredMarketDetail,
 } from "@/lib/market/store";
 import { KIS_DATA_NOTICE, type IndexDashboardData } from "@/types/indices";
+import { buildHomeIndexFlow } from "./marketFlow";
 
 /**
  * 홈 대시보드 데이터 — QStash 갱신 잡이 저장한 `market:detail:*`를 읽는다.
@@ -30,7 +33,16 @@ export interface DashboardData extends IndexDashboardData {
 }
 
 export async function getDashboardData(): Promise<DashboardData> {
-  const rows = await getMarketDetails([...REQUIRED_KEYS, ...OPTIONAL_KEYS]);
+  // 수급 4키(§86)는 코스피·코스닥 카드 보조줄 전용 — 없으면 보조줄만 생략되므로
+  // detail과 함께 병렬로 읽고 실패·미시딩은 null로 흘린다. KIS 호출은 여전히 0.
+  const [rows, kospiInvestor, kosdaqInvestor, kospiBaseline, kosdaqBaseline] =
+    await Promise.all([
+      getMarketDetails([...REQUIRED_KEYS, ...OPTIONAL_KEYS]),
+      getInvestorFlows("KOSPI"),
+      getInvestorFlows("KOSDAQ"),
+      getIntradayBaseline("KOSPI"),
+      getIntradayBaseline("KOSDAQ"),
+    ]);
   const missing = REQUIRED_KEYS.filter((_, i) => rows[i] === null);
 
   if (missing.length > 0) {
@@ -62,6 +74,20 @@ export async function getDashboardData(): Promise<DashboardData> {
     gold: gold?.snapshot ?? null,
     btcUsd: btcUsd?.snapshot ?? null,
     dxy: dxy?.snapshot ?? null,
+    // 보조줄은 각 지수의 자기 수집 시각을 기준으로 삼는다 — 위 asOf(가장 오래된 시각)를
+    // 쓰면 다른 지표가 지연될 때 엉뚱한 슬롯과 비교하게 된다 (§86)
+    kospiFlow: buildHomeIndexFlow({
+      dailyRows: kospi.dailyRows,
+      investorRows: kospiInvestor?.rows ?? null,
+      intradayBaseline: kospiBaseline,
+      asOf: kospi.fetchedAt,
+    }),
+    kosdaqFlow: buildHomeIndexFlow({
+      dailyRows: kosdaq.dailyRows,
+      investorRows: kosdaqInvestor?.rows ?? null,
+      intradayBaseline: kosdaqBaseline,
+      asOf: kosdaq.fetchedAt,
+    }),
     fetchedAtByKey: {
       kospi: kospi.fetchedAt,
       kosdaq: kosdaq.fetchedAt,

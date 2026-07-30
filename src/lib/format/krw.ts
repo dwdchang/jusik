@@ -131,6 +131,34 @@ export function formatEokAxis(millionWon: number): string {
 }
 
 /**
+ * 백만원 → 홈 카드 수급 블록용 초압축 표기 (Phase 86). 최상위 단위 1개만 쓰고
+ * **쉼표를 넣지 않는다** — 430px 뷰포트에서 열당 53.7px뿐이라(§86 폭 실측)
+ * 쉼표 2개가 폭 4px을 잡아먹는다.
+ *
+ * 1조 이상은 소수 1자리 조 단위, 1조 미만은 억원 정수. `formatEokAxis`(차트 축)와
+ * 달리 **억 단위에 소수를 붙이지 않고**(폭 절약) 부호 옵션을 지원한다.
+ * 코스닥 수급은 수백억대라 조로 통일하면 "0.0조"가 되므로 단위 자동 전환이 필수.
+ *
+ * 예: 29,692,781 → "29.7조", -38,235 → "-382억", 1,113,000(억 반올림 10000) → "1조"
+ * signed=true면 양수 앞에 "+"를 붙인다(순매수/순매도 구분). 음수는 항상 "-".
+ */
+export function formatFlowCompact(millionWon: number, signed = false): string {
+  const rounded = Math.round(millionWon);
+  const sign = rounded < 0 ? "-" : signed && rounded > 0 ? "+" : "";
+  const abs = Math.abs(rounded);
+  const jo = abs / 1_000_000;
+
+  if (jo >= 1) {
+    const f = jo.toFixed(1);
+    return `${sign}${f.endsWith(".0") ? f.slice(0, -2) : f}조`;
+  }
+  // 억원 = 백만원 ÷ 100. 반올림이 1조 경계를 넘으면(9,999.5억↑) 조로 승격해
+  // "10000억"처럼 5자리가 나오지 않게 한다.
+  const eok = Math.round(abs / 100);
+  return eok >= 10_000 ? `${sign}1조` : `${sign}${eok}억`;
+}
+
+/**
  * 주 → 차트 축용 초압축 표기 (Phase 50) — 최상위 단위 1개만, 소수 1자리.
  * 지수 거래량은 천주 저장이라 호출부에서 ×1000 후 넘긴다.
  * 예: 468,193,000 → "4.7억", 12,340,000 → "1234만"

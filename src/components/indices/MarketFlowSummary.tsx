@@ -1,5 +1,6 @@
 import { kstHhmm } from "@/lib/date/kst";
 import { formatEokFromMillion, formatEokwon } from "@/lib/format/krw";
+import { pickBaselineSlot } from "@/lib/indices/marketFlow";
 import type {
   IndexDailyRow,
   IntradayFlowSlot,
@@ -39,24 +40,6 @@ function toneClass(value: number): string {
 /** "0920" → "09:20" */
 function formatHhmm(hhmm: string): string {
   return `${hhmm.slice(0, 2)}:${hhmm.slice(2)}`;
-}
-
-/**
- * 전일 슬롯 중 **현재 시각 이하의 마지막 것**을 고른다 (§70).
- * 표시 중인 값이 "이 시각까지의 누적"이므로 같은 시각 슬롯과 견줘야 사과-사과 비교가 된다.
- * 현재보다 이른 슬롯이 하나도 없으면(개장 직후 등) 가장 이른 슬롯을 쓴다.
- */
-function pickBaselineSlot(
-  slots: IntradayFlowSlot[],
-  hhmm: string
-): IntradayFlowSlot | undefined {
-  let picked: IntradayFlowSlot | undefined;
-  for (const slot of slots) {
-    if (slot.hhmm <= hhmm) {
-      picked = slot;
-    }
-  }
-  return picked ?? slots[0];
 }
 
 /**
