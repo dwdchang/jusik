@@ -8,13 +8,13 @@ import { KIS_DATA_NOTICE, type IndexDashboardData } from "@/types/indices";
 /**
  * 홈 대시보드 데이터 — QStash 갱신 잡이 저장한 `market:detail:*`를 읽는다.
  * KIS 직접 호출 없음 (Phase 11 §11.6). 빈 Redis(최초 배포)면 안내 메시지로 throw.
- * oil(Phase 15)·gold·btcUsd(Phase 30, §32~§33에서 홈 합류)는 나중에 추가된 키 —
- * 배포 직후 첫 갱신 회차 전에는 없을 수 있어 필수 4종과 달리 null을 허용한다
- * (시장 카드에서 해당 행 생략 처리).
+ * oil(Phase 15)·gold·btcUsd(Phase 30, §32~§33에서 홈 합류)·dxy(§28, §85에서 홈 합류)는
+ * 나중에 추가된 키 — 배포 직후 첫 갱신 회차 전에는 없을 수 있어 필수 4종과 달리
+ * null을 허용한다 (시장 카드에서 해당 행 생략, dxy는 원/달러 카드 보조줄 생략).
  */
 
 const REQUIRED_KEYS: MarketDetailKey[] = ["kospi", "kosdaq", "usdkrw", "us10y"];
-const OPTIONAL_KEYS: MarketDetailKey[] = ["oil", "gold", "btcUsd"];
+const OPTIONAL_KEYS: MarketDetailKey[] = ["oil", "gold", "btcUsd", "dxy"];
 
 export const MARKET_DATA_EMPTY_MESSAGE =
   "아직 수집된 시세 데이터가 없습니다. 평일 09:00~15:30(KST) 갱신 회차 이후 표시됩니다.";
@@ -38,9 +38,12 @@ export async function getDashboardData(): Promise<DashboardData> {
   }
 
   const [kospi, kosdaq, usdkrw, us10y] = rows as StoredMarketDetail[];
-  const [oil, gold, btcUsd] = rows.slice(REQUIRED_KEYS.length);
+  const [oil, gold, btcUsd, dxy] = rows.slice(REQUIRED_KEYS.length);
 
-  // 화면의 asOf는 가장 오래된 수집 시각 — staleness를 낙관 표시하지 않는다
+  // 화면의 asOf는 가장 오래된 수집 시각 — staleness를 낙관 표시하지 않는다.
+  // dxy는 제외 — 실패해도 잡 ok에 영향 없는 파생 지표라(§28) 계산이 계속 실패하면
+  // 낡은 fetchedAt이 남는데, 그걸 후보에 넣으면 부수 지표 하나가 화면 전체의
+  // 「마지막 갱신」을 끌어내린다 (§85)
   const asOf = [kospi, kosdaq, usdkrw, us10y, oil, gold, btcUsd]
     .filter((row): row is StoredMarketDetail => row !== null)
     .map((row) => row.fetchedAt)
@@ -58,6 +61,7 @@ export async function getDashboardData(): Promise<DashboardData> {
     oil: oil?.snapshot ?? null,
     gold: gold?.snapshot ?? null,
     btcUsd: btcUsd?.snapshot ?? null,
+    dxy: dxy?.snapshot ?? null,
     fetchedAtByKey: {
       kospi: kospi.fetchedAt,
       kosdaq: kosdaq.fetchedAt,

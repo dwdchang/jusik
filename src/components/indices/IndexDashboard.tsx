@@ -2,11 +2,15 @@ import { HeaderMenu } from "@/components/nav/HeaderMenu";
 import { NavIconLink } from "@/components/nav/NavIconLink";
 import type { DividendCardSummary } from "@/lib/dividends/summary";
 import type { TodayFeedCounts } from "@/lib/feeds/homeFeed";
-import { formatChange, formatPercentPoint } from "@/lib/format/change";
+import {
+  formatChange,
+  formatChangeRate,
+  formatPercentPoint,
+} from "@/lib/format/change";
 import { formatIndex } from "@/lib/format/index";
 import type { DailyHotCardSummary } from "@/lib/hotstocks/dailyCard";
 import { formatKstTime } from "@/lib/format/datetime";
-import { resolveDirection } from "@/lib/indices/kisMapper";
+import { formatBasDtLabel, resolveDirection } from "@/lib/indices/kisMapper";
 import type {
   RefreshIncident,
   StalenessLevel,
@@ -87,6 +91,31 @@ function indexSummaryProps(
     },
     staleness,
   };
+}
+
+/**
+ * 원/달러 카드의 보조 한 줄 — 달러 인덱스 (§85). 대표값은 원/달러가 유지하고,
+ * 달러 인덱스는 `note`(caption-sm·tertiary·무채색)로만 얹는다.
+ *
+ * dxy는 통화쌍 6종의 기준일 교집합에서 계산해(§28) 원/달러보다 기준일이 하루
+ * 밀릴 수 있다. 요약 카드는 기준일을 표시하지 않으니 어긋난 경우에만 날짜를
+ * 덧붙여, 두 값을 같은 날짜로 읽는 오독을 막는다.
+ */
+function dollarIndexNote(
+  dxy: IndexSnapshot | null,
+  usdKrwBasDt: string
+): string | undefined {
+  if (dxy === null) {
+    return undefined;
+  }
+
+  const head = `달러인덱스 ${formatIndex(dxy.close)} (${formatChangeRate(
+    dxy.changeRate
+  )})`;
+
+  return dxy.basDt === usdKrwBasDt
+    ? head
+    : `${head} · ${formatBasDtLabel(dxy.basDt)} 기준`;
 }
 
 /**
@@ -194,6 +223,7 @@ export function IndexDashboard({
             "/indices/usdkrw",
             staleness.usdkrw
           )}
+          note={dollarIndexNote(data.dxy, data.usdKrw.basDt)}
         />
         <MarketCard
           usTreasury10y={data.usTreasury10y}

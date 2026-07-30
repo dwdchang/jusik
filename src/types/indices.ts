@@ -75,6 +75,11 @@ export interface IndexDashboardData {
   gold: IndexSnapshot | null;
   /** 비트코인 달러 — Phase 30 추가 키라 첫 갱신 회차 전에는 null (§33 홈 시장 카드 행) */
   btcUsd: IndexSnapshot | null;
+  /**
+   * 달러 인덱스 — 원/달러 카드의 보조 한 줄용 (§85). 환율 6종 합성 파생 지표라
+   * 실패해도 잡 ok에 영향이 없어(§28) 첫 갱신 전·계산 실패 시 null이 될 수 있다.
+   */
+  dxy: IndexSnapshot | null;
 }
 
 /** 상세 페이지 일별 시세 리스트 행 */
