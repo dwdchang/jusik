@@ -152,8 +152,9 @@
 | `indices/kisOverseasMapper.ts` | 해외(환율·금리·유가·금) 응답→도메인 매핑. 행별 전일 대비가 없어 인접 종가 차분으로 계산 |
 | `indices/upbitMapper.ts` | 업비트 티커·일봉→도메인 매핑 (§30) — `mapUpbitDetail`: 스냅샷(전일 종가 대비 직접 제공)+history(최근 7)+dailyRows(`prev_closing_price` 차분), `StoredMarketDetail` 동일 폼. 일봉 경계 KST 09:00 |
 | `indices/dxy.ts` | 달러 인덱스 계산 (§28) — `computeDxyDetail`(순수): KIS에 DXY 종목이 없어 환율 6종(`KIS_DXY_COMPONENTS`)의 일별 종가를 ICE 공식(가중 기하평균)으로 합성. 통화쌍별 휴장일이 달라 기준일 교집합에서만 계산, `StoredMarketDetail` 동일 폼 반환 |
-| `indices/getDashboard.ts` | 홈 데이터 리더 — `market:detail:*` 8종 MGET. 필수 4종 없으면 throw(`MARKET_DATA_EMPTY_MESSAGE`), oil·gold·btcUsd(§33)·dxy(§85 원/달러 카드 보조줄)는 null 허용. **dxy는 `asOf` 후보에서 제외** — 잡 ok 게이팅 밖 파생 지표라 계산이 계속 실패하면 낡은 `fetchedAt`이 화면 「마지막 갱신」을 끌어내린다 |
+| `indices/getDashboard.ts` | 홈 데이터 리더 — `market:detail:*` 8종 MGET. 필수 4종 없으면 throw(`MARKET_DATA_EMPTY_MESSAGE`), oil·gold·btcUsd(§33)·dxy(§85 원/달러 카드 보조줄)는 null 허용. **dxy는 `asOf` 후보에서 제외** — 잡 ok 게이팅 밖 파생 지표라 계산이 계속 실패하면 낡은 `fetchedAt`이 화면 「마지막 갱신」을 끌어내린다. §86에서 **수급 4키**(`market:investor:*` 2 + `market:investorIntraday:*:baseline` 2)를 MGET과 **병렬**로 읽어 `kospiFlow`·`kosdaqFlow`(`buildHomeIndexFlow`) 조립 — 각 지수의 **자기 `fetchedAt`**을 기준으로 삼는다(화면 전체 asOf를 쓰면 다른 지표 지연 시 엉뚱한 슬롯과 비교) |
 | `indices/getIndexDetail.ts` / `getOverseasDetail.ts` | 상세 리더 — `market:detail:{key}` 1건. **두 파일 내용이 사실상 동일** (§8) |
+| `indices/marketFlow.ts` | 거래대금·수급 계산 (§86, 순수 함수) — `pickBaselineSlot`(§70에서 이동, 현재 시각 이하 마지막 슬롯. **상세·홈이 같은 기준을 쓰게 공용화**)·`computeFlowStreak`(같은 부호 연속 거래일. 당일 행부터 세므로 **장중엔 확정값 아님**, 20거래일 창 소진 시 `capped`, 당일 0이면 null)·`buildHomeIndexFlow`(홈 카드용 요약 조립 — 거래대금·3열 각각 전일 슬롯 우선·전일 종일 폴백, 둘 다 없으면 null) |
 | `indices/volatility.ts` | 변동성 기록 store+계산+카드 요약 (한 파일에 쓰기·읽기 혼재). 카드 요약은 최신 2개 기록의 전일 대비 + 월 집계 2종, 당일 진행분 판정(KST 15:30)까지 (§71) |
 | `indices/dates.ts` | `getLast7BusinessDates` — **현재 미사용 (레거시)** (§9.2) |
 | `market/store.ts` | 공용 시세 Redis 스토어 — `market:detail:*`, `market:stock:*`, `market:stockInfo:*`(배당 회차 `rounds` 포함, §25), `market:lastRefreshAt`(`LastRefreshRecord`: `at`=마지막 성공·`attemptedAt`=마지막 실행 시작(§52)·`trigger`·`ok`), `market:dailyFluctuation`, `market:weeklyFluctuation`, `market:stockMaster`, `market:investor:*`(§42), `market:investorIntraday:*`(+`:baseline`, §70), `market:fiRanking:*`(§50), `market:marketCapRanking:*`(+`:baseline`, §68) (§5). `getStockInfoBlocksMap`(MGET 일괄, 없는 종목은 맵에서 제외) 제공 |
@@ -195,13 +196,14 @@
 | 컴포넌트 | 종류 | 역할 |
 |---|---|---|
 | `indices/IndexDashboard` | Server | 홈 카드 조립(§28 원/달러 분리 + §85 그 카드에 달러 인덱스 보조줄 `dollarIndexNote`(`DXY 101.45 (+0.02%)` — §85.1에서 한글 표기·기준일 병기 제거), §33 글로벌 지표 `MarketCard`, **Phase 64에서 「종목분석」 진입 `SummaryCard`(`/analysis`, placeholder형) 추가**) + 헤더(좌 `NavIconLink` 홈 아이콘 + `<h1>Dashboard</h1>` + 우 햄버거 `HeaderMenu` — Phase 26에서 제거했던 제목을 §36에서 영어 제목으로 복원, 설명 문구는 그대로 없음) |
-| `indices/SummaryCard` | Server | **홈 요약 카드 공용 프리미티브** — value/change/**note**/placeholder/staleness 배지(§35에서 `footnote` prop 폐지 — 홈 각주 전면 제거. §71의 `note`는 각주가 아니라 **기준이 다른 부가 지표 한 줄**로, 색상 없이 tertiary 대비. 현재 변동성 카드만 사용). 카드 전체가 Link |
+| `indices/SummaryCard` | Server | **홈 요약 카드 공용 프리미티브** — value/change/**note**/**flow**/placeholder/staleness 배지(§35에서 `footnote` prop 폐지 — 홈 각주 전면 제거. §71의 `note`는 각주가 아니라 **기준이 다른 부가 지표 한 줄**로, 색상 없이 tertiary 대비 — 변동성 카드와 원/달러 카드(§85 DXY)가 사용. **`flow`는 §86에서 추가한 `ReactNode` 슬롯** — 문자열 한 줄인 `note`로 담을 수 없는 여러 줄·그리드용이고 코스피·코스닥 카드가 `IndexFlowNote`를 넘긴다. 위 여백은 앞 요소(`.change`)가 갖는다). 카드 전체가 Link |
 | `indices/MarketCard` | Server | 「글로벌 지표」 전용 카드 (§33, 제목은 §37에서 `시장`→`글로벌 지표`) — 금리·유가·금·비트코인(USD) 4행 동등 목록, 행마다 지표명·값·등락률. 지표명은 §34에서 축약(`美 금리`·`WTI`·`GOLD`·`BTC`) — 4행 모두 값 열은 숫자만(전부 USD 기준이라 §37에서 BTC의 `($)`도 제거, 통화 안내는 상세 화면 각주에만). 각주는 §35에서 제거, 등락률만 `--text-caption-sm`(12px)로 1pt 축소. §30 추가 지표는 null이면 행 생략. 골격·배지는 SummaryCard composes, 리스트 폼은 MyStocksCard(구 WatchlistCard)와 동일 관례, 카드 전체 `/indices/market` 링크 |
 | `indices/HotStocksCard` | Server | 핫종목 전용 카드 — 당일 등락률 TOP 4 리스트 (§33에서 4행 통일, SummaryCard 미사용) |
 | `indices/MyStocksCard` | Server | 홈 **「내 종목」** 카드 (§24→§57 개명→**§67에서 보유+관심 통합**, 구 `WatchlistCard`를 대체) — **왼쪽 보유 4·오른쪽 관심 4** 2열, 제목 우측에 **보유 전체 수익률·전일 대비**. **라벨 텍스트(「보유」·「관심」·이름표) 없음**(사용자 확정) — 좌/우 위치와 글자 크기(수익률 `--text-caption` · 전일 대비 `--text-micro`)로만 구분하고, **열 구분선도 없다**(§57에서 표 세로선을 뺀 것과 같은 방향). 시각 라벨이 없는 대신 `<ol aria-label>`·`.srOnly`로 스크린리더 텍스트는 유지. 2열이 들어가려면 폭이 필요해 카드 자신이 `grid-column: 1 / -1`(전폭)을 갖는다 — 반폭이면 열당 94px로 종목명이 잘린다(§67 계산). 한쪽만 비면 그 열에 `종목을 등록해보세요`, 양쪽 다 비면 카드 전체 placeholder. 골격·staleness 배지는 SummaryCard composes, 행 폼은 구 WatchlistCard 승계 |
 | `indices/DividendCard` | Server | 배당 일정 전용 카드 (§25) — 다가오는 지급일 상위 4행(§33, 종목명·지급일 MM/DD·주당배당금), **보유종목 기준**. 골격·배지·리스트 폼은 MyStocksCard(구 WatchlistCard)와 동일 관례, 카드 전체 `/dividends` 링크 |
 | `indices/IndexDetailScreen` | Server(async) | **지표 상세 3종(코스피·코스닥·원달러) 공용 화면** — `getIndexDetail`/`getOverseasDetail` 분기, 헤더(홈 아이콘 + 지표명 `<h1>`(§36) + 마지막 갱신)+카드+**거래대금·수급 요약(국내만, §69)**+차트+일별 리스트+푸터. `children` 슬롯(일별 시세와 푸터 사이 — usdkrw의 달러 인덱스 섹션용, §28) |
-| `indices/MarketFlowSummary` | Server | 국내 지수 상세 현황 카드 아래 「거래대금 · 수급」 요약 (§69, §70) — 시장 전체 거래대금 1줄 + 개인·외국인·기관계 3열(값·증감). **KIS 추가 콜 0**(저장된 스냅샷만). 값이 "그 시각까지의 누적"이라 **전일 같은 시각 슬롯**(`intradayBaseline`, §70)과 비교하고 — `pickBaselineSlot`=현재 시각 이하의 마지막 슬롯, 없으면 가장 이른 슬롯 — 슬롯이 없는 첫 거래일만 전일 종일 대비로 폴백(라벨로 구분). 거래대금과 3열은 각각 기준을 정한다. 3열은 **순매수 금액**이며 투자자별 *거래대금*은 KIS 미제공(§69 실측) — 화면 주석으로 명시. 셀 폭 때문에 3열만 억원 반올림 표기(`formatEokwon`). 데이터가 둘 다 없으면 `null` 반환(자체 margin 보유) |
+| `indices/MarketFlowSummary` | Server | 국내 지수 상세 현황 카드 아래 「거래대금 · 수급」 요약 (§69, §70) — 시장 전체 거래대금 1줄 + 개인·외국인·기관계 3열(값·증감). **KIS 추가 콜 0**(저장된 스냅샷만). 값이 "그 시각까지의 누적"이라 **전일 같은 시각 슬롯**(`intradayBaseline`, §70)과 비교하고 — `pickBaselineSlot`=현재 시각 이하의 마지막 슬롯, 없으면 가장 이른 슬롯 — 슬롯이 없는 첫 거래일만 전일 종일 대비로 폴백(라벨로 구분). 거래대금과 3열은 각각 기준을 정한다. 3열은 **순매수 금액**이며 투자자별 *거래대금*은 KIS 미제공(§69 실측) — 화면 주석으로 명시. 셀 폭 때문에 3열만 억원 반올림 표기(`formatEokwon`). 데이터가 둘 다 없으면 `null` 반환(자체 margin 보유). `pickBaselineSlot`은 §86에서 `lib/indices/marketFlow.ts`로 이동해 홈 카드와 공용 |
+| `indices/IndexFlowNote` | Server | 홈 **코스피·코스닥 카드**의 거래대금·수급 보조 블록 (§86) — 거래대금 1줄 + **개·외·기** 3열(상단 순매수 금액, 하단 전일 같은 시각 대비 증감 + 같은 부호 연속 거래일 수). 상세 `MarketFlowSummary`와 **같은 스냅샷·같은 기준**(`buildHomeIndexFlow`)이며 **KIS 추가 콜 0**. 폭 병목은 **430px 뷰포트**(홈 그리드가 400px에서 2열로 바뀌며 카드 내부 302→169px, 3열이면 열당 53.7px)라 라벨을 1자로 줄이고(원래 이름은 `.srOnly`) 쉼표 없는 `formatFlowCompact`를 쓴다. 그래도 억 4자리는 넘치므로 값·증감·연속을 각각 `nowrap` 조각으로 감싸 **조각 경계에서만** 접히게 했다(390px 이하는 전부 한 줄). 색상은 순매수 금액에만 — 거래대금·증감·연속은 무채색(§85 관례) |
 | `indices/DollarIndexSection` | Server(async) | 원/달러 상세 하단 달러 인덱스 섹션 (§28) — `getOverseasDetail("DXY")` → IndexCard+차트+근사치 각주. 첫 갱신 전엔 준비 중 문구 |
 | `indices/IndexCard` / `IndexDailyList` / `DataAsOfFooter` | Server | 상세 스냅샷 카드 / 일별 시세 리스트(해외 지표) / 홈 푸터 |
 | `indices/IndexDailyTable` / `InvestorFlowTable` | Server | 국내 지수 상세 탭: 일별 시세(거래량·거래대금 열, §50) / 일별 수급(투자자별 순매수 금액, §42). 억/만원·만주/억주 표기 |
@@ -619,9 +621,9 @@ QStash 스케줄 (매일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 * * *) → POST /a
 | `market:dailyFluctuation` | `StoredDailyFluctuation` (당일 등락률 상위 30+basePrice(전일 종가, §20)+fetchedAt) | ✕ | 시세 잡 | 핫종목 페이지(기본 탭)·홈 핫종목 카드 |
 | `market:weeklyFluctuation` | `StoredWeeklyFluctuation` (주간=5거래일 전 대비 등락률 상위 30+basePrice(역산, §20)+fetchedAt) | ✕ | 시세 잡 | 핫종목 페이지 주간 탭 |
 | `market:stockMaster` | `StoredStockMaster` (코드↔종목명 ~2,650+fetchedAt) | ✕ | 시세 잡 (1일 1회) | 종목명 검색 `searchStocks` |
-| `market:investor:{kospi\|kosdaq}` | `StoredInvestorFlows` (시장 전체 투자자 순매수 금액 최근 20거래일, 백만원, §42) | ✕ | 시세 잡 | 지수 상세 "일별 수급" 탭 |
+| `market:investor:{kospi\|kosdaq}` | `StoredInvestorFlows` (시장 전체 투자자 순매수 금액 최근 20거래일, 백만원, §42) | ✕ | 시세 잡 | 지수 상세 "일별 수급" 탭 · 상단 요약 · **홈 코스피/코스닥 카드**(§86 3열·연속 거래일) |
 | `market:investorIntraday:{kospi\|kosdaq}` | `StoredIntradayFlows` (당일 시각 슬롯 누적 — `tradingDate`+`slots[{hhmm, 개인·외국인·기관계 순매수, 거래대금}]`, 백만원, §70). 잡이 회차마다 upsert하며 **KIS 추가 호출 없음**(같은 회차 응답 재사용) | ✕ | 시세 잡 | (다음 거래일 baseline 승격용) |
-| `market:investorIntraday:{kospi\|kosdaq}:baseline` | 직전 거래일 슬롯 묶음 (§70) — 「거래대금 · 수급」 요약의 **전일 같은 시각 대비** 기준. 거래일이 바뀐 첫 회차에 위 키를 승격 | ✕ | 시세 잡 | 지수 상세 상단 요약 |
+| `market:investorIntraday:{kospi\|kosdaq}:baseline` | 직전 거래일 슬롯 묶음 (§70) — 「거래대금 · 수급」 요약의 **전일 같은 시각 대비** 기준. 거래일이 바뀐 첫 회차에 위 키를 승격 | ✕ | 시세 잡 | 지수 상세 상단 요약 · **홈 코스피/코스닥 카드**(§86) |
 | `market:fiRanking:{kospi\|kosdaq}` | `StoredFiRanking` (외국인·기관 × 순매수·순매도 각 상위 30, 수량=주·금액=백만원, §50) | ✕ | 시세 잡 | 지수 상세 "종목별 순위" 탭 |
 | `market:marketCapRanking:{kospi\|kosdaq}` | `StoredMarketCapRanking` (실시간 시총 상위 30 + `tradingDate`·`baseDate`, 시총 단위 억원, §68) | ✕ | 시세 잡 | 지수 상세 "시총 순위" 탭 |
 | `market:marketCapRanking:{kospi\|kosdaq}:baseline` | `MarketCapBaseline` (직전 거래일 마지막 회차=18:15 확정의 종목코드→`{rank, capEok}`, §68) | ✕ | 시세 잡 | 위 탭의 전일 대비 순위·시총 증감 기준 |
@@ -693,7 +695,11 @@ QStash 스케줄 (매일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 * * *) → POST /a
 
 - `formatIndex` — 지수 소수 2자리. `formatKrw` — "12,345원". `formatAvgPrice` —
   총액÷수량 버림 2자리. `formatEokwon` — 억원→"356조 6,867억원". `formatKrwAbbrev` —
-  차트 y축 M/B. `formatChangeAmount`/`formatChangeRate`/`formatChange`/
+  차트 y축 M/B. `formatFlowCompact`(§86) — 백만원→최상위 단위 1개·**쉼표 없음**
+  ("29.7조"/"-382억"), 1조 미만은 억원 정수(코스닥 수급이 "0.0조"로 뭉개지는 것 방지),
+  억 반올림이 1조 경계를 넘으면 조로 승격. 홈 카드 3열 폭(430px에서 53.7px) 전용이라
+  `formatEokAxis`(차트 축, 억에도 소수·부호 옵션 없음)와 구분된다.
+  `formatChangeAmount`/`formatChangeRate`/`formatChange`/
   `formatPercentPoint` — 등락 표기(+부호). `formatKstDateTime` — 「마지막 갱신」 표기.
   `formatBasDtDisplay`(2026.06.01) / `formatBasDtLabel`(06/01, kisMapper에 위치).
   `formatRatio`(StockInfoBlocks에서 export) — PER/PBR 등.
@@ -705,7 +711,9 @@ QStash 스케줄 (매일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 * * *) → POST /a
 
 - `types/indices.ts` — `IndicatorId`(=`MarketIndex`|`OverseasIndicator`(GOLD 포함 4종)|`"DXY"`|`"BTCKRW"`|`"BTCUSD"` —
   DXY는 환율 6종 합성 파생 지표(§28), BTC 2종은 업비트 외부 지표(§30)),
-  `IndexSnapshot`/`IndexSeries`/`IndexDailyRow`/`IndexDetailData`/`IndexDashboardData`,
+  `IndexSnapshot`/`IndexSeries`/`IndexDailyRow`/`IndexDetailData`/`IndexDashboardData`
+  (§86에서 `kospiFlow`·`kosdaqFlow` 추가), `HomeIndexFlow`/`HomeIndexFlowInvestor`(§86 홈 카드
+  거래대금·수급 보조 블록 — 금액은 전부 백만원 원값, 표기는 화면에서),
   `PriceDirection`, 변동성 3종(`VolatilityCardSummary`는 §71에서 일 지표 4·월 지표 2로 확장),
   `KIS_DATA_NOTICE`, `INDICATOR_NAMES`.
 - `types/holdings.ts` — `Holding`(totalCost 모델), `PortfolioDailyRecord`,
