@@ -6,14 +6,18 @@ import type {
   InvestorFlowRow,
 } from "@/types/indices";
 
-/** 홈 카드 3열 구성 — 상세 「거래대금 · 수급」과 같은 순서, 라벨만 1자로 줄인다 (§86) */
-const HOME_INVESTOR_COLUMNS: Array<{
+/**
+ * 홈 카드 수급 행 구성 — 상세 「거래대금 · 수급」과 같은 순서·같은 명칭 (§86.2).
+ * §86의 1자 축약(개·외·기)은 주체를 **행**으로 돌리면서 폭 여유가 생겨 풀네임으로
+ * 되돌렸다(3자 라벨 29px, 최악 케이스에도 10px 남는다 — §86.2 실측).
+ */
+const HOME_INVESTOR_ROWS: Array<{
   key: "individual" | "foreign" | "institution";
   label: string;
 }> = [
-  { key: "individual", label: "개" },
-  { key: "foreign", label: "외" },
-  { key: "institution", label: "기" },
+  { key: "individual", label: "개인" },
+  { key: "foreign", label: "외국인" },
+  { key: "institution", label: "기관계" },
 ];
 
 /**
@@ -124,7 +128,7 @@ export function buildHomeIndexFlow({
         : null,
     investors:
       investorToday !== undefined && investorRows !== null
-        ? HOME_INVESTOR_COLUMNS.map((col) => ({
+        ? HOME_INVESTOR_ROWS.map((col) => ({
             label: col.label,
             value: investorToday[col.key],
             change:

@@ -2,13 +2,6 @@ import { formatFlowCompact } from "@/lib/format/krw";
 import type { HomeIndexFlow, HomeIndexFlowInvestor } from "@/types/indices";
 import styles from "./IndexFlowNote.module.css";
 
-/** 1자 축약 라벨의 스크린리더용 원래 이름 (§86) */
-const FULL_LABELS: Record<string, string> = {
-  개: "개인",
-  외: "외국인",
-  기: "기관계",
-};
-
 function toneClass(value: number): string {
   if (value > 0) {
     return styles.rise;
@@ -27,7 +20,7 @@ function formatStreak(streak: { days: number; capped: boolean }): string {
   return `${streak.days}D${streak.capped ? "+" : ""}`;
 }
 
-function InvestorCell({
+function InvestorRow({
   investor,
   basisLabel,
 }: {
@@ -35,20 +28,18 @@ function InvestorCell({
   basisLabel: string;
 }) {
   const { label, value, change, streak } = investor;
-  const full = FULL_LABELS[label] ?? label;
-  const flowWord = value > 0 ? "순매수" : value < 0 ? "순매도" : "순매수";
+  const flowWord = value >= 0 ? "순매수" : "순매도";
 
-  // 값이 없는 칸도 자리를 지켜야 4행이 열끼리 어긋나지 않는다
   return (
-    <div className={styles.cell}>
-      <span className={styles.label} aria-hidden="true">
+    <tr>
+      <th scope="row" className={styles.label}>
         {label}
-      </span>
-      <span className={styles.srOnly}>{`${full} ${flowWord} `}</span>
-      <span className={`${styles.cellValue} numeric ${toneClass(value)}`}>
+      </th>
+      <td className={`${styles.value} numeric ${toneClass(value)}`}>
+        <span className={styles.srOnly}>{`${flowWord} `}</span>
         {formatFlowCompact(value, true)}
-      </span>
-      <span className={`${styles.cellSub} numeric`}>
+      </td>
+      <td className={`${styles.sub} numeric`}>
         {change !== null ? (
           <>
             <span className={styles.srOnly}>{`${basisLabel} 대비 `}</span>
@@ -57,48 +48,69 @@ function InvestorCell({
         ) : (
           "—"
         )}
-      </span>
-      <span className={`${styles.cellSub} numeric`}>
+      </td>
+      <td className={`${styles.sub} numeric`}>
         {streak !== null ? (
           <>
-            <span className={styles.srOnly}>{` ${flowWord} `}</span>
+            <span className={styles.srOnly}>{`${flowWord} `}</span>
             {formatStreak(streak)}
             <span className={styles.srOnly}> 거래일 연속</span>
           </>
         ) : (
           "—"
         )}
-      </span>
-    </div>
+      </td>
+    </tr>
   );
 }
 
 /**
- * 홈 코스피/코스닥 카드의 거래대금·수급 보조 블록 (Phase 86).
+ * 홈 코스피/코스닥 카드의 거래대금·수급 보조 블록 (Phase 86, 배치는 §86.2).
  *
  * 상세 「거래대금 · 수급」(§69·§70)과 같은 스냅샷을 카드 폭에 압축한 것 —
- * 거래대금 한 줄 + 개·외·기 3열 × 4행(라벨 / 순매수 금액 / 전일 같은 시각 대비 증감 /
- * 같은 부호가 이어진 거래일 수). **KIS 추가 호출 0**(저장된 스냅샷만).
+ * 투자자 3주체를 **행**으로 둔 4열 표(주체 / 순매수 금액 / 전일 같은 시각 대비 증감 /
+ * 같은 부호가 이어진 거래일 수) + 그 아래 거래대금 한 줄. **KIS 추가 호출 0**.
  *
- * 폭 근거(§86 실측 → §86.1 실기기 정정): 가장 좁은 지점은 **뷰포트 400~402px**이다 —
- * 홈 그리드가 400px에서 2열로 바뀌는 바로 위 구간이라 카드 내부가 332px → 155px로
- * 급감하고 3열이면 **열당 49px**뿐이다(아이폰 17이 정확히 402px). 390px 이하는 1열이라
- * 오히려 넉넉하고, 430px·480px은 이보다 넓다.
+ * 폭 근거(§86 실측 → §86.1 실기기 정정 → §86.2 배치 전환): 가장 좁은 지점은
+ * **뷰포트 400~402px**이다 — 홈 그리드가 400px에서 2열로 바뀌는 바로 위 구간이라
+ * 카드 내부가 332px → 155px로 급감한다(아이폰 17이 정확히 402px). 390px 이하는
+ * 1열이라 오히려 넉넉하다.
  *
- * §86 최초안은 라벨을 값과 같은 줄에 뒀다가 실기기에서 `기 / -1111억 / -1188억 / 3일`로
- * 네 줄이 됐다(`기 -1111억` 55.3px > 49px). 폰트를 줄이는 방향으로는 못 풀린다 —
- * 억 4자리 증감(40px) + 연속(14px)이 한 줄에 들어가려면 54px이 필요해서, 10px까지
- * 낮춰도 63.9px로 넘쳤다. 그래서 **라벨을 열 머리 행으로 올려** 각 칸이 값 하나만
- * 갖게 했다(가장 긴 칸 40.6px, 여유 8px). 라벨은 11px 그대로, 값·증감·연속만 10.5px.
+ * 주체를 열로 두는 배치(§86·§86.1)는 이 폭에 3열을 억지로 끼우는 일이었다 —
+ * 라벨을 값과 같은 줄에 두면 상단 행만으로 160px이 필요해 접히고(§86.1), 라벨을
+ * 열 머리로 올려야 겨우 들어갔다. **주체를 행으로 돌리면** 세 값이 가로로 눕고
+ * 표가 열 폭을 내용에 맞춰 배분하므로(균등 `1fr` 분할과 달리 짧은 열이 남긴 폭을
+ * 긴 열이 쓴다) 최악 케이스에도 10px이 남는다. 그래서 §86에서 1자로 줄였던 라벨을
+ * **풀네임(개인·외국인·기관계)으로 되돌렸다**.
+ *
+ * 테두리 없는 표를 쓰는 이유는 이 열 폭 자동 배분과 행/열 정렬이고, 데이터 표라
+ * 시맨틱도 맞다(`<th scope="row">`가 주체 라벨). 시각적 격자는 없다.
  *
  * 색상은 순매수 금액에만 준다 — 지수 등락률이 카드의 대표 색상이어야 하므로
- * 거래대금 줄과 증감·연속 행은 무채색 tertiary(§85 DXY 보조줄 관례).
+ * 거래대금 줄과 증감·연속 열은 무채색 tertiary(§85 DXY 보조줄 관례).
  */
 export function IndexFlowNote({ flow }: { flow: HomeIndexFlow }) {
   const { trading, investors, basisLabel } = flow;
 
   return (
     <div className={styles.block}>
+      {investors !== null ? (
+        <table className={styles.table}>
+          <caption className={styles.srOnly}>
+            {`투자자별 순매수 — 금액, ${basisLabel} 대비 증감, 연속 거래일 수`}
+          </caption>
+          <tbody>
+            {investors.map((investor) => (
+              <InvestorRow
+                key={investor.label}
+                investor={investor}
+                basisLabel={basisLabel}
+              />
+            ))}
+          </tbody>
+        </table>
+      ) : null}
+
       {trading !== null ? (
         <p className={`${styles.trading} numeric`}>
           거래대금 {formatFlowCompact(trading.value)}
@@ -109,18 +121,6 @@ export function IndexFlowNote({ flow }: { flow: HomeIndexFlow }) {
             </>
           ) : null}
         </p>
-      ) : null}
-
-      {investors !== null ? (
-        <div className={styles.grid}>
-          {investors.map((investor) => (
-            <InvestorCell
-              key={investor.label}
-              investor={investor}
-              basisLabel={basisLabel}
-            />
-          ))}
-        </div>
       ) : null}
     </div>
   );
