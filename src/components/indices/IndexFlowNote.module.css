@@ -17,7 +17,7 @@
   border-collapse: collapse;
 }
 
-/* 열 간격 3px — 최악 케이스(억 4자리 3개 + 20D+)에서 여유 10.2px을 남기는 값.
+/* 열 간격 3px — 최악 케이스(억 4자리 3개 + 20일+)에서 여유 3.2px을 남기는 값.
    패딩이 아니라 셀 왼쪽 여백으로 주어 표 전체 폭이 내용 + 간격만 차지하게 한다. */
 .table td,
 .table th {
@@ -41,17 +41,18 @@
 }
 
 /* 순매수 금액 — 카드 안에서 색을 갖는 유일한 보조 수치(부호가 정보의 핵심).
-   라벨보다 0.5px 작다(§86.1 사용자 확정) — 토큰에 없는 크기라 직접 값을 쓴다. */
+   §86.1에서 폭 때문에 10.5px로 줄였다가, 주체를 행으로 돌리며(§86.2) 여유가
+   생겨 §86.3에서 라벨과 같은 기본 크기로 되돌렸다. */
 .value {
-  font-size: 10.5px;
+  font-size: var(--text-micro);
   font-weight: var(--weight-medium);
   text-align: right;
 }
 
-/* 전일 같은 시각 대비 증감 · 연속 거래일 수 — 무채색, 값과 같은 10.5px.
+/* 전일 같은 시각 대비 증감 · 연속 거래일 수 — 무채색, 값과 같은 기본 크기.
    숫자 열이므로 오른쪽 정렬(`.numeric`의 tabular-nums와 함께 자릿수가 맞는다). */
 .sub {
-  font-size: 10.5px;
+  font-size: var(--text-micro);
   color: var(--color-text-tertiary);
   text-align: right;
 }
