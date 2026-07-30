@@ -477,7 +477,9 @@ export async function evaluateFeedAlerts(context: {
         const sendReport = await sendPushToEmail(email, {
           title: `실적 공시 — ${nameOf(event.symbolCode)}`,
           body: `[${event.item.categories.join("·")}] ${event.item.reportNm}`,
-          url: "/feeds?tab=earnings",
+          // 실적 탭은 선택한 한 종목만 보여주므로(Phase 83) 그 종목을 지정해 연다 —
+          // `code`가 없으면 첫 종목이 잡혀 알림이 가리킨 공시가 안 보인다
+          url: `/feeds?tab=earnings&code=${event.symbolCode}`,
           tag: `earnings-${event.symbolCode}-${event.item.rceptNo}`,
         });
         if (sendReport.sent > 0) {

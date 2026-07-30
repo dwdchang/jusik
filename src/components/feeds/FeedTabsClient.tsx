@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { formatBasDtDisplay } from "@/lib/format/basDt";
 import {
@@ -9,9 +10,11 @@ import {
   formatYoy,
   formatYyyymm,
 } from "@/lib/format/trade";
+import type { EarningsStockOption } from "@/lib/feeds/earningsFocus";
 import type { EarningsBoardItem, FeedBoardItem } from "@/lib/feeds/homeFeed";
 import type { EarningsFigure } from "@/lib/feeds/store";
 import type { TradeStatsView } from "@/lib/feeds/tradeStats";
+import { EarningsStockPicker } from "./EarningsStockPicker";
 import styles from "./FeedTabsClient.module.css";
 
 /**
@@ -48,6 +51,8 @@ export function FeedTabsClient({
   news,
   earnings,
   earningsFocus,
+  earningsOptions,
+  earningsCode,
   tradeStats,
   activeTab,
 }: {
@@ -55,19 +60,46 @@ export function FeedTabsClient({
   news: FeedBoardItem[];
   earnings: EarningsBoardItem[];
   /**
-   * 실적 탭 상단 블록(종목 선택 + 분기 실적 + IR 일정) — Phase 82.
+   * 실적 탭 상단 블록(분기 실적 + IR 일정) — Phase 82.
    * **서버에서 렌더해 슬롯으로 받는다.** 안에 `<Suspense>` 스트리밍과 DART 조회가
    * 들어 있어 Client 경계 밖에 둬야 한다 (이 컴포넌트는 아코디언만 다룬다).
    */
   earningsFocus: ReactNode;
+  /** 실적 탭 종목 선택지 — 보유 먼저, 그다음 관심 (Phase 83) */
+  earningsOptions: EarningsStockOption[];
+  /** 서버가 `?code=`에서 확정한 종목코드 — 고를 종목이 없으면 null */
+  earningsCode: string | null;
   tradeStats: TradeStatsView | null;
   /** 서버가 `?tab=`에서 확정한 현재 탭 (기본 뉴스) */
   activeTab: TabKey;
 }) {
+  const router = useRouter();
   const [openId, setOpenId] = useState<string | null>(null);
+
+  // 선택 종목은 URL(`?code=`)이 정본이지만, 화면 반응은 여기서 먼저 낸다 —
+  // 서버 왕복은 상단 블록(DART 조회 + Suspense)을 위한 것이고, 아래 공시 목록은
+  // 이미 전 종목치를 들고 있어 기다릴 이유가 없다 (Phase 83, 사용자 확정 B안).
+  const [pickedCode, setPickedCode] = useState(earningsCode);
+  const [syncedCode, setSyncedCode] = useState(earningsCode);
+  if (syncedCode !== earningsCode) {
+    // 뒤로가기 등으로 URL이 바뀌면 그쪽을 따른다 (렌더 중 상태 조정 — React 19 권장 패턴)
+    setSyncedCode(earningsCode);
+    setPickedCode(earningsCode);
+  }
 
   const toggle = (id: string) =>
     setOpenId((prev) => (prev === id ? null : id));
+
+  const selectStock = (symbolCode: string) => {
+    setPickedCode(symbolCode);
+    setOpenId(null); // 종목이 바뀌면 펼쳐 둔 다른 종목 항목은 닫는다
+    router.push(`/feeds?tab=earnings&code=${symbolCode}`, { scroll: false });
+  };
+
+  const earningsForStock =
+    pickedCode === null
+      ? []
+      : earnings.filter((item) => item.symbolCode === pickedCode);
 
   return (
     <div className={styles.card}>
@@ -95,8 +127,22 @@ export function FeedTabsClient({
           <NewsBoard items={news} openId={openId} onToggle={toggle} />
         ) : activeTab === "earnings" ? (
           <>
+            <EarningsStockPicker
+              options={earningsOptions}
+              value={pickedCode}
+              onSelect={selectStock}
+            />
             {earningsFocus}
-            <EarningsBoard items={earnings} openId={openId} onToggle={toggle} />
+            <EarningsBoard
+              items={earningsForStock}
+              stockName={
+                earningsOptions.find(
+                  (option) => option.symbolCode === pickedCode
+                )?.name ?? null
+              }
+              openId={openId}
+              onToggle={toggle}
+            />
           </>
         ) : (
           <TradeBoard view={tradeStats} />
@@ -312,21 +358,25 @@ function hasQoqColumns(figures: EarningsFigure[]): boolean {
 /**
  * 실적 게시판 (Phase 81) — 잠정실적 공정공시·정기보고서·IR 개최 등 실적 이벤트.
  * 잠정실적은 원문에서 파싱한 매출액·영업이익·당기순이익 표를 아코디언에 함께 편다.
+ * Phase 83부터 **선택한 종목 것만** 나온다(위 드롭다운에서 거른 뒤 넘어온다).
  */
 function EarningsBoard({
   items,
+  stockName,
   openId,
   onToggle,
 }: {
   items: EarningsBoardItem[];
+  /** 선택된 종목명 — 빈 안내 문구에 쓴다. 선택된 게 없으면 null */
+  stockName: string | null;
   openId: string | null;
   onToggle: (id: string) => void;
 }) {
   if (items.length === 0) {
     return (
       <p className={styles.placeholder}>
-        보유·관심종목의 최근 90일 실적 공시가 아직 없습니다. 실적은 분기 발표
-        시즌(2·5·8·11월 전후)에 집중됩니다.
+        {stockName ?? "보유·관심종목"}의 최근 90일 실적 공시가 아직 없습니다.
+        실적은 분기 발표 시즌(2·5·8·11월 전후)에 집중됩니다.
       </p>
     );
   }

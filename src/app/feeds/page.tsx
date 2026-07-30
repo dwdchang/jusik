@@ -40,6 +40,9 @@ function toTabKey(value: string | undefined): TabKey {
  * Phase 81에서 실적 탭과 `?tab=` 진입 탭(실적 푸시 알림 링크용)이 추가됐다.
  * Phase 82에서 실적 탭 상단에 종목 선택(`?code=`)+분기 실적 블록이 붙었다 — 그 조회는
  * **실적 탭으로 들어왔을 때만** 한다(다른 탭에서 DART를 부를 이유가 없다).
+ * Phase 83에서 선택 UI가 칩 → 세그먼트+드롭다운으로 바뀌고 아래 실적 공시 목록도
+ * 선택 종목만 보이게 됐다. 목록 자체는 여기서 **전 종목치를 그대로 넘기고**
+ * 클라이언트가 거른다 — 종목을 바꿀 때 목록이 서버 왕복을 기다리지 않게 하려는 것이다.
  */
 export default async function FeedsPage({
   searchParams,
@@ -105,9 +108,14 @@ export default async function FeedsPage({
           earnings={earnings}
           earningsFocus={
             activeTab === "earnings" ? (
-              <EarningsFocusPanel options={stockOptions} selected={selected} />
+              <EarningsFocusPanel
+                selected={selected}
+                hasOptions={stockOptions.length > 0}
+              />
             ) : null
           }
+          earningsOptions={stockOptions}
+          earningsCode={selected}
           tradeStats={tradeStats}
           activeTab={activeTab}
         />

@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Suspense } from "react";
 import { formatBasDtDisplay } from "@/lib/format/basDt";
 import {
@@ -6,22 +5,20 @@ import {
   type EarningsChange,
   type EarningsIrEvent,
   type EarningsQuarterPoint,
-  type EarningsStockOption,
 } from "@/lib/feeds/earningsFocus";
 import { EarningsFocusChartClient } from "./EarningsFocusChartClient";
 import styles from "./EarningsFocusPanel.module.css";
 
 /**
- * 실적 탭 상단 블록 — 종목 선택 + 분기 실적(잠정+확정) + 컨퍼런스콜 일정 (Phase 82).
+ * 실적 탭 상단 블록 — 분기 실적(잠정+확정) + 컨퍼런스콜 일정 (Phase 82).
  *
- * **선택 UI는 라디오가 아니라 링크 칩이다.** 라디오는 `onChange`가 필요해 Client
- * Component가 강제되고, 종목 15개를 세로로 늘어놓으면 "목록이 길어서 아래로 내리고
- * 싶다"는 원래 요구와 정면으로 충돌한다. 칩을 `?code=`로 만들면 이 프로젝트가 이미
- * 쓰는 `?mode=`·`?period=`·`?tab=` 관례와 같고 서버에서 전부 처리된다(AGENTS.md §3).
- * 시각적으로만 칩이고 `role="radiogroup"`/`role="radio"`로 라디오와 동등하게 읽힌다.
+ * 종목 선택 UI는 Phase 83에서 이 서버 컴포넌트 밖(`EarningsStockPicker`)으로 나갔다 —
+ * 드롭다운은 `onChange`가 필요해 Client여야 하고, 선택이 바뀔 때 **아래 공시 목록이
+ * 서버 왕복을 기다리지 않고 즉시 걸러지려면** 선택 상태가 클라이언트에 있어야 한다.
+ * 여기 남은 것은 선택된 종목의 본문뿐이고, 그 본문은 `?code=`로 서버가 정한다.
  *
- * 확정 재무 첫 조회는 DART를 실제로 부르므로 느리다 — 칩과 아래 공시 목록이 그걸
- * 기다리지 않도록 본문만 `<Suspense>`로 감싼다 (Phase 78 패턴).
+ * 확정 재무 첫 조회는 DART를 실제로 부르므로 느리다 — 선택 줄과 아래 공시 목록이
+ * 그걸 기다리지 않도록 본문만 `<Suspense>`로 감싼다 (Phase 78 패턴).
  */
 
 const STATUS_MESSAGE: Record<string, string> = {
@@ -68,66 +65,6 @@ function changeClass(change: EarningsChange): string {
     return styles.flat;
   }
   return change.turnaround.startsWith("흑") ? styles.rise : styles.fall;
-}
-
-/** 종목 선택 칩 묶음 — 보유·관심을 줄로 나눠 각각 라벨을 단다 */
-function StockChips({
-  options,
-  selected,
-}: {
-  options: EarningsStockOption[];
-  selected: string | null;
-}) {
-  const groups: Array<{ key: "holding" | "watchlist"; label: string }> = [
-    { key: "holding", label: "보유" },
-    { key: "watchlist", label: "관심" },
-  ];
-
-  return (
-    <div className={styles.chipGroups} role="radiogroup" aria-label="실적을 볼 종목">
-      {groups.map((group) => {
-        const items = options.filter((option) => option.group === group.key);
-        if (items.length === 0) {
-          return null;
-        }
-        return (
-          <div key={group.key} className={styles.chipRow}>
-            <span className={styles.chipRowLabel}>{group.label}</span>
-            <div className={styles.chips}>
-              {items.map((option) =>
-                option.supported ? (
-                  <Link
-                    key={option.symbolCode}
-                    href={`/feeds?tab=earnings&code=${option.symbolCode}`}
-                    scroll={false}
-                    role="radio"
-                    aria-checked={option.symbolCode === selected}
-                    className={`${styles.chip} ${
-                      option.symbolCode === selected ? styles.chipActive : ""
-                    }`}
-                  >
-                    {option.name}
-                  </Link>
-                ) : (
-                  // 우선주 등 DART 고유번호가 없는 종목 — 눌러도 빈 화면이라 막는다
-                  <span
-                    key={option.symbolCode}
-                    role="radio"
-                    aria-checked={false}
-                    aria-disabled="true"
-                    title="DART에 재무 자료가 없는 종목입니다 (우선주 등)"
-                    className={`${styles.chip} ${styles.chipDisabled}`}
-                  >
-                    {option.name}
-                  </span>
-                )
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
 }
 
 /** 최신 분기 요약 3칸 — 값 + 전분기대비 + 전년동기대비 */
@@ -295,21 +232,21 @@ async function FocusBody({ symbolCode }: { symbolCode: string }) {
 }
 
 export function EarningsFocusPanel({
-  options,
   selected,
+  hasOptions,
 }: {
-  options: EarningsStockOption[];
+  /** 서버가 `?code=`에서 확정한 종목 — 고를 종목이 없으면 null */
   selected: string | null;
+  /** 보유·관심종목이 하나라도 있는가 — 빈 안내 문구를 가른다 */
+  hasOptions: boolean;
 }) {
   return (
     <section className={styles.panel}>
-      <StockChips options={options} selected={selected} />
-
       {selected === null ? (
         <p className={styles.status}>
-          {options.length === 0
-            ? "보유·관심종목을 등록하면 종목별 분기 실적을 볼 수 있습니다."
-            : "종목을 선택하면 분기 실적과 IR 일정을 볼 수 있습니다."}
+          {hasOptions
+            ? "실적 자료를 뽑을 수 있는 종목이 없습니다. 우선주는 DART에 재무 자료가 없습니다."
+            : "보유·관심종목을 등록하면 종목별 분기 실적을 볼 수 있습니다."}
         </p>
       ) : (
         // key를 종목코드로 둬야 종목을 바꿀 때 fallback이 다시 뜬다
