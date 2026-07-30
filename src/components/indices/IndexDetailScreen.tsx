@@ -124,6 +124,13 @@ export async function IndexDetailScreen({
           <IndexCard snapshot={data.snapshot} />
         </section>
 
+        {/* 차트가 카드 바로 아래 — 상세 화면에서 가장 먼저 보고 싶은 정보라
+            「거래대금 · 수급」보다 위에 둔다 (§87). 그 요약은 차트 아래에서
+            접힘 기본으로 붙는다. */}
+        <section className={styles.section} aria-label="최근 7거래일 추이">
+          <IndexChartClient series={data.history} />
+        </section>
+
         {market === "KOSPI" || market === "KOSDAQ" ? (
           <MarketFlowSummary
             dailyRows={data.dailyRows}
@@ -132,10 +139,6 @@ export async function IndexDetailScreen({
             asOf={data.asOf}
           />
         ) : null}
-
-        <section className={styles.section} aria-label="최근 7거래일 추이">
-          <IndexChartClient series={data.history} />
-        </section>
 
         {market === "KOSPI" || market === "KOSDAQ" ? (
           <section className={styles.section} aria-label="일별 데이터">

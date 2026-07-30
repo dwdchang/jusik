@@ -43,7 +43,8 @@ function formatHhmm(hhmm: string): string {
 }
 
 /**
- * 국내 지수 상세 상단 「거래대금·수급」 요약 (Phase 69, §70에서 비교 기준 변경).
+ * 국내 지수 상세의 「거래대금·수급」 요약 (Phase 69, §70에서 비교 기준 변경,
+ * §87에서 차트 아래로 내려가며 접힘 기본이 됨).
  *
  * 값은 전부 저장된 스냅샷에서 오고 **KIS 추가 호출이 없다**.
  * - 거래대금: `market:detail:{kospi|kosdaq}`의 dailyRows(백만원)
@@ -109,8 +110,22 @@ export function MarketFlowSummary({
         : null;
 
   return (
-    <section className={styles.card} aria-label="거래대금·수급 요약">
-      <h2 className={styles.title}>거래대금 · 수급</h2>
+    <details className={styles.card}>
+      {/* 접힘이 기본 (§87) — 차트가 화면 첫 블록 자리를 갖고, 이 요약은 필요할 때만
+          편다. 다만 접힌 채로도 거래대금 값은 보이게 `summary`에 함께 둔다.
+          네이티브 `<details>`라 JS 없이 동작하고 서버 컴포넌트로 남는다
+          (holdings/DailyHistoryList와 같은 패턴). */}
+      <summary className={styles.summary}>
+        <span className={styles.title}>거래대금 · 수급</span>
+        {tradingValue !== undefined ? (
+          <span className={`${styles.summaryValue} numeric`}>
+            {formatEokFromMillion(tradingValue)}
+          </span>
+        ) : null}
+        <span className={styles.chevron} aria-hidden="true">
+          ▾
+        </span>
+      </summary>
 
       {tradingValue !== undefined ? (
         <div className={styles.tradingRow}>
@@ -169,6 +184,6 @@ export function MarketFlowSummary({
           </p>
         </>
       ) : null}
-    </section>
+    </details>
   );
 }

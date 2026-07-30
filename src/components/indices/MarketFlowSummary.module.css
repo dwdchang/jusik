@@ -9,10 +9,48 @@
   box-shadow: var(--shadow-sm);
 }
 
+/* 접기 토글 줄 (§87) — 제목 + 접힌 채로도 보이는 거래대금 값 + 셰브런.
+   기본 마커는 지우고(홈 아이콘 관례 대신 DailyHistoryList의 ▾ 패턴) 줄 전체를 누른다. */
+.summary {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-8);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+.summary::-webkit-details-marker {
+  display: none;
+}
+
 .title {
   font-size: var(--text-caption);
   font-weight: var(--weight-semibold);
   color: var(--color-text-secondary);
+}
+
+/* 접힘 상태의 요약 값 — 펼치면 아래 `.tradingRow`가 같은 값에 날짜·증감을 더해
+   보여주므로, 여기서는 금액만 둔다(요약 → 상세 점층) */
+.summaryValue {
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-primary);
+}
+
+.chevron {
+  margin-left: auto;
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+  transition: transform 0.15s ease;
+}
+
+.card[open] .chevron {
+  transform: rotate(180deg);
+}
+
+/* 펼쳤을 때만 제목줄과 본문 사이 간격을 준다 */
+.card[open] .summary {
   margin-bottom: var(--space-12);
 }
 
