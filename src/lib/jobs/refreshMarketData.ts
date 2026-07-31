@@ -60,6 +60,7 @@ import {
 import {
   INDICATOR_TO_DETAIL_KEY,
   getIntradayFlows,
+  getIntradayManual,
   getMarketCapBaseline,
   getMarketCapRanking,
   getMarketDetail,
@@ -68,8 +69,10 @@ import {
   setDailyFluctuation,
   setFiRanking,
   setGlobalTable,
+  setIntradayArchive,
   setIntradayBaseline,
   setIntradayFlows,
+  setIntradayManual,
   setInvestorFlows,
   getLastRefreshRecord,
   setLastRefreshRecord,
@@ -147,8 +150,17 @@ export interface RefreshMarketDataReport {
   weeklyFluctuation: { ok: boolean; count?: number; error?: string };
   /** 일별 수급(코스피·코스닥 시장 전체 투자자 순매수) 저장 결과 — 부수 데이터, 실패 격리 */
   investorFlows: { ok: boolean; count?: number; error?: string };
-  /** 장중 시각 슬롯 적재(§70) 결과 — KIS 호출 0, 부수 데이터·실패 격리. count는 저장한 시장 수 */
-  intradayFlows: { ok: boolean; count?: number; error?: string };
+  /**
+   * 장중 시각 슬롯 적재(§70) 결과 — KIS 호출 0, 부수 데이터·실패 격리. count는 저장한 시장 수.
+   * `manual`은 이 회차가 수동 트리거라 슬롯을 `:manual:{날짜}`로 격리했다는 표시다(§92) —
+   * 정규 시계열·baseline·아카이브는 건드리지 않았다는 뜻이라 수동 시딩 후 응답에서 확인용.
+   */
+  intradayFlows: {
+    ok: boolean;
+    count?: number;
+    manual?: true;
+    error?: string;
+  };
   /** 종목별 수급 순위(외국인·기관 × 순매수·순매도) 저장 결과 — 부수 데이터, 실패 격리 */
   fiRanking: { ok: boolean; count?: number; error?: string };
   /** 시총 순위(코스피·코스닥 각 상위 30) 저장 결과 — 부수 데이터, 실패 격리 */
@@ -486,20 +498,31 @@ async function refreshInvestorFlows(fetchedAt: string): Promise<{
 }
 
 /**
- * 장중 시각 슬롯 적재 → market:investorIntraday:{kospi|kosdaq} (§70).
+ * 장중 시각 슬롯 적재 → market:investorIntraday:{kospi|kosdaq} (§70·§92).
  *
  * **KIS 추가 호출 0** — 같은 회차의 투자자 응답(`latest`)과 방금 저장된 지수 스냅샷의
  * 거래대금을 재사용해 "이 시각까지의 누적"을 슬롯 하나로 굳힌다. 다음 거래일 첫 회차에서
  * 직전 스냅샷을 `:baseline`으로 승격해 화면이 **전일 같은 시각**과 비교할 수 있게 한다
  * (KIS는 과거 거래일의 시간대별 수급을 주지 않아 자체 축적이 유일한 경로).
  *
+ * **Phase 92 — 호출 주체로 경로를 가른다.** 정규(QStash) 회차만 당일 키·baseline·
+ * 아카이브를 건드리고, 수동 트리거(`?force=true` 등)는 `:manual:{날짜}` 키로 격리한다.
+ * 수동 호출은 정규 회차 사이 비정형 시각에 들어와 시간대별 분포를 오염시키는데, **시각
+ * (hhmm)으로는 이를 가려낼 수 없다** — 수동 호출이 정각에 떨어지면 아래 `filter`가
+ * 정규 슬롯을 조용히 덮어쓰고, 반대로 지연된 정규 회차는 멀쩡한 데이터인데도 비정각이다.
+ * `trigger`는 인증 방식(QStash 서명 / CRON_SECRET)에서 나오므로 이 구분이 정확하다.
+ *
  * 당일 행이 아직 없는 회차(휴장일·장 시작 전)는 전일 누계를 오늘 슬롯으로 오인하지
  * 않도록 건너뛴다. 부수 데이터라 실패해도 잡 전체 ok에 영향 없다.
  */
 async function refreshIntradayFlowSlots(
   fetchedAt: string,
-  latest: Partial<Record<MarketIndex, InvestorFlowRow>>
+  latest: Partial<Record<MarketIndex, InvestorFlowRow>>,
+  /** 라우트가 넘긴 호출 주체 — "qstash"만 정규 시계열로 취급한다 (§92) */
+  trigger: string
 ): Promise<RefreshMarketDataReport["intradayFlows"]> {
+  const isManual = trigger !== "qstash";
+
   try {
     const today = todayKstDate();
     const todayBasDt = today.replace(/-/g, "");
@@ -510,17 +533,6 @@ async function refreshIntradayFlowSlots(
       const row = latest[market];
       if (row === undefined || row.basDt !== todayBasDt) {
         continue;
-      }
-
-      const stored = await getIntradayFlows(market);
-
-      // 거래일이 바뀌었으면 직전 거래일 슬롯 묶음을 기준선으로 승격
-      if (
-        stored !== null &&
-        stored.tradingDate !== today &&
-        stored.slots.length > 0
-      ) {
-        await setIntradayBaseline(stored);
       }
 
       const detail = await getMarketDetail(INDICATOR_TO_DETAIL_KEY[market]);
@@ -538,6 +550,35 @@ async function refreshIntradayFlowSlots(
         ...(tradingValue !== undefined ? { tradingValue } : {}),
       };
 
+      // 수동 트리거 — 날짜별 전용 키에만 누적한다. 정규 시계열도, baseline 승격도
+      // 건드리지 않아 그날 정규 슬롯 묶음은 온전히 QStash 회차만으로 남는다.
+      if (isManual) {
+        const storedManual = await getIntradayManual(market, today);
+        const keptManual =
+          storedManual?.slots.filter((s) => s.hhmm !== hhmm) ?? [];
+        await setIntradayManual({
+          market,
+          tradingDate: today,
+          slots: [...keptManual, slot].sort((a, b) =>
+            a.hhmm.localeCompare(b.hhmm)
+          ),
+          fetchedAt,
+        });
+        count += 1;
+        continue;
+      }
+
+      const stored = await getIntradayFlows(market);
+
+      // 거래일이 바뀌었으면 직전 거래일 슬롯 묶음을 기준선으로 승격
+      if (
+        stored !== null &&
+        stored.tradingDate !== today &&
+        stored.slots.length > 0
+      ) {
+        await setIntradayBaseline(stored);
+      }
+
       // 같은 거래일이면 이어 붙이고(같은 슬롯은 최신 값으로 교체), 아니면 새로 시작
       const kept =
         stored !== null && stored.tradingDate === today
@@ -545,11 +586,16 @@ async function refreshIntradayFlowSlots(
           : [];
       const slots = [...kept, slot].sort((a, b) => a.hhmm.localeCompare(b.hhmm));
 
-      await setIntradayFlows({ market, tradingDate: today, slots, fetchedAt });
+      const value = { market, tradingDate: today, slots, fetchedAt };
+      await setIntradayFlows(value);
+      // 영구 아카이브(§92) — 당일 키는 내일 덮어써지므로 같은 값을 날짜 키에도 남긴다.
+      // 회차마다 함께 쓰는 이유는 마지막 회차 1회 복사로는 그 회차가 실패한 날이
+      // 통째로 비기 때문이다(지나간 거래일은 KIS로 복구 불가).
+      await setIntradayArchive(value);
       count += 1;
     }
 
-    return { ok: true, count };
+    return { ok: true, count, ...(isManual ? { manual: true as const } : {}) };
   } catch (error) {
     console.error("[job] intraday flow slots refresh failed:", error);
     return { ok: false, error: errorMessage(error) };
@@ -1047,9 +1093,11 @@ export async function refreshMarketData(
 
   // 1b''-2. 장중 시각 슬롯 적재 → market:investorIntraday:{kospi|kosdaq}
   // (§70, KIS 호출 0 — 위 응답 재사용. 전일 같은 시각 대비의 기준을 쌓는다)
+  // trigger를 넘기는 이유는 수동 회차를 정규 시계열에서 격리하기 위함이다 (§92).
   const intradayFlows = await refreshIntradayFlowSlots(
     startedAt,
-    latestInvestorRows
+    latestInvestorRows,
+    trigger
   );
 
   // 1b'''. 종목별 수급 순위 → market:fiRanking:{kospi|kosdaq} (§50, 부수 데이터·실패 격리)

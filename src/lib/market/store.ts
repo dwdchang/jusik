@@ -279,6 +279,33 @@ function intradayBaselineKey(market: MarketIndex): string {
   return `${intradayFlowsKey(market)}:baseline`;
 }
 
+/**
+ * market:investorIntraday:{kospi|kosdaq}:archive:{YYYY-MM-DD} 키 조립 (Phase 92).
+ * 당일 키(§70)는 매일 덮어써지므로 시간대별 분포를 확률적으로 다루려면 별도 축적이
+ * 필요하다 — KIS가 과거 거래일의 시간대별 수급을 주지 않아(§70 실측) 지나간 날은
+ * 어떤 방법으로도 복구되지 않는다. **TTL 없이 영구 보존**한다.
+ */
+function intradayArchiveKey(market: MarketIndex, tradingDate: string): string {
+  return `${intradayFlowsKey(market)}:archive:${tradingDate}`;
+}
+
+/**
+ * market:investorIntraday:{kospi|kosdaq}:manual:{YYYY-MM-DD} 키 조립 (Phase 92).
+ * `?force=true` 등 **수동 트리거**가 만든 슬롯 — 정규 회차 사이에 끼어드는 비정형
+ * 시각이라 정규 시계열에 섞이면 시간대별 분포가 오염된다. 버리지는 않고(사용자 확정)
+ * 여기에 격리해 통계에서만 제외한다. 날짜가 키에 들어가 그 자체로 아카이브다.
+ */
+function intradayManualKey(market: MarketIndex, tradingDate: string): string {
+  return `${intradayFlowsKey(market)}:manual:${tradingDate}`;
+}
+
+/**
+ * 장중 슬롯 아카이브 SCAN 접두사 (Phase 92) — 맥미니 미러 스크립트
+ * (`scripts/mirror-intraday-flows.mjs`)가 같은 패턴을 **하드코딩**해 쓴다.
+ * 키 형태를 바꾸면 그 스크립트도 함께 고쳐야 한다.
+ */
+export const INTRADAY_ARCHIVE_SCAN_MATCH = "market:investorIntraday:*:archive:*";
+
 /** market:fiRanking:{kospi|kosdaq} 키 조립 (Phase 50) */
 function fiRankingKey(market: MarketIndex): string {
   return `market:fiRanking:${market === "KOSPI" ? "kospi" : "kosdaq"}`;
@@ -373,6 +400,50 @@ export async function setIntradayBaseline(
   value: StoredIntradayFlows
 ): Promise<void> {
   await getRedis().set(intradayBaselineKey(value.market), value);
+}
+
+/**
+ * 그날 슬롯 묶음을 날짜별 아카이브로 영구 보존한다 (Phase 92).
+ * 회차마다 당일 키와 **함께** 덮어쓴다(멱등) — 마지막 회차에 1회만 복사하면 그
+ * 회차가 실패한 날이 통째로 비기 때문이다. 회차당 시장별 SET 1회가 늘 뿐이고
+ * (하루 84회 남짓), 슬롯 1개가 103B라 연간 증가분은 2MB 수준이다.
+ */
+export async function setIntradayArchive(
+  value: StoredIntradayFlows
+): Promise<void> {
+  await getRedis().set(
+    intradayArchiveKey(value.market, value.tradingDate),
+    value
+  );
+}
+
+/** 특정 거래일의 아카이브 슬롯 (Phase 92) — 분위수 계산·검증용 */
+export async function getIntradayArchive(
+  market: MarketIndex,
+  tradingDate: string
+): Promise<StoredIntradayFlows | null> {
+  return getRedis().get<StoredIntradayFlows>(
+    intradayArchiveKey(market, tradingDate)
+  );
+}
+
+/** 수동 트리거 슬롯 (Phase 92) — 정규 시계열과 분리 보관 */
+export async function getIntradayManual(
+  market: MarketIndex,
+  tradingDate: string
+): Promise<StoredIntradayFlows | null> {
+  return getRedis().get<StoredIntradayFlows>(
+    intradayManualKey(market, tradingDate)
+  );
+}
+
+export async function setIntradayManual(
+  value: StoredIntradayFlows
+): Promise<void> {
+  await getRedis().set(
+    intradayManualKey(value.market, value.tradingDate),
+    value
+  );
 }
 
 export async function getFiRanking(
