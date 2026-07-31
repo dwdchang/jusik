@@ -21,8 +21,10 @@ export async function POST(request: Request) {
     return Response.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  // 시간창 우회(디버깅·최초 시딩용) — CRON_SECRET 수동 트리거에만 허용.
+  // 시간·회차 게이트 우회(디버깅·최초 시딩용) — CRON_SECRET 수동 트리거에만 허용.
   // QStash 경로는 스케줄이 곧 시간 규칙이므로 force를 무시한다.
+  // 아래 KIS 허용 창과 글로벌 지표 표의 하루 3회차 게이트(§88)를 함께 우회한다 —
+  // 새 키를 시딩할 때 다음 회차(최대 반나절)를 기다리지 않기 위함.
   const force =
     trigger === "manual" &&
     new URL(request.url).searchParams.get("force") === "true";
@@ -36,7 +38,7 @@ export async function POST(request: Request) {
     });
   }
 
-  const report = await refreshMarketData(trigger);
+  const report = await refreshMarketData(trigger, { force });
 
   // 데이터 갱신 실패 → 500 (QStash 재시도 트리거 — 멱등이라 전체 재실행 무해).
   // 알림 발송만 실패한 경우는 report.ok에 포함되지 않아 200 (§11.10-A6).

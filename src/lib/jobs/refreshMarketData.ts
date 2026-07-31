@@ -324,9 +324,11 @@ export async function refreshDxy(fetchedAt: string): Promise<{
 export async function refreshGlobalTable(
   fetchedAt: string,
   fxRawByCode: ReadonlyMap<string, KisOverseasDailyResponse>,
-  domesticBasDt: string
+  domesticBasDt: string,
+  /** 최초 시딩·디버깅용 회차 게이트 우회 (라우트의 manual + ?force=true 한정) */
+  force = false
 ): Promise<RefreshMarketDataReport["globalTable"]> {
-  if (!isGlobalTableRound()) {
+  if (!force && !isGlobalTableRound()) {
     return { ok: true, skipped: true };
   }
 
@@ -980,7 +982,13 @@ async function refreshPortfolios(
 }
 
 export async function refreshMarketData(
-  trigger: string
+  trigger: string,
+  /**
+   * 시간·회차 게이트 우회 — 라우트가 `manual` + `?force=true`에서만 넘긴다 (§11.4).
+   * 현재는 글로벌 지표 표의 하루 3회차 게이트(§88)에만 쓰인다 — 새 키를 처음 시딩할 때
+   * 다음 회차(최대 반나절)를 기다리지 않기 위함.
+   */
+  options: { force?: boolean } = {}
 ): Promise<RefreshMarketDataReport> {
   const startedAt = new Date().toISOString();
   const confirmedRound = isConfirmedRound();
@@ -1023,7 +1031,8 @@ export async function refreshMarketData(
   const globalTable = await refreshGlobalTable(
     startedAt,
     fxRawByCode,
-    kospiBasDt ?? ""
+    kospiBasDt ?? "",
+    options.force ?? false
   );
 
   // 1b. 당일 등락률 순위 상위 30 → market:dailyFluctuation (부수 데이터, 실패 격리)
