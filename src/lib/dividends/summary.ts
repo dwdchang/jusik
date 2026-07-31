@@ -1,6 +1,9 @@
 import { todayKstDate } from "@/lib/date/kst";
 import { getHoldings } from "@/lib/holdings/store";
-import { getDividendRoundsMap } from "./rounds";
+import {
+  getDividendRoundsMap,
+  type ScheduledDividendRound,
+} from "./rounds";
 
 /**
  * 배당 일정 리더 — Phase 25 (plan.md §25).
@@ -31,8 +34,8 @@ export interface DividendScheduleRow {
   quantity: number;
   /** 예상 지급액(원, 세전) = 주당배당금 × 현재 보유수량 */
   expectedAmount: number;
-  /** 값의 출처 — 예탁원 / 배당결정 공시(예탁원 미반영분 보완, Phase 83) */
-  source: "ksd" | "dart";
+  /** 값의 출처 — 예탁원 / 공시(회차 통째, Phase 83) / 혼합(지급일만 공시, Phase 94) */
+  source: ScheduledDividendRound["source"];
 }
 
 /** 홈 "배당 일정" 카드 1행 — 다가오는 지급일 */

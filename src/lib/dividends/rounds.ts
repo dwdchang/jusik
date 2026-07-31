@@ -13,9 +13,17 @@ import { getStockInfoBlocksMap, type DividendRound } from "@/lib/market/store";
  * 기준일 2026-06-30, 지급 2026-08-28)이 DART엔 그날 접수됐는데 예탁원은 같은 회차를
  * `per_sto_divi_amt=0`(미확정)으로 줬고, 확정분만 담는 `rounds`에서 통째로 빠졌다.
  *
- * 그래서 **예탁원을 본 소스로 두고, 예탁원에 아직 없는 기준일만 공시 값으로 메운다.**
+ * 그래서 **예탁원을 본 소스로 두고, 예탁원에 없는 값만 공시로 메운다.**
  * 예탁원이 나중에 채우면 다음 갱신 회차부터 자연히 예탁원 값이 이긴다(정정도 그쪽이
  * 반영한다). 병합은 순수 함수라 읽기 경로 어디서든 같은 결과를 준다.
+ *
+ * **Phase 94 — 보완 단위를 회차에서 필드로 낮췄다.** 예탁원은 한 회차를 한 번에
+ * 확정하지 않는다. 2026-07-31 실측에서 위 삼성전자 26.2Q가 `per_sto_divi_amt=374`로는
+ * 채워졌는데 `divi_pay_dt`는 여전히 공란이었다. 회차 단위로 우선순위를 매기던 규칙에선
+ * 그 기준일이 "예탁원에 있음"으로 잡혀 공시가 이미 알던 지급일(2026-08-28)까지 버려졌고,
+ * 지급일로 거르는 홈 배당 카드에서 회차가 **나왔다 사라졌다**. 그래서 같은 기준일이면
+ * 예탁원 회차를 살리되 **비어 있는 지급일만** 공시 값으로 채우고 `source`를 `mixed`로
+ * 남긴다(금액·종류는 정정 경로인 예탁원 값을 그대로 둔다).
  *
  * **한계**: 배당결정 공시는 보통주 법인 명의로만 접수되고 우선주(005935 등)는 DART
  * 고유번호가 없어 수집 대상에서 빠진다 — 우선주 보유분은 예탁원이 채울 때까지 기다린다.
@@ -31,8 +39,11 @@ export interface ScheduledDividendRound {
   amountPerShare: number;
   /** 현금배당 지급일 "YYYY-MM-DD" — 확정 전이면 null ("미정" 표기) */
   payDate: string | null;
-  /** 값의 출처 — 예탁원(기본) / 배당결정 공시(예탁원 미반영분 보완) */
-  source: "ksd" | "dart";
+  /**
+   * 값의 출처 — 예탁원(기본) / 배당결정 공시(회차 통째로 예탁원 미반영) /
+   * 혼합(예탁원 회차에 공시 지급일만 채움, Phase 94)
+   */
+  source: "ksd" | "dart" | "mixed";
 }
 
 /**
@@ -79,18 +90,32 @@ function decisionRounds(
   );
 }
 
-/** 예탁원 회차 + 예탁원에 없는 공시 회차 → 기준일 오름차순 */
+/**
+ * 예탁원 회차(빈 지급일은 공시로 보완) + 예탁원에 없는 공시 회차 → 기준일 오름차순.
+ * 보완 대상이 지급일뿐인 것은 나머지 필드엔 메울 구멍이 없기 때문이다 — 기준일은 대조
+ * 키고, 금액은 0원(미확정)이면 예탁원 회차 자체가 만들어지지 않으며, 종류는 예탁원이
+ * 항상 준다.
+ */
 export function mergeDividendRounds(
   ksdRounds: DividendRound[] | undefined,
   decisions: DividendDecisionItem[] | undefined
 ): ScheduledDividendRound[] {
-  const merged: ScheduledDividendRound[] = (ksdRounds ?? []).map((round) => ({
-    ...round,
-    source: "ksd",
-  }));
+  const fromDecisions = decisionRounds(decisions ?? []);
+
+  const merged: ScheduledDividendRound[] = (ksdRounds ?? []).map((round) => {
+    const decision = fromDecisions.get(round.recordDate);
+    if (
+      round.payDate === null &&
+      decision !== undefined &&
+      decision.payDate !== null
+    ) {
+      return { ...round, payDate: decision.payDate, source: "mixed" };
+    }
+    return { ...round, source: "ksd" };
+  });
 
   const covered = new Set(merged.map((round) => round.recordDate));
-  for (const [recordDate, round] of decisionRounds(decisions ?? [])) {
+  for (const [recordDate, round] of fromDecisions) {
     if (!covered.has(recordDate)) {
       merged.push(round);
     }

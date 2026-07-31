@@ -185,13 +185,21 @@ export default async function DividendsPage({
                         </span>
                       </div>
                       <p className={`${styles.itemMeta} numeric`}>
-                        {/* 예탁원이 아직 반영하지 않아 공시로 메운 회차 (Phase 83) */}
+                        {/* 예탁원이 아직 반영하지 않아 공시로 메운 회차 (Phase 83·94) */}
                         {row.source === "dart" ? (
                           <span
                             className={styles.sourceBadge}
                             title="예탁원 배당일정에 아직 반영되지 않아 DART 배당결정 공시에서 가져온 회차입니다"
                           >
                             공시
+                          </span>
+                        ) : null}
+                        {row.source === "mixed" ? (
+                          <span
+                            className={styles.sourceBadge}
+                            title="회차는 예탁원 배당일정 값이고, 예탁원에 아직 없는 지급일만 DART 배당결정 공시에서 채웠습니다"
+                          >
+                            지급일 공시
                           </span>
                         ) : null}
                         {row.kind !== null ? `${row.kind} · ` : ""}기준일{" "}
@@ -293,9 +301,11 @@ export default async function DividendsPage({
                 아직 반영하지 않은 회차는{" "}
                 <strong>DART 배당결정 공시</strong>에서 가져와{" "}
                 <strong>공시</strong> 표시를 답니다 — 이사회 결의 직후에는
-                공시가 며칠 빠릅니다. 예탁원에 반영되면 그쪽 값으로 자동
-                교체됩니다. 우선주는 DART 고유번호가 없어 이 보완이 적용되지
-                않습니다.
+                공시가 며칠 빠릅니다. 예탁원이 회차는 반영했는데 지급일만 아직
+                비어 있으면 그 지급일만 공시에서 채우고{" "}
+                <strong>지급일 공시</strong> 표시를 답니다. 예탁원에 반영되면
+                그쪽 값으로 자동 교체됩니다. 우선주는 DART 고유번호가 없어 이
+                보완이 적용되지 않습니다.
               </p>
             </>
           ) : (
