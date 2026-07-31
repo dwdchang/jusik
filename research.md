@@ -304,7 +304,9 @@
 QStash 스케줄 4개 (평일 09:00~15:30 10분 간격 / 15:40 / 18:15 KST)
   → POST /api/jobs/refresh-market-data
       ① verifyJobRequest: QStash 서명 → CRON_SECRET Bearer 폴백 (실패 401)
-      ② isWithinKisCallWindow 가드 (밖이면 no-op 200; manual+?force=true만 우회)
+      ② isWithinKisCallWindow 가드 (밖이면 no-op 200; manual+?force=true만 우회 —
+         이 force는 아래 1a''의 하루 3회차 게이트도 함께 우회한다(최초 시딩용, §88).
+         QStash 경로는 스케줄이 곧 시간 규칙이라 force를 무시)
   → refreshMarketData(trigger)  [lib/jobs/refreshMarketData.ts]
       1. refreshIndices: KIS 6종 병렬(allSettled) → market:detail:{kospi|kosdaq|usdkrw|us10y|oil|gold}
          (snapshot + history 7일 + dailyRows, 매퍼: kisMapper / kisOverseasMapper. gold=N/GOLDLNPM, §30)
