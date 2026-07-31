@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { VolatilityChartClient } from "@/components/indices/VolatilityChartClient";
 import { NavIconLink } from "@/components/nav/NavIconLink";
+import { NoteDisclosure } from "@/components/ui/NoteDisclosure";
 import { ensureAllowedSession } from "@/lib/auth/ensureAllowedSession";
 import { todayKstDate } from "@/lib/date/kst";
 import {
@@ -86,11 +87,11 @@ export default async function KospiVolatilityPage() {
         ) : null}
 
         <footer className={styles.footer}>
-          <p className={styles.notice}>
+          <NoteDisclosure>
             코스피 변동성 지수는 일중 (고가 − 저가) ÷ 저가 × 100(%)의 월별
-            평균입니다. 당월은 오늘까지의 진행분 평균이며, 일별 기록은 평일
-            장중 갱신 회차(09:00~15:30 KST, 10분 간격)마다 저장됩니다.
-          </p>
+            평균입니다. 당월은 오늘까지의 진행분 평균이며, 일별 기록은 평일 장중
+            갱신 회차(09:00~15:30 KST, 10분 간격)마다 저장됩니다.
+          </NoteDisclosure>
         </footer>
       </div>
     </main>

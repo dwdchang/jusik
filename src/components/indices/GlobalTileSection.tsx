@@ -1,3 +1,4 @@
+import { NoteDisclosure } from "@/components/ui/NoteDisclosure";
 import { formatFixed } from "@/lib/format/index";
 import type { GlobalTableSection as Section } from "@/types/indices";
 import { GlobalTile } from "./GlobalTile";
@@ -11,6 +12,9 @@ import styles from "./GlobalTileSection.module.css";
  *
  * 기본이 펼침이지만 **접기 자체는 남겼다** — 요청은 "펼친 상태"였지 "접기 제거"가 아니고,
  * 네이티브 `<details>`라 클라이언트 번들이 늘지 않는다(§87 관례).
+ *
+ * 각주는 §91에서 `NoteDisclosure`(접힘 기본)로 바뀌어 `<details>`가 중첩된다 —
+ * 이쪽은 부모 `<summary>` 바깥이라 구획 토글의 클릭 영역과 겹치지 않는다.
  */
 export function GlobalTileSection({
   section,
@@ -52,7 +56,7 @@ export function GlobalTileSection({
       )}
 
       {section.note === undefined ? null : (
-        <p className={styles.note}>{section.note}</p>
+        <NoteDisclosure className={styles.note}>{section.note}</NoteDisclosure>
       )}
     </details>
   );

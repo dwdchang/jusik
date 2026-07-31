@@ -1,0 +1,38 @@
+/* 각주 「설명」 토글 (§91) — 접기 폼은 MarketFlowSummary(§87)·GlobalTileSection(§89)과 같다 */
+
+/* 요약줄이 인라인이라 열림/닫힘에 따라 폭이 흔들리지 않도록 블록 폭은 부모를 따른다 */
+.root {
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+}
+
+/* 요약줄만 눌리게 inline-flex — 카드 폭 전체가 클릭 영역이 되면
+   부모 구획(<details open>)의 토글과 헷갈린다. 상하 padding 4px는 터치 타깃 확보용
+   (11px × line-height 1.5 + 8 ≈ 24px) */
+.summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0;
+  line-height: 1.5;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+.summary::-webkit-details-marker {
+  display: none;
+}
+
+.chevron {
+  transition: transform 0.15s ease;
+}
+
+.root[open] .chevron {
+  transform: rotate(180deg);
+}
+
+.body {
+  margin-top: var(--space-8);
+  line-height: 1.5;
+}

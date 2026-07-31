@@ -46,12 +46,10 @@
 }
 
 /* 단위 축약으로 잘라낸 설명(거래소·기준·제외 항목 사유)과, 기준일을 빼면서 옮겨 온
-   「미국·유럽은 전일 종가」 단서가 여기 모인다 (§89) */
+   「미국·유럽은 전일 종가」 단서가 여기 모인다 (§89).
+   §91에서 NoteDisclosure(접힘 토글)로 바뀌어 폰트·색은 그쪽이 쥐고 여기는 여백만 준다. */
 .note {
   margin-top: var(--space-8);
-  font-size: var(--text-micro);
-  color: var(--color-text-tertiary);
-  line-height: 1.5;
 }
 
 .empty {

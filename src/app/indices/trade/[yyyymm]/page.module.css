@@ -152,7 +152,5 @@
   color: var(--color-text-tertiary);
 }
 
-.source {
-  font-size: var(--text-micro);
-  color: var(--color-text-tertiary);
-}
+/* 출처·오차 안내는 §91에서 NoteDisclosure(접힘)로 바뀌었다 — 간격은 .container의 gap.
+   .source 클래스는 남겨 두지 않았다(폰트·색을 그쪽이 쥔다) */

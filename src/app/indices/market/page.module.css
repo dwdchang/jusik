@@ -48,11 +48,9 @@
   color: var(--color-text-primary);
 }
 
+/* 각주 본문은 NoteDisclosure(§91)가 그리고 여기는 카드 안 여백만 준다 */
 .note {
   margin-top: var(--space-8);
-  font-size: var(--text-micro);
-  color: var(--color-text-tertiary);
-  line-height: 1.5;
 }
 
 /* 지표 구획 4개 (§89) */
@@ -76,16 +74,11 @@
   line-height: 1.5;
 }
 
+/* 푸터는 갱신 주기 안내 하나뿐이라 §91에서 통째로 NoteDisclosure가 됐다 */
 .footer {
   margin-top: var(--space-24);
   padding: var(--card-padding);
   background-color: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-}
-
-.notice {
-  font-size: var(--text-micro);
-  color: var(--color-text-tertiary);
-  line-height: 1.5;
 }

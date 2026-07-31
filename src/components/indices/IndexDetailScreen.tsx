@@ -1,4 +1,5 @@
 import { NavIconLink } from "@/components/nav/NavIconLink";
+import { NoteDisclosure } from "@/components/ui/NoteDisclosure";
 import { formatBasDtDisplay } from "@/lib/format/basDt";
 import { formatKstDateTime } from "@/lib/format/datetime";
 import { getIndexDetail } from "@/lib/indices/getIndexDetail";
@@ -154,7 +155,10 @@ export async function IndexDetailScreen({
         {children}
 
         <footer className={styles.footer}>
-          <p className={styles.notice}>{data.dataNotice}</p>
+          {/* 각주만 접는다(§91) — 아래 두 줄은 데이터의 나이라 접으면 staleness를 숨긴다 */}
+          <NoteDisclosure className={styles.notice}>
+            {data.dataNotice}
+          </NoteDisclosure>
           <p className={styles.asOf}>
             마지막 갱신 (KST): {formatKstDateTime(data.asOf)}
           </p>

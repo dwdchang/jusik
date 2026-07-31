@@ -99,8 +99,4 @@
   border-radius: var(--radius-md);
 }
 
-.notice {
-  font-size: var(--text-micro);
-  color: var(--color-text-tertiary);
-  line-height: 1.5;
-}
+/* 계산식 안내는 §91에서 NoteDisclosure(접힘)로 바뀌어 푸터의 유일한 내용이 됐다 */

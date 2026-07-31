@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { CountryTradeTable } from "@/components/indices/CountryTradeTable";
 import { NavIconLink } from "@/components/nav/NavIconLink";
+import { NoteDisclosure } from "@/components/ui/NoteDisclosure";
 import { ensureAllowedSession } from "@/lib/auth/ensureAllowedSession";
 import { getTradeDetailView } from "@/lib/feeds/tradeDetail";
 import { formatKstDateTime } from "@/lib/format/datetime";
@@ -143,11 +144,11 @@ export default async function TradeDetailPage({
               <CountryTradeTable countries={view.countries} />
             </section>
 
-            <p className={styles.source}>
-              출처: 관세청 품목별 국가별 수출입실적 (확정 통계, 억 달러 = 1억 USD).
-              합계는 품목별 통계를 집계한 값이라 수출입총괄 기준 월 합계와 0.1%
-              미만 차이날 수 있습니다.
-            </p>
+            <NoteDisclosure>
+              출처: 관세청 품목별 국가별 수출입실적 (확정 통계, 억 달러 = 1억
+              USD). 합계는 품목별 통계를 집계한 값이라 수출입총괄 기준 월 합계와
+              0.1% 미만 차이날 수 있습니다.
+            </NoteDisclosure>
           </>
         )}
       </div>

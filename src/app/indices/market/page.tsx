@@ -3,6 +3,7 @@ import { GlobalTile } from "@/components/indices/GlobalTile";
 import { GlobalTileGrid } from "@/components/indices/GlobalTileGrid";
 import { GlobalTileSection } from "@/components/indices/GlobalTileSection";
 import { NavIconLink } from "@/components/nav/NavIconLink";
+import { NoteDisclosure } from "@/components/ui/NoteDisclosure";
 import { ensureAllowedSession } from "@/lib/auth/ensureAllowedSession";
 import { formatKstDateTime } from "@/lib/format/datetime";
 import { formatFixed, formatIndex } from "@/lib/format/index";
@@ -150,7 +151,9 @@ export default async function MarketOverviewPage() {
               </GlobalTileGrid>
 
               {highlights?.note === undefined ? null : (
-                <p className={styles.note}>{highlights.note}</p>
+                <NoteDisclosure className={styles.note}>
+                  {highlights.note}
+                </NoteDisclosure>
               )}
             </>
           ) : (
@@ -182,13 +185,13 @@ export default async function MarketOverviewPage() {
         </section>
 
         <footer className={styles.footer}>
-          <p className={styles.notice}>
+          <NoteDisclosure>
             미국 10년물 국채금리(%)·비트코인·코스피는 10분 간격으로, 그 밖의
             28종은 평일 09:00 · 15:40 · 18:15(KST) 세 회차에 갱신됩니다 — 해외
-            지수·상품은 전일 종가가 하루 한 번 바뀝니다. 비트코인은 업비트
-            USDT 마켓(USDT-BTC) 시세입니다. 값 뒤의 「*」는 그 회차 조회가 실패해
-            직전 회차 값을 그대로 쓴 항목입니다.
-          </p>
+            지수·상품은 전일 종가가 하루 한 번 바뀝니다. 비트코인은 업비트 USDT
+            마켓(USDT-BTC) 시세입니다. 값 뒤의 「*」는 그 회차 조회가 실패해 직전
+            회차 값을 그대로 쓴 항목입니다.
+          </NoteDisclosure>
         </footer>
       </div>
     </main>

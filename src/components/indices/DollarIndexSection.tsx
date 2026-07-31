@@ -1,3 +1,4 @@
+import { NoteDisclosure } from "@/components/ui/NoteDisclosure";
 import { MARKET_DATA_EMPTY_MESSAGE } from "@/lib/indices/getDashboard";
 import { getOverseasDetail } from "@/lib/indices/getOverseasDetail";
 import type { IndexDetailData } from "@/types/indices";
@@ -36,10 +37,10 @@ export async function DollarIndexSection() {
     <section className={styles.section} aria-label="달러 인덱스">
       <IndexCard snapshot={data.snapshot} />
       <IndexChartClient series={data.history} />
-      <p className={styles.note}>
+      <NoteDisclosure>
         달러 인덱스는 KIS 환율 6종(유로·엔·파운드·캐나다달러·크로나·프랑)으로
         계산한 ICE 지수 근사치입니다.
-      </p>
+      </NoteDisclosure>
     </section>
   );
 }
