@@ -129,7 +129,7 @@ export interface RefreshMarketDataReport {
   /** 비트코인(업비트 원화·USDT, §30) 저장 결과 — 외부 부수 지표라 잡 전체 ok에 영향 없음 */
   btc: { ok: boolean; error?: string };
   /**
-   * 글로벌 지표 표 32종(§88) 저장 결과 — 하루 3회차만 갱신하므로 그 밖의 회차는 skipped.
+   * 글로벌 지표 27종(§88·§89) 저장 결과 — 하루 3회차만 갱신하므로 그 밖의 회차는 skipped.
    * 부수 데이터라 실패해도 잡 전체 ok에 영향 없다. stale은 직전 회차 값을 이어받은 행 수.
    */
   globalTable: {
@@ -316,9 +316,9 @@ export async function refreshDxy(fetchedAt: string): Promise<{
 }
 
 /**
- * 글로벌 지표 표 32종 → market:globalTable 저장 (§88).
+ * 글로벌 지표 27종 → market:globalTable 저장 (§88 신설 · §89에서 32종 → 27종).
  * 하루 3회차(09:00·15:40·18:15 KST)만 갱신한다 — 해외 지수·상품은 전일 종가가 하루 한 번
- * 바뀔 뿐이어서 10분 주기로 26콜을 태우면 +1,092콜/일이 된다. 그 밖의 회차는 그대로 통과.
+ * 바뀔 뿐이어서 10분 주기로 22콜을 태우면 +924콜/일이 된다. 그 밖의 회차는 그대로 통과.
  * 부수 데이터라 실패해도 잡 전체 ok에 영향 없다. export는 로컬 실측용.
  */
 export async function refreshGlobalTable(
@@ -1026,8 +1026,8 @@ export async function refreshMarketData(
   // 1a'. 비트코인(업비트 원화·USDT, §30) → market:detail:btcKrw·btcUsd (외부 부수 지표, 실패 격리)
   const btc = await refreshBtc(startedAt);
 
-  // 1a''. 글로벌 지표 표 32종(§88) → market:globalTable — 하루 3회차만, 부수 데이터·실패 격리.
-  // 위 dxy의 통화쌍 응답과 oil·gold 스냅샷을 재사용하므로 신규 호출은 26콜이다.
+  // 1a''. 글로벌 지표 27종(§88·§89) → market:globalTable — 하루 3회차만, 부수 데이터·실패 격리.
+  // 위 dxy의 통화쌍 응답과 oil·gold 스냅샷을 재사용하므로 신규 호출은 22콜이다.
   const globalTable = await refreshGlobalTable(
     startedAt,
     fxRawByCode,

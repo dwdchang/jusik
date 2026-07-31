@@ -17,10 +17,14 @@ import type { GlobalTableRow, GlobalTableSection } from "@/types/indices";
 import { applyKisSign, parseNum, resolveDirection } from "./kisMapper";
 
 /**
- * 글로벌 지표 표 조립 — plan.md §88.
- * 카탈로그(KIS_GLOBAL_TABLE_SECTIONS) 순서대로 항목별 값을 모아 섹션·행으로 만든다.
+ * 글로벌 지표 조립 — plan.md §88 · §89(5구획 27종으로 재편).
+ * 카탈로그(KIS_GLOBAL_TABLE_SECTIONS) 순서대로 항목별 값을 모아 구획·행으로 만든다.
  * 항목 단위로 실패를 격리하고, 실패한 항목은 직전 스냅샷의 같은 행을 이어받는다 —
  * 하루 3회차만 갱신하므로 한 번의 실패로 행이 사라지면 최대 반나절 빈 자리가 남는다.
+ *
+ * **§89에서 구획 id가 바뀌었다**(`oil`·`preciousMetals`·`baseMetals` → `highlights`·`metals`).
+ * 이어받기는 `id + label`로 찾으므로 배포 후 첫 회차에는 새 id의 이어받을 값이 없다 —
+ * 그 회차에 새로 받으면 해소되고, 실패하면 그 항목만 빠진다.
  */
 
 /**
@@ -49,7 +53,12 @@ function latestBasDt(raw: KisOverseasDailyResponse): string {
 
 /** 카탈로그에서 그대로 오는 표기 정보 — 값 출처마다 반복하지 않도록 분리 */
 function rowLabels(def: GlobalTableItemDef) {
-  return { label: def.label, unit: def.unit, decimals: def.decimals };
+  return {
+    label: def.label,
+    unit: def.unit,
+    flag: def.flag,
+    decimals: def.decimals,
+  };
 }
 
 /** 해외 기간별시세 응답 → 표 1행. output1이 비면 output2 최신 종가로 떨어진다. */

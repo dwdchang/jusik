@@ -157,10 +157,16 @@ export type GlobalTableItemSource =
   | { kind: "domestic"; code: string };
 
 export interface GlobalTableItemDef {
-  /** 표 첫 열 항목명 */
+  /** 타일 항목명 */
   label: string;
-  /** 항목명 아래 작은 글씨 — 단위·기준·호가 방향 */
+  /**
+   * 항목명 아래 작은 글씨 — 단위·호가 방향.
+   * **짧게 유지한다** — 타일 폭이 좁은 화면에서 88px(3열)·62px(4열)뿐이라
+   * 긴 문구는 줄바꿈된다(§89). 기준·거래소 설명은 섹션 각주로 보낸다.
+   */
   unit?: string;
+  /** 항목명 앞 국기 이모지 — 환율 전용 (§89) */
+  flag?: string;
   /** 값 표기 소수점 자리 — 실측 응답의 자리 수를 따른다 */
   decimals: number;
   source: GlobalTableItemSource;
@@ -169,39 +175,51 @@ export interface GlobalTableItemDef {
 export interface GlobalTableSectionDef {
   id: string;
   title: string;
-  /** 표 아래 각주 */
+  /** 구획 아래 각주 */
   note?: string;
   items: readonly GlobalTableItemDef[];
 }
 
 /**
- * 글로벌 지표 표 카탈로그 — Phase 88 (2026-07-31 32종 전부 라이브 실측).
- * 섹션마다 표 1개로 그린다. 회차당 신규 26콜 — dxyPair 3(EUR·JPY·GBP)·detail 2(WTI·국제 금)는
- * 재사용이라 0콜이고, 아래 overseas 25 + domestic 1이 실제 호출이다.
+ * 글로벌 지표 카탈로그 — Phase 88 신설 / **Phase 89에서 5구획 27종으로 재편**.
+ * 구획마다 타일 그리드 하나로 그린다(§89 — 값 큼직 + 등락률 아래 작게).
+ * 회차당 22콜 — dxyPair 3(EUR·JPY·GBP)·detail 2(WTI·국제 금)는 재사용이라 0콜이고,
+ * 아래 overseas 21 + domestic 1이 실제 호출이다.
  *
- * 요청받았으나 넣을 수 없어 뺀 항목 — 백금·팔라듐·납·니켈·주석·설탕·대두·대두유·소맥(S 카테고리
+ * **§89에서 뺀 5종** — 다우존스 `.DJI` · VIX `VIX` · 독일 DAX `GR#DAX` · 영국 FTSE `GB#FTSE` ·
+ * 대만 가권 `TW#WT`. 코드는 전부 실측으로 검증된 정상 코드이며(§88), 화면에서 항목을 추리자는
+ * 사용자 결정에 따라 수집까지 중단했다 — 되살리려면 아래 `worldIndices`에 되돌리면 된다.
+ *
+ * 애초에 넣을 수 없어 뺀 항목 — 백금·팔라듐·납·니켈·주석·설탕·대두·대두유·소맥(S 카테고리
  * 죽은 값 또는 NYMEX/CBOT 시세 미신청) · 쌀·TOPIX·러셀2000(마스터에 코드 없음) ·
  * 국내 휘발유·경유·LPG(KIS 전 경로 부재, 오피넷 키 필요) · 천연가스·난방유(NYMEX) ·
  * 에너지 선물 섹션 전체. 근거는 plan.md §88 / summary.md.
  */
 export const KIS_GLOBAL_TABLE_SECTIONS: readonly GlobalTableSectionDef[] = [
   {
+    // 화면 맨 위 6타일 중 뒤 4개 — 앞 2개(미국 10년물·비트코인)는 10분 주기 market:detail이라
+    // 카탈로그에 넣지 않는다. 넣으면 콜은 0이지만 하루 3회차 스냅샷에 갇힌다 (§89)
+    id: "highlights",
+    title: "주요 지표",
+    note: "반도체는 필라델피아 SOX 지수이며 미국 지수라 갱신 창(평일 09:00~18:40 KST)이 현지 장 마감 전에 닫혀 항상 전일 종가입니다. 유가 3종은 근월물 선물 기준(WTI는 서부텍사스산)입니다. 국내 휘발유·경유·LPG는 KIS가 제공하지 않아 빠져 있습니다(오피넷 API 키가 있으면 추가 가능).",
+    items: [
+      { label: "반도체", unit: "SOX", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "SOX" } },
+      { label: "두바이유", unit: "USD/배럴", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "DUBAIF" } },
+      { label: "브렌트유", unit: "USD/배럴", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "BRENTF" } },
+      { label: "WTI", unit: "USD/배럴", decimals: 2, source: { kind: "detail", detailKey: "oil" } },
+    ],
+  },
+  {
     id: "worldIndices",
     title: "세계 증시",
-    note: "미국·유럽 지수는 갱신 창(평일 09:00~18:40 KST)이 현지 장 마감 전에 닫혀 항상 전일 종가입니다. 그래서 기준일을 행마다 표기합니다.",
+    note: "미국·유럽 지수(나스닥·S&P 500·유로 STOXX 50)는 갱신 창(평일 09:00~18:40 KST)이 현지 장 마감 전에 닫혀 항상 전일 종가입니다. 아시아 3종은 당일 종가입니다.",
     items: [
-      { label: "다우존스", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: ".DJI" } },
-      { label: "S&P 500", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "SPX" } },
       { label: "나스닥 종합", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "COMP" } },
-      { label: "반도체", unit: "필라델피아 SOX", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "SOX" } },
-      { label: "VIX", unit: "변동성 지수", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "VIX" } },
+      { label: "S&P 500", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "SPX" } },
       { label: "상해 종합", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "SHANG" } },
       { label: "항셍", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "HK#HS" } },
       { label: "니케이 225", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "JP#NI225" } },
       { label: "유로 STOXX 50", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "SX5E" } },
-      { label: "독일 DAX", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "GR#DAX" } },
-      { label: "영국 FTSE", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "GB#FTSE" } },
-      { label: "대만 가권", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "TW#WT" } },
     ],
   },
   {
@@ -209,52 +227,38 @@ export const KIS_GLOBAL_TABLE_SECTIONS: readonly GlobalTableSectionDef[] = [
     title: "전세계 환율",
     note: "KIS 제공 원값입니다 — 미국을 뺀 7종은 원화가 아니라 달러 기준이고, 유로·영국·호주는 호가 방향이 반대(달러/통화)입니다. KIS 마스터는 인도네시아 루피아를 FX@INR로, 인도 루피를 FX@IDR로 알파벳이 뒤바뀌게 담고 있어 한글명 기준으로 맞췄습니다.",
     items: [
-      { label: "미국", unit: "원/달러", decimals: 2, source: { kind: "overseas", marketDivCode: "X", code: "FX@KRW" } },
-      { label: "중국", unit: "위엔/달러", decimals: 4, source: { kind: "overseas", marketDivCode: "X", code: "FX@CNY" } },
-      { label: "유로", unit: "달러/유로", decimals: 4, source: { kind: "dxyPair", code: "FX@EUR" } },
-      { label: "일본", unit: "엔/달러", decimals: 2, source: { kind: "dxyPair", code: "FX@JPY" } },
-      { label: "인도네시아", unit: "루피아/달러", decimals: 0, source: { kind: "overseas", marketDivCode: "X", code: "FX@INR" } },
-      { label: "영국", unit: "달러/파운드", decimals: 4, source: { kind: "dxyPair", code: "FX@GBP" } },
-      { label: "브라질", unit: "레알/달러", decimals: 4, source: { kind: "overseas", marketDivCode: "X", code: "FX@BRL" } },
-      { label: "호주", unit: "달러/호주달러", decimals: 4, source: { kind: "overseas", marketDivCode: "X", code: "FX@AUD" } },
+      { label: "미국", flag: "🇺🇸", unit: "원/달러", decimals: 2, source: { kind: "overseas", marketDivCode: "X", code: "FX@KRW" } },
+      { label: "중국", flag: "🇨🇳", unit: "위엔/달러", decimals: 4, source: { kind: "overseas", marketDivCode: "X", code: "FX@CNY" } },
+      { label: "유로", flag: "🇪🇺", unit: "달러/유로", decimals: 4, source: { kind: "dxyPair", code: "FX@EUR" } },
+      { label: "일본", flag: "🇯🇵", unit: "엔/달러", decimals: 2, source: { kind: "dxyPair", code: "FX@JPY" } },
+      // 4열 타일(360px에서 62px)에 5자 라벨은 들어가지 않아 두 줄이 된다 — 「인니」로 줄이지
+      // 않고 줄바꿈을 허용한다. 그리드 행 높이는 그 행에서 가장 높은 타일이 정하므로 어긋나지 않는다
+      { label: "인도네시아", flag: "🇮🇩", unit: "루피아/달러", decimals: 0, source: { kind: "overseas", marketDivCode: "X", code: "FX@INR" } },
+      { label: "영국", flag: "🇬🇧", unit: "달러/파운드", decimals: 4, source: { kind: "dxyPair", code: "FX@GBP" } },
+      { label: "브라질", flag: "🇧🇷", unit: "레알/달러", decimals: 4, source: { kind: "overseas", marketDivCode: "X", code: "FX@BRL" } },
+      { label: "호주", flag: "🇦🇺", unit: "달러/호주달러", decimals: 4, source: { kind: "overseas", marketDivCode: "X", code: "FX@AUD" } },
     ],
   },
   {
-    id: "oil",
-    title: "국제 유가",
-    note: "근월물 선물 기준입니다. 국내 휘발유·경유·LPG는 KIS가 제공하지 않아 빠져 있습니다(오피넷 API 키가 있으면 추가 가능).",
+    // §88의 「귀금속」·「비철금속」 두 섹션을 3열 2행 하나로 병합 (§89)
+    id: "metals",
+    title: "귀금속 · 비철금속",
+    note: "국내 금은 KRX 금시장 「금 99.99_1kg」 실시간 현재가(원/g)이고, 국제 금은 LBMA 런던·은은 런던 현물(USD/온스)입니다. 구리·아연·알루미늄은 LME 현물(USD/톤)이며 알루미늄은 primary(합금 NASAAC 아님)입니다. 백금·팔라듐·납·니켈·주석은 KIS가 쓸 수 있는 시세를 주지 않아 빠져 있습니다.",
     items: [
-      { label: "WTI", unit: "USD/배럴 · 서부텍사스산", decimals: 2, source: { kind: "detail", detailKey: "oil" } },
-      { label: "브렌트유", unit: "USD/배럴", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "BRENTF" } },
-      { label: "두바이유", unit: "USD/배럴", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "DUBAIF" } },
-    ],
-  },
-  {
-    id: "preciousMetals",
-    title: "귀금속",
-    note: "국내 금은 KRX 금시장 「금 99.99_1kg」 실시간 현재가로, 국내 장 기준일을 씁니다. 백금·팔라듐은 KIS가 쓸 수 있는 시세를 주지 않아 빠져 있습니다.",
-    items: [
-      { label: "국내 금", unit: "원/g · KRX 99.99_1kg", decimals: 0, source: { kind: "domestic", code: "M04020000" } },
-      { label: "국제 금", unit: "USD/온스 · LBMA 런던", decimals: 2, source: { kind: "detail", detailKey: "gold" } },
-      { label: "은", unit: "USD/온스 · 런던 현물", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "SLVRLN" } },
-    ],
-  },
-  {
-    id: "baseMetals",
-    title: "비철금속",
-    note: "LME 현물이며 알루미늄은 primary(합금 NASAAC 아님)입니다. 납·니켈·주석은 KIS가 쓸 수 있는 시세를 주지 않아 빠져 있습니다.",
-    items: [
-      { label: "구리", unit: "USD/톤 · LME", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "LMECOC" } },
-      { label: "아연", unit: "USD/톤 · LME", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "LMEZINC" } },
-      { label: "알루미늄", unit: "USD/톤 · LME", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "LMEALC" } },
+      { label: "국내 금", unit: "원/g", decimals: 0, source: { kind: "domestic", code: "M04020000" } },
+      { label: "국제 금", unit: "USD/온스", decimals: 2, source: { kind: "detail", detailKey: "gold" } },
+      { label: "은", unit: "USD/온스", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "SLVRLN" } },
+      { label: "구리", unit: "USD/톤", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "LMECOC" } },
+      { label: "아연", unit: "USD/톤", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "LMEZINC" } },
+      { label: "알루미늄", unit: "USD/톤", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "LMEALC" } },
     ],
   },
   {
     id: "agriculture",
     title: "농산물",
-    note: "근월물 선물 기준입니다. 설탕·대두·대두유·소맥·쌀은 KIS가 쓸 수 있는 시세를 주지 않아 빠져 있습니다.",
+    note: "근월물 선물 기준이며 옥수수는 시카고(CBOT) 시세입니다. 설탕·대두·대두유·소맥·쌀은 KIS가 쓸 수 있는 시세를 주지 않아 빠져 있습니다.",
     items: [
-      { label: "옥수수", unit: "센트/부셸 · 시카고", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "CHICORN" } },
+      { label: "옥수수", unit: "센트/부셸", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "CHICORN" } },
       { label: "커피", unit: "센트/파운드", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "COFFE" } },
       { label: "면화", unit: "센트/파운드", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "COTTON" } },
     ],

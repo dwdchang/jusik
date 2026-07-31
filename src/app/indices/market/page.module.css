@@ -32,33 +32,8 @@
   color: var(--color-text-tertiary);
 }
 
-/* 상단 카드 2종 세로 나열 (§15.2 → §88에서 미국 10년물·비트코인만 남김) */
-.cards {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-16);
-}
-
-/* 지표 표 6섹션 (§88) — 카드와 같은 간격으로 이어 붙인다 */
-.tables {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-12);
-  margin-top: var(--space-24);
-}
-
-.tablesHead {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-8);
-}
-
-.tablesTitle {
-  font-size: var(--text-caption);
-  font-weight: var(--weight-semibold);
-  color: var(--color-text-secondary);
-}
-
+/* 상단 「주요 지표」 카드 (§89) — 아래 구획들과 같은 카드 폼을 쓴다.
+   구획 컴포넌트를 쓰지 못하는 이유는 출처가 둘(detail 10분 · globalTable 하루 3회차)이라서다. */
 .card {
   padding: var(--card-padding);
   background-color: var(--color-surface);
@@ -66,152 +41,39 @@
   border-radius: var(--radius-lg);
 }
 
-.cardHead {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-12);
-  margin-bottom: var(--space-12);
-}
-
 .cardTitle {
+  margin-bottom: var(--space-8);
   font-size: var(--text-body);
   font-weight: var(--weight-semibold);
   color: var(--color-text-primary);
 }
 
-.basDt {
-  margin-top: var(--space-4);
+.note {
+  margin-top: var(--space-8);
   font-size: var(--text-micro);
   color: var(--color-text-tertiary);
+  line-height: 1.5;
 }
 
-.cardValues {
-  text-align: right;
-}
-
-.value {
-  font-size: var(--text-title);
-  font-weight: var(--weight-bold);
-  color: var(--color-text-primary);
-}
-
-.change {
-  margin-top: var(--space-4);
-  font-size: var(--text-caption);
-}
-
-.rise {
-  color: var(--color-rise);
-  font-weight: var(--weight-semibold);
-}
-
-.fall {
-  color: var(--color-fall);
-  font-weight: var(--weight-semibold);
-}
-
-.flat {
-  color: var(--color-flat);
-}
-
-/* 일별 기록 접힘 (§31) — holdings DailyHistoryList 토글 폼 이식 */
-.dailyDetails {
-  margin-top: var(--space-12);
-}
-
-.dailyToggle {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-8);
-  padding: var(--space-8) var(--space-16);
-  background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  font-size: var(--text-caption);
-  font-weight: var(--weight-medium);
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  user-select: none;
-  list-style: none; /* 기본 ▸ 마커 제거 (Safari는 아래 ::-webkit-details-marker) */
-  transition: border-color 0.15s ease, color 0.15s ease;
-}
-
-.dailyToggle::-webkit-details-marker {
-  display: none;
-}
-
-.dailyToggle:hover {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-}
-
-.dailyDetails[open] .dailyToggle {
-  margin-bottom: var(--space-8);
-}
-
-.chevron {
-  font-size: var(--text-micro);
-  transition: transform 0.15s ease;
-}
-
-.dailyDetails[open] .chevron {
-  transform: rotate(180deg);
-}
-
-/* 비트코인 일별 목록 (§31) — IndexDailyList 폼 이식 (원화 포맷 전용) */
-.dailyList {
-  list-style: none;
-  background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-  overflow: hidden;
-}
-
-.dailyRow {
+/* 지표 구획 4개 (§89) */
+.sections {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: var(--space-12);
-  padding: var(--space-12) var(--space-16);
+  margin-top: var(--space-16);
 }
 
-.dailyRow + .dailyRow {
-  border-top: 1px solid var(--color-border);
-}
-
-.dailyDate {
-  font-size: var(--text-caption);
-  color: var(--color-text-secondary);
-  min-width: 44px;
-}
-
-.dailyClose {
-  flex: 1;
-  text-align: right;
-  font-size: var(--text-caption);
-  font-weight: var(--weight-semibold);
-  color: var(--color-text-primary);
-}
-
-.dailyChange {
-  min-width: 120px;
+/* 하루 3회차라 상단 헤더의 「마지막 갱신」(10분 주기)과 다른 것이 정상이다 */
+.tableRefresh {
   text-align: right;
   font-size: var(--text-micro);
-  font-weight: var(--weight-medium);
+  color: var(--color-text-tertiary);
 }
 
 .emptyNotice {
   font-size: var(--text-caption);
   color: var(--color-text-tertiary);
   line-height: 1.5;
-}
-
-/* 비트코인 카드 달러 병기 줄 (§30) */
-.subValue {
-  margin-top: var(--space-4);
-  font-size: var(--text-micro);
-  color: var(--color-text-tertiary);
 }
 
 .footer {

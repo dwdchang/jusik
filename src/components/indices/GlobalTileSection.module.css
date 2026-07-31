@@ -1,0 +1,61 @@
+/* 구획 카드 — 접기 토글 폼은 MarketFlowSummary(§87)·구 GlobalTableSection(§88)과 같다 */
+.card {
+  padding: var(--card-padding);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.summary {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-8);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+.summary::-webkit-details-marker {
+  display: none;
+}
+
+.title {
+  font-size: var(--text-body);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.count {
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+}
+
+.chevron {
+  margin-left: auto;
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+  transition: transform 0.15s ease;
+}
+
+.card[open] .chevron {
+  transform: rotate(180deg);
+}
+
+.card[open] .summary {
+  margin-bottom: var(--space-8);
+}
+
+/* 단위 축약으로 잘라낸 설명(거래소·기준·제외 항목 사유)과, 기준일을 빼면서 옮겨 온
+   「미국·유럽은 전일 종가」 단서가 여기 모인다 (§89) */
+.note {
+  margin-top: var(--space-8);
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+  line-height: 1.5;
+}
+
+.empty {
+  font-size: var(--text-caption);
+  color: var(--color-text-tertiary);
+  line-height: 1.5;
+}

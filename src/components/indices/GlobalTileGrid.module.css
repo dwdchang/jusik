@@ -1,0 +1,26 @@
+/* 타일 그리드 (§89) — 열 수는 두 가지뿐이고, 각 열 수마다 값 글자 크기의 상한이 다르다.
+   폭 계산(plan.md §89): 내부 폭은 뷰포트 v에서 컨테이너 16px×2 + 카드 12px×2를 뺀 값이며
+   --layout-max-width: 480px이라 v > 480이면 424px에 고정된다. gap 8px · 타일 좌우 padding 4px.
+
+   타일 내부 폭   3열 = v/3 − 34.67   ·  4열 = v/4 − 28      (@360px 88.0 / 62.0px)
+   값 폰트 상한   3열 = v/14.634 − 7.108 (9자 `51,594.14`)   → @360px 17.5px
+                 4열 = v/17.344 − 6.456 (8자 `1,387.50`)     → @360px 14.3px
+
+   clamp의 기울기는 **가장 빠듯한 360px에서 상한에 닿도록** 잡았고(이론 상한 3열 4.86vw ·
+   4열 3.97vw), 최대값은 컨테이너가 480px에서 멈춘 뒤에도 vw가 계속 커지는 것을 막는 캡이다 —
+   캡이 없으면 넓은 데스크톱에서 값이 타일 밖으로 나간다. */
+.grid3,
+.grid4 {
+  display: grid;
+  gap: var(--space-8);
+}
+
+.grid3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  --tile-value-size: clamp(15px, 4.8vw, 24px);
+}
+
+.grid4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  --tile-value-size: clamp(12px, 3.85vw, 20px);
+}
