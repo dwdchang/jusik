@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  장중 수급 슬롯 미러 (Phase 92) — 맥미니 launchd 등록용 샘플.
+
+  ~/Library/LaunchAgents/com.jusik.mirror-intraday.plist 로 복사한 뒤 경로를 환경에
+  맞게 고치고 `launchctl bootstrap gui/$(id -u) <경로>` 로 등록한다. 자세한 절차는
+  scripts/README.md 참고.
+
+  StartCalendarInterval을 쓰는 이유는 맥미니가 잠들어 있던 시각의 실행을 깨어난 뒤
+  한 번 보충해 주기 때문이다(상시 가동이면 그대로 정시 실행). 19:00으로 잡은 것은
+  마지막 갱신 회차(18:15 KST)가 끝난 뒤이기 때문이다.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.jusik.mirror-intraday</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <!-- `which node`로 확인한 절대경로 — launchd는 PATH가 최소라 절대경로여야 한다 -->
+    <string>/opt/homebrew/bin/node</string>
+    <string>--no-warnings</string>
+    <string>/Users/poonggi/Project/jusik/scripts/mirror-intraday-flows.mjs</string>
+    <!-- 토큰을 plist에 평문으로 두지 않기 위해 env 파일로 넘긴다 (읽기 전용 토큰 권장) -->
+    <string>--env-file=/Users/poonggi/.config/jusik/mirror.env</string>
+  </array>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>19</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+
+  <!-- 등록 즉시 1회 실행하지 않는다 (정시에만) -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/poonggi/Library/Logs/jusik-mirror.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/poonggi/Library/Logs/jusik-mirror.log</string>
+</dict>
+</plist>
