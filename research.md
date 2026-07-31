@@ -68,7 +68,7 @@
 | `page.tsx` | 홈 대시보드. 세션 검사 → 허용 외 이메일이면 access-denied 화면 → 카드 7종 데이터 병렬 조회(§58에서 보유종목 카드 삭제)(`Promise.all`) → `IndexDashboard` 렌더. staleness 배지 판정도 여기서 수행. **갱신 지연 인시던트**(`resolveRefreshIncident`, §52)가 있으면 per-card 배지를 전부 억제하고 헤더 상태 표시로 통합(`incident` prop 전달) |
 | `login/page.tsx` | Google 로그인 버튼 (Server Action으로 `signIn("google")`). 세션 있으면 `/` redirect, 인라인 `GoogleIcon` SVG 로컬 정의 |
 | `indices/kospi` `kosdaq` `usdkrw/page.tsx` | 지표 상세 3종 — 전부 `ensureAllowedSession()` 후 `<IndexDetailScreen market=…>` 한 줄 위임(제목 `<h1>`도 §36에서 공용 컴포넌트에 들어가 3화면 동시 적용). usdkrw만 children으로 `<DollarIndexSection>`(달러 인덱스, §28) 추가. us10y·oil·gold·btc 개별 상세는 §31에서 제거(시장 카드 접힘 목록으로 대체) |
-| `indices/market/page.tsx` | 글로벌 지표 요약(§37에서 표시명 `시장`→`글로벌 지표` — 라우트·컴포넌트명·Redis 키는 `market` 유지). 금리·유가·금 미니 카드 3종 + 비트코인 커스텀 카드 — 원/달러는 §28에서 홈 카드로 분리, 수출입 카드는 §30에서 제거). `getMarketDetails` MGET 1회(5키). 카드마다 "일별 기록" `<details>` 접힘 목록(§31 — KIS 3종은 `IndexDailyList` 재사용, 비트코인은 원화 목록 인라인)·개별 상세 링크 없음. 비트코인 카드는 원화 대표값+달러 병기 |
+| `indices/market/page.tsx` | 글로벌 지표(§37에서 표시명 `시장`→`글로벌 지표` — 라우트·컴포넌트명·Redis 키는 `market` 유지). **§88 전면 개편** — 상단은 **미국 10년물·비트코인 2카드만**(WTI·금 카드는 아래 표로 흡수, **미니 차트 4종 전면 삭제** — `BtcChartClient`·`BtcLineChart`는 파일까지 제거, `IndexChartClient`는 지수 상세·DXY가 계속 써서 남김), 그 아래 **`GlobalTableSection` 6개**(첫 섹션만 펼침, 나머지 접힘 — §87 관례). 두 카드의 「일별 기록」 `<details>` 접힘은 유지(차트를 지운 뒤 시계열을 볼 유일한 수단, §31 폼). 읽기는 `getMarketDetails` MGET 1회(3키: us10y·btcKrw·btcUsd) + `getGlobalTable` 1회 **병렬**. 헤더 「마지막 갱신」은 카드 2종 기준이고 **표는 자기 갱신 시각을 따로 적는다** — 하루 3회차라 같이 묶으면 10분마다 도는 카드까지 낡아 보인다(§85 dxy와 같은 이유) |
 | `indices/trade/[yyyymm]/page.tsx` | 수출입 상세(Phase 17-5) — 월 합계 3지표 + 품목별(국가 무관, HS 4단위 상위 15+기타) + 국가별(상위 8+기타, 클릭 시 품목 팝업). `getTradeDetailView` 1회. `/feeds` 수출입 탭의 월 링크로 진입 |
 | `indices/kospi-volatility/page.tsx` | 변동성 상세 — 월별 평균 막대 차트 + 당월 일별 기록 목록 |
 | `stocks/page.tsx` | **내 종목 목록**(Phase 56, Phase 58에서 `/watchlist`→`/stocks`로 개명·통합 — 제목 `내 종목`, 홈 "내 종목" 카드에서 진입) — **4탭 단일 구조**(`?mode=all\|holdings\|watchlist\|balance` 서버 탭 `TABS`, 기본 `all`, 핫종목·배당과 동형). 표 폼은 배당률 순위 표 관례(`.tableScroll`+`.stockTable`, **종목명 열 sticky** 가로 스크롤, 값 숫자 열 우측 `.numCell`). **모두·보유종목 탭 = 종목명+6열**(현재가·등락률(전일 대비)·수익률·수익금·평균단가·총 매입금액), **관심종목 탭 = 종목명+4열**(현재가·등락률·수익률·기준일), **잔고 탭 = 표가 아니라 `<HoldingsOverview>`**(구 `/holdings` 화면 본문 통째, §58). 모두 탭의 관심종목 행은 보유 전용 3열이 `-`. **전 탭 수익률 내림차순**(`sortRowsByReturnRate`, 수익률 null은 맨 뒤·그들끼리 종목명순). 보유·관심에 같은 종목이 있으면 **2행으로 따로** 표시(합치지 않음 — 사용자 확정). 모두 탭에서만 보유종목 **종목명 글자색** 강조(`--color-holding-name`, 라이트/다크 2벌). 데이터는 활성 탭 것만 로드(`getHoldings`+`getPortfolioValuation` / `getWatchlist`, **잔고 탭은 목록·시세를 읽지 않고 `HoldingsOverview`가 직접 읽는다**)하고 시세는 두 목록 합집합 `getStockSnapshots` 1회(+평가 내부 MGET 1회) — KIS 직접 호출 없음. 추가 폼은 **관심종목 탭(기준일 → `addWatchItemAction`)과 잔고 탭(수량·총 매입금액 → `addHoldingAction`)에만**(§58에서 보유종목 탭 추가 폼 제거 — 보유 등록 동선은 잔고 탭 하나), 모두·보유 탭엔 없음. 종목명 클릭 시 펼침(`StockRowItem`, 아래) |
@@ -154,10 +154,11 @@
 | `indices/dxy.ts` | 달러 인덱스 계산 (§28) — `computeDxyDetail`(순수): KIS에 DXY 종목이 없어 환율 6종(`KIS_DXY_COMPONENTS`)의 일별 종가를 ICE 공식(가중 기하평균)으로 합성. 통화쌍별 휴장일이 달라 기준일 교집합에서만 계산, `StoredMarketDetail` 동일 폼 반환 |
 | `indices/getDashboard.ts` | 홈 데이터 리더 — `market:detail:*` 8종 MGET. 필수 4종 없으면 throw(`MARKET_DATA_EMPTY_MESSAGE`), oil·gold·btcUsd(§33)·dxy(§85 원/달러 카드 보조줄)는 null 허용. **dxy는 `asOf` 후보에서 제외** — 잡 ok 게이팅 밖 파생 지표라 계산이 계속 실패하면 낡은 `fetchedAt`이 화면 「마지막 갱신」을 끌어내린다. §86에서 **수급 4키**(`market:investor:*` 2 + `market:investorIntraday:*:baseline` 2)를 MGET과 **병렬**로 읽어 `kospiFlow`·`kosdaqFlow`(`buildHomeIndexFlow`) 조립 — 각 지수의 **자기 `fetchedAt`**을 기준으로 삼는다(화면 전체 asOf를 쓰면 다른 지표 지연 시 엉뚱한 슬롯과 비교) |
 | `indices/getIndexDetail.ts` / `getOverseasDetail.ts` | 상세 리더 — `market:detail:{key}` 1건. **두 파일 내용이 사실상 동일** (§8) |
+| `indices/globalTable.ts` | 글로벌 지표 표 조립 (§88) — `isGlobalTableRound`(하루 3회차 게이트: `GLOBAL_TABLE_ROUND_MINUTES` 09:00·15:40·18:15 + 9분 창. 세 값은 `market/staleness.ts`의 `SCHEDULE_MINUTES`에 실제로 있는 슬롯이어야 한다)·`buildGlobalTableSections`(카탈로그 `KIS_GLOBAL_TABLE_SECTIONS` 순서대로 순차 조회 — 출처 4종 `overseas`/`dxyPair`(재사용)/`detail`(재사용)/`domestic`. **항목 단위 실패 격리** 후 직전 스냅샷 행을 이어받고 `staleAt` 표시, 이어받을 값도 없으면 그 행만 빠진다. `rt_cd=0`인데 종가가 0인 계열은 실패로 다뤄 "0.00"이 표에 남지 않게 한다) |
 | `indices/marketFlow.ts` | 거래대금·수급 계산 (§86, 순수 함수) — `pickBaselineSlot`(§70에서 이동, 현재 시각 이하 마지막 슬롯. **상세·홈이 같은 기준을 쓰게 공용화**)·`computeFlowStreak`(같은 부호 연속 거래일. 당일 행부터 세므로 **장중엔 확정값 아님**, 20거래일 창 소진 시 `capped`, 당일 0이면 null)·`buildHomeIndexFlow`(홈 카드용 요약 조립 — 거래대금·3열 각각 전일 슬롯 우선·전일 종일 폴백, 둘 다 없으면 null) |
 | `indices/volatility.ts` | 변동성 기록 store+계산+카드 요약 (한 파일에 쓰기·읽기 혼재). 카드 요약은 최신 2개 기록의 전일 대비 + 월 집계 2종, 당일 진행분 판정(KST 15:30)까지 (§71) |
 | `indices/dates.ts` | `getLast7BusinessDates` — **현재 미사용 (레거시)** (§9.2) |
-| `market/store.ts` | 공용 시세 Redis 스토어 — `market:detail:*`, `market:stock:*`, `market:stockInfo:*`(배당 회차 `rounds` 포함, §25), `market:lastRefreshAt`(`LastRefreshRecord`: `at`=마지막 성공·`attemptedAt`=마지막 실행 시작(§52)·`trigger`·`ok`), `market:dailyFluctuation`, `market:weeklyFluctuation`, `market:stockMaster`, `market:investor:*`(§42), `market:investorIntraday:*`(+`:baseline`, §70), `market:fiRanking:*`(§50), `market:marketCapRanking:*`(+`:baseline`, §68) (§5). `getStockInfoBlocksMap`(MGET 일괄, 없는 종목은 맵에서 제외) 제공 |
+| `market/store.ts` | 공용 시세 Redis 스토어 — `market:detail:*`, `market:stock:*`, `market:stockInfo:*`(배당 회차 `rounds` 포함, §25), `market:lastRefreshAt`(`LastRefreshRecord`: `at`=마지막 성공·`attemptedAt`=마지막 실행 시작(§52)·`trigger`·`ok`), `market:dailyFluctuation`, `market:weeklyFluctuation`, `market:stockMaster`, `market:investor:*`(§42), `market:investorIntraday:*`(+`:baseline`, §70), `market:fiRanking:*`(§50), `market:marketCapRanking:*`(+`:baseline`, §68), `market:globalTable`(§88 — 섹션 6×32종의 값·등락률·기준일만, 항목별 detail 키를 만들지 않아 화면이 GET 1회로 완결) (§5). `getStockInfoBlocksMap`(MGET 일괄, 없는 종목은 맵에서 제외) 제공 |
 | `stocks/search.ts` | `"use server"` — `searchStocks(query)` 종목명 검색 액션. `auth`+`isEmailAllowed` 가드 후 `market:stockMaster` 부분일치 필터, 접두 우선·가나다 정렬 상위 20. 등록 폼 전용, KIS 직접 호출 없음 |
 | `stocks/myStocksCard.ts` | 홈 「내 종목」 카드 요약 `getMyStocksCardSummary` (Phase 67) — 보유·관심을 한 카드에 담는다. `getHoldings`+`getWatchlist` 병렬 → **합집합 `getStockSnapshots` MGET 1회** → 그 맵을 `getPortfolioValuation`에 주입(재조회 없음). 양쪽 다 수익률 내림차순 상위 4개(`sortRowsByReturnRate`와 같은 규칙), 보유 전체 수익률·전일 대비 동봉. 관심 행은 Phase 65 종가 폴백 규칙 적용. 실패 시 null |
 | `market/staleness.ts` | KST 시간창 가드(`isWithinKisCallWindow` 09:00~18:40) + **스케줄 인지형 배지 판정** `resolveStaleness` — 시세 잡 스케줄 상수(`SCHEDULE_MINUTES`: 09:00~15:30 10분 + 15:40 + 18:15)로 "이미 완료됐어야 할 최근 슬롯(`lastDueRefreshMs`, 유예 20분)"을 구해, fetchedAt이 그보다 오래됐을 때만 배지(정상 휴지 구간엔 안 뜸). 지연 경과로 warn/critical. `SCHEDULE_MINUTES`는 외부 QStash 등록과 동기화 필수. **`resolveRefreshIncident`**(§52) — `market:lastRefreshAt` 레코드(`at`=마지막 성공, `attemptedAt`=마지막 실행 시작)로 홈 전반 갱신 지연 인시던트 판정: 예정 슬롯을 놓쳤고 `attemptedAt`도 그 이전이면 `stalled`(잡 미실행=QStash 미발화 추정), `attemptedAt`은 그 이후면 `failing`(실행됐으나 실패). `since`(멈춘 시각)·`missedSlots`(`countMissedSlots`)·`nextSlotMs`(`nextScheduledRefreshMs`) 동반 |
@@ -202,6 +203,7 @@
 | `indices/MyStocksCard` | Server | 홈 **「내 종목」** 카드 (§24→§57 개명→**§67에서 보유+관심 통합**, 구 `WatchlistCard`를 대체) — **왼쪽 보유 4·오른쪽 관심 4** 2열, 제목 우측에 **보유 전체 수익률·전일 대비**. **라벨 텍스트(「보유」·「관심」·이름표) 없음**(사용자 확정) — 좌/우 위치와 글자 크기(수익률 `--text-caption` · 전일 대비 `--text-micro`)로만 구분하고, **열 구분선도 없다**(§57에서 표 세로선을 뺀 것과 같은 방향). 시각 라벨이 없는 대신 `<ol aria-label>`·`.srOnly`로 스크린리더 텍스트는 유지. 2열이 들어가려면 폭이 필요해 카드 자신이 `grid-column: 1 / -1`(전폭)을 갖는다 — 반폭이면 열당 94px로 종목명이 잘린다(§67 계산). 한쪽만 비면 그 열에 `종목을 등록해보세요`, 양쪽 다 비면 카드 전체 placeholder. 골격·staleness 배지는 SummaryCard composes, 행 폼은 구 WatchlistCard 승계 |
 | `indices/DividendCard` | Server | 배당 일정 전용 카드 (§25) — 다가오는 지급일 상위 4행(§33, 종목명·지급일 MM/DD·주당배당금), **보유종목 기준**. 골격·배지·리스트 폼은 MyStocksCard(구 WatchlistCard)와 동일 관례, 카드 전체 `/dividends` 링크 |
 | `indices/IndexDetailScreen` | Server(async) | **지표 상세 3종(코스피·코스닥·원달러) 공용 화면** — `getIndexDetail`/`getOverseasDetail` 분기, 헤더(홈 아이콘 + 지표명 `<h1>`(§36) + 마지막 갱신)+카드+**차트**+**거래대금·수급 요약(국내만, §69 — §87에서 차트 아래로 내려가고 접힘 기본)**+일별 리스트+푸터. `children` 슬롯(일별 시세와 푸터 사이 — usdkrw의 달러 인덱스 섹션용, §28) |
+| `indices/GlobalTableSection` | Server | 글로벌 지표 섹션 표 (§88) — `<details>`/`<summary>` 네이티브라 JS 0·서버 컴포넌트. 4열(항목·현재가·전일 대비·기준일), 항목명 좌·숫자 우(`.numeric`), 등락률만 방향 색, **기준일은 행마다**(권역별로 달라 섹션 헤더에 하나로 못 붙인다 — 미국·유럽은 항상 전일). 항목명 아래 작은 글씨로 단위·호가 방향(`달러/유로`), 이어받은 행은 기준일 뒤 `*`. 값 표기 자리 수는 행의 `decimals`(`formatFixed`) — 환율 4자리·지수 2자리·국내 금 정수가 한 표에 섞인다. 요청받은 4·5·6열 타일은 480/360px에서 값 한 줄(58.5px)이 안 들어가 표로 갔다(§88 실측, §86.2와 같은 벽) |
 | `indices/MarketFlowSummary` | Server | 국내 지수 상세 **차트 아래** 「거래대금 · 수급」 요약 (§69, §70, 배치·접힘은 §87 — `<details>`/`<summary>` 네이티브라 JS 0·서버 컴포넌트 유지, 접힌 채로도 거래대금 금액은 `summary`에 보인다) — 시장 전체 거래대금 1줄 + 개인·외국인·기관계 3열(값·증감). **KIS 추가 콜 0**(저장된 스냅샷만). 값이 "그 시각까지의 누적"이라 **전일 같은 시각 슬롯**(`intradayBaseline`, §70)과 비교하고 — `pickBaselineSlot`=현재 시각 이하의 마지막 슬롯, 없으면 가장 이른 슬롯 — 슬롯이 없는 첫 거래일만 전일 종일 대비로 폴백(라벨로 구분). 거래대금과 3열은 각각 기준을 정한다. 3열은 **순매수 금액**이며 투자자별 *거래대금*은 KIS 미제공(§69 실측) — 화면 주석으로 명시. 셀 폭 때문에 3열만 억원 반올림 표기(`formatEokwon`). 데이터가 둘 다 없으면 `null` 반환(자체 margin 보유). `pickBaselineSlot`은 §86에서 `lib/indices/marketFlow.ts`로 이동해 홈 카드와 공용 |
 | `indices/IndexFlowNote` | Server | 홈 **코스피·코스닥 카드**의 거래대금·수급 보조 블록 (§86, 배치는 §86.2) — 투자자 3주체를 **행**으로 둔 **테두리 없는 4열 표**(주체 / 순매수 금액 / 전일 같은 시각 대비 증감 / 연속 거래일 `2D`·`20D+`) + 그 아래 거래대금 1줄. 상세 `MarketFlowSummary`와 **같은 스냅샷·같은 기준**(`buildHomeIndexFlow`)이며 **KIS 추가 콜 0**. 폭 병목은 **뷰포트 400~402px**(2열 전환 바로 위 — 카드 내부 332→155px. 아이폰 17이 정확히 402px)이고 390px 이하는 1열이라 넉넉하다. 주체를 **열**로 두던 §86·§86.1 배치는 이 폭에 3열을 억지로 끼우는 일이었다(라벨을 값과 같은 줄에 두면 상단 행만 160px > 154px). 주체를 행으로 돌리면 표가 열 폭을 내용에 맞춰 배분해(그리드 `1fr` 균등 분할과 달리 짧은 열이 남긴 폭을 긴 열이 쓴다) 최악 케이스에도 10px이 남고, 그래서 §86의 1자 축약을 **풀네임(개인·외국인·기관계)으로 되돌렸다**. 표를 쓰는 이유는 이 자동 배분과 정렬이며 데이터 표라 시맨틱도 맞다(`<th scope="row">`). 라벨·값 모두 `--text-micro`(11px, §86.1의 10.5px 축약은 §86.3에서 되돌림) — 라벨은 색(tertiary)으로만 구분. 연속은 「2일」·「20일+」이며 **「거래일」 풀표기는 안 들어간다**(연속 열이 16→35px, 실데이터에서도 3.7px 부족 — §86.3 실측). 셀 간격은 `padding-left: 3px`(첫 열 0), 빈 값은 `—`. 최악 케이스 여유 3.2px이라 표기를 더 늘리려면 배치를 바꿔야 한다. 색상은 순매수 금액에만 — 거래대금·증감·연속은 무채색(§85 관례) |
 | `indices/DollarIndexSection` | Server(async) | 원/달러 상세 하단 달러 인덱스 섹션 (§28) — `getOverseasDetail("DXY")` → IndexCard+차트+근사치 각주. 첫 갱신 전엔 준비 중 문구 |
@@ -310,6 +312,13 @@ QStash 스케줄 4개 (평일 09:00~15:30 10분 간격 / 15:40 / 18:15 KST)
            (ICE 공식 근사, 기준일 교집합) → market:detail:dxy — 파생 부수 지표, 잡 ok 게이팅 제외 (§28)
       1a'. refreshBtc: 업비트 2마켓 순차(KRW-BTC·USDT-BTC, 티커+일봉 각 1콜) → mapUpbitDetail
            → market:detail:{btcKrw|btcUsd} — 외부 부수 지표, 잡 ok 게이팅 제외 (§30)
+      1a''. refreshGlobalTable: **하루 3회차만**(isGlobalTableRound — 09:00·15:40·18:15 시작
+           9분 창) 카탈로그 6섹션 32종 순차 조회 → market:globalTable (§88).
+           신규 26콜 = 해외 기간별시세 25 + 국내 현재가 1(국내 금 J/M04020000).
+           유로·일본·영국은 1a의 통화쌍 응답 재사용, WTI·국제 금은 market:detail:{oil|gold}
+           재사용이라 0콜. 국내 금 기준일은 같은 회차 KOSPI basDt(현재가 응답에 영업일 없음).
+           항목 단위 실패 격리 — 실패 항목은 직전 스냅샷 행을 이어받고 staleAt 표시(3회차뿐이라
+           행이 사라지면 반나절 빈다). 부수 데이터, 잡 ok 게이팅 제외
       1b. refreshDailyFluctuation: 등락률 순위(FHPST01700000) 1콜 → market:dailyFluctuation
            (basePrice=전일 종가: 현재가−prdy_vrss 부호 적용, §20)
       1b'. refreshWeeklyFluctuation: 동일 API fid_input_cnt_1="5" 1콜 →
@@ -555,8 +564,9 @@ QStash 스케줄 (매일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 * * *) → POST /a
   두 목록 합집합 스냅샷 MGET 1회로 끝난다(평가 계산에 스냅샷 맵을 주입해 재조회 없음).
 - **지표 상세**: `IndexDetailScreen` → `getIndexDetail`/`getOverseasDetail` → detail 1건.
   usdkrw는 children `DollarIndexSection`이 `market:detail:dxy` 1건 추가 조회 (§28).
-  글로벌 지표(`/indices/market`)는 금리·유가·금·비트코인 2키를 합쳐 MGET 1회(5키) — 카드별
-  일별 기록도 이 `dailyRows`를 그대로 접힘 목록으로 렌더(추가 페치 없음, §31).
+  글로벌 지표(`/indices/market`, §88)는 detail 3키 MGET 1회 + `market:globalTable` 1회를
+  병렬로 읽는다 — 카드 2종의 일별 기록은 그 `dailyRows`를 그대로 접힘 목록으로 렌더하고(§31),
+  표 32종은 항목별 키 없이 이 스냅샷 하나로 끝난다.
 - **잔고 탭(`/stocks?mode=balance`, §58)**: `HoldingsOverview`가 `getHoldings`(복호화) →
   `getPortfolioValuation`(`market:stock:*` MGET) + `getPortfolioHistory`. 일별 기록
   목록(`DailyHistoryList`)은 이 `getPortfolioHistory` 결과를 그대로 재사용 — 추가 페치 없음 (§29).
@@ -613,6 +623,7 @@ QStash 스케줄 (매일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 * * *) → POST /a
 | `market:detail:{kospi\|kosdaq\|usdkrw\|us10y\|oil\|gold\|dxy\|btcKrw\|btcUsd}` | `StoredMarketDetail` (snapshot+history+dailyRows+fetchedAt). dxy는 환율 6종 합성 파생 지표(§28), gold는 KIS N/GOLDLNPM, btcKrw·btcUsd는 업비트 외부 지표(§30) | ✕ | 시세 잡 | 홈(dxy는 §85에서 원/달러 카드 보조줄)·지표 상세·시장 |
 | `market:stock:{code}` | `StoredStockSnapshot` (price·changeRate·marketName·raw 전체·fetchedAt) | ✕ | 시세 잡 | 평가·관심종목·상세 |
 | `market:stockInfo:{code}` | `StoredStockInfoBlocks` (순위·배당·실적 + 배당 확정 회차 `rounds` — optional, 구 스냅샷 호환, §25; 배당 `annualDividendPerShare`=직전 사업연도 합·`basisYear?` Phase 60) | ✕ | 시세 잡(확정 회차/신규) | `getStockInfo`·배당 일정 리더·배당 알림 훅 |
+| `market:globalTable` | `StoredGlobalTable` (섹션 6개 × 행: label·unit·decimals·close·changeRate·direction·basDt(+`staleAt?`) + fetchedAt) — 차트·일별 없음 (§88) | ✕ | 시세 잡(하루 3회차) | 글로벌 지표 화면 |
 | `market:lastRefreshAt` | `LastRefreshRecord` (at·trigger·ok) | ✕ | 시세 잡(전부 성공 시) | 홈 배지·각 페이지 「마지막 갱신」 |
 | `stock:{code}:history` | `StockDailyPrice[]` 2년 (날짜 오름차순) | ✕ | 시세 잡(백필/확정 갱신) | 상세 차트·기준가 확정 |
 | `kospiVolatility:history` | `KospiVolatilityRecord[]` | ✕ | 시세 잡 | 변동성 카드·상세 |
@@ -921,6 +932,20 @@ QStash 스케줄 (매일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 * * *) → POST /a
   온다. 단 지정일 종가가 **원주가(수정주가 미반영)**라 감자·액면병합이 구간에 낀
   종목은 왜곡된 값으로 상위에 나타날 수 있다(실측: 인산가 +687.5% vs 수정주가 기준
   실제 −21.3%). KIS HTS 순위와 동일한 원천 특성이라 보정 없이 UI 각주로만 안내한다.
+- **`S`(금선물) 카테고리는 죽은 피드다** (§88 실측 2026-07-30) — output2가 비는 데서
+  그치지 않고 **값 자체가 2023년에 정지**했다(S/M0401 WTI 105.24가 2026-07-11 실측과
+  동일 · S/M0101 금 1,928.60 vs 정상 N/NYGOLD 4,097.00). 마스터의 `E`접두 32종
+  (백금·팔라듐·납·니켈·주석·설탕·대두·소맥…)이 **이 카테고리에만** 있어 우회가 없고,
+  같은 코드를 `N`에 넣으면 `rt_cd=0`이면서 값이 `0.00`으로 온다. **다시 시도하지 말 것.**
+- **해외선물 시세는 거래소별 신청 계좌가 아니면 막힌다** (§88) — NYMEX `EGW00551`·
+  CBOT `EGW00552`. ICE만 열려 있으나 `output1`의 **전일 정산가 한 값**뿐이고 분봉
+  (`output2`)은 파라미터 6조합 모두 빈 응답이라 등락률을 자체 계산해야 한다(+월물 롤오버).
+- **환율 마스터의 ISO 코드가 뒤바뀐 쌍이 있다** (§88) — `FX@INR`이 인도네시아
+  루피아(18,054) · `FX@IDR`이 인도 루피(95.49). 한글명은 값과 맞고 알파벳만 반대다.
+  상식대로 `IDR`을 쓰면 인도 값이 들어온다.
+- **국내 금 현물은 국내주식 현재가 API로 온다** (§88) — `J/M04020000`("금 99.99_1kg",
+  원/g. 미니금은 `M04020100`). 접두 `M`이 없는 `04020000`은 값이 0이고, 이 응답에는
+  영업일 필드가 없어 기준일은 같은 회차 KOSPI `basDt`를 쓴다.
 - KIS 문자열 숫자·부호 코드는 반드시 `parseNum`+`applyKisSign` 경유.
 
 ### 9.4 시간·스케줄 규칙
@@ -937,6 +962,13 @@ QStash 스케줄 (매일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 * * *) → POST /a
   실제 QStash 등록과 어긋나면 배지 오판정뿐 아니라 **자동 새로고침 시점도 함께 어긋난다**
   (결합점이 하나 늘었다). 다만 회차를 놓쳐도 다음 회차에 복구되고, 탭 복귀 시점 확인이
   별도로 걸려 있어 영구적으로 묵은 화면이 남지는 않는다.
+- **회차 안에서 다시 갈라지는 갱신도 있다** (§88) — 글로벌 지표 표 32종은
+  `GLOBAL_TABLE_ROUND_MINUTES`(09:00·15:40·18:15 + 9분 창, `isGlobalTableRound`)에 걸린
+  회차에서만 갱신한다. 해외 지수·상품은 전일 종가가 하루 한 번 바뀔 뿐이라 42회차 전부
+  갱신하면 26콜 × 42 = **+1,092콜/일**이 되고, 3회차로 묶으면 +78콜/일이다. 이 상수 역시
+  `SCHEDULE_MINUTES`에 실재하는 슬롯이어야 한다(없는 시각을 넣으면 영구 미갱신) —
+  결합점이 하나 더 늘었다. **신규 잡 라우트를 만들지 않은 이유**는 AGENTS.md §2의
+  "잡 6종" 규칙을 고치지 않기 위함이다.
 - 피드 잡(DART)은 시간창 제약 없음 — 스케줄은 매일 08~22시 정시
   (`CRON_TZ=Asia/Seoul 0 8-22 * * *`), 라우트에 시간창 가드도 없다.
 - 공휴일은 미반영 — 휴장일 감지는 basDt ≠ KST 오늘 (tradingDay=false → 알림만 skip,
