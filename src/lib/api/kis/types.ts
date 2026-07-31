@@ -163,6 +163,8 @@ export interface KisOverseasDailyResponse {
 export interface KisStockPriceOutput {
   /** 주식 현재가 */
   stck_prpr?: string;
+  /** 전일 대비(원) — 부호는 prdy_vrss_sign으로 따로 온다 (§88 국내 금 실측) */
+  prdy_vrss?: string;
   /** 전일 대비율(%) */
   prdy_ctrt?: string;
   /** 전일 대비 부호 (1 상한 / 2 상승 / 3 보합 / 4 하한 / 5 하락) */

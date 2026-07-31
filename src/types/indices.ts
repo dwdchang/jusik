@@ -294,6 +294,34 @@ export interface IndexDetailData {
 export const KIS_DATA_NOTICE =
   "지수 데이터는 10분 간격으로 갱신됩니다. (장중 시세 지연 가능)";
 
+/**
+ * 글로벌 지표 표의 한 행 — Phase 88.
+ * 차트·일별 시계열 없이 값·등락률·기준일만 담는다(섹션마다 표 1개, 32종).
+ */
+export interface GlobalTableRow {
+  label: string;
+  /** 라벨 아래 작은 글씨 — 단위·기준·호가 방향(달러/유로처럼 뒤바뀐 통화쌍) */
+  unit?: string;
+  /** 값 표기 소수점 자리 */
+  decimals: number;
+  close: number;
+  /** 전일 대비율(%) — 부호 적용 */
+  changeRate: number;
+  direction: PriceDirection;
+  /** 항목별 기준일 "YYYYMMDD" — 권역마다 달라(미국은 전일) 행 단위로 갖는다 */
+  basDt: string;
+  /** 이 회차 조회가 실패해 직전 회차 값을 그대로 이어받은 행이면 그 값의 수집 시각(ISO) */
+  staleAt?: string;
+}
+
+export interface GlobalTableSection {
+  id: string;
+  title: string;
+  /** 표 아래 각주 — 단위 기준·제외 항목 사유 */
+  note?: string;
+  rows: GlobalTableRow[];
+}
+
 /** kospiVolatility:history 일별 기록 — 코스피 일중 변동성 */
 export interface KospiVolatilityRecord {
   /** "YYYY-MM-DD" (KST 기준) */

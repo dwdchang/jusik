@@ -3,6 +3,7 @@ import type { KisStockPriceOutput } from "@/lib/api/kis/types";
 import type { StockEarningsInfo } from "@/lib/holdings/stockInfo";
 import type {
   FiFlowRanking,
+  GlobalTableSection,
   IndexDailyRow,
   IndexSeries,
   IndexSnapshot,
@@ -232,6 +233,19 @@ export interface StoredStockMaster {
   fetchedAt: string;
 }
 
+/**
+ * market:globalTable — 글로벌 지표 표 스냅샷 (Phase 88).
+ * 섹션 6개 × 32종의 값·등락률·기준일만 담는다. 항목마다 detail 키를 만들지 않은 이유는
+ * 차트·일별을 안 쓰기 때문 — 화면이 GET 1회로 완결된다.
+ * 하루 3회차만 갱신하므로(GLOBAL_TABLE_ROUND_MINUTES) 항목 조회가 실패하면 잡이 직전
+ * 스냅샷의 행을 그대로 이어받는다(행이 반나절 사라지는 것을 막고, 그 행은 staleAt으로 표시).
+ */
+export interface StoredGlobalTable {
+  sections: GlobalTableSection[];
+  /** 이 스냅샷을 쓴 회차의 시각 (ISO) */
+  fetchedAt: string;
+}
+
 /** market:lastRefreshAt — 마지막 갱신 잡 실행 기록 (staleness 판단·수동 점검용) */
 export interface LastRefreshRecord {
   /** 마지막 성공 완료 시각 (ISO) */
@@ -294,6 +308,7 @@ export function stockInfoKey(symbolCode: string): string {
 export const STOCK_KEY_PREFIX = "market:stock:";
 
 const LAST_REFRESH_KEY = "market:lastRefreshAt";
+const GLOBAL_TABLE_KEY = "market:globalTable";
 const DAILY_FLUCTUATION_KEY = "market:dailyFluctuation";
 const WEEKLY_FLUCTUATION_KEY = "market:weeklyFluctuation";
 const STOCK_MASTER_KEY = "market:stockMaster";
@@ -488,6 +503,14 @@ export async function setWeeklyFluctuation(
   value: StoredWeeklyFluctuation
 ): Promise<void> {
   await getRedis().set(WEEKLY_FLUCTUATION_KEY, value);
+}
+
+export async function getGlobalTable(): Promise<StoredGlobalTable | null> {
+  return getRedis().get<StoredGlobalTable>(GLOBAL_TABLE_KEY);
+}
+
+export async function setGlobalTable(value: StoredGlobalTable): Promise<void> {
+  await getRedis().set(GLOBAL_TABLE_KEY, value);
 }
 
 export async function getStockMaster(): Promise<StoredStockMaster | null> {

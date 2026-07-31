@@ -34,6 +34,10 @@ import { fetchStockInfoBlocks } from "@/lib/holdings/stockInfo";
 import { fetchHotStockUniverse } from "@/lib/hotstocks/universe";
 import { computeDxyDetail } from "@/lib/indices/dxy";
 import {
+  buildGlobalTableSections,
+  isGlobalTableRound,
+} from "@/lib/indices/globalTable";
+import {
   applyKisSign,
   mapKisDailyRows,
   mapKisHistory,
@@ -60,8 +64,10 @@ import {
   getMarketCapRanking,
   getMarketDetail,
   getStockInfoBlocks,
+  getGlobalTable,
   setDailyFluctuation,
   setFiRanking,
+  setGlobalTable,
   setIntradayBaseline,
   setIntradayFlows,
   setInvestorFlows,
@@ -122,6 +128,18 @@ export interface RefreshMarketDataReport {
   dxy: { ok: boolean; error?: string };
   /** 비트코인(업비트 원화·USDT, §30) 저장 결과 — 외부 부수 지표라 잡 전체 ok에 영향 없음 */
   btc: { ok: boolean; error?: string };
+  /**
+   * 글로벌 지표 표 32종(§88) 저장 결과 — 하루 3회차만 갱신하므로 그 밖의 회차는 skipped.
+   * 부수 데이터라 실패해도 잡 전체 ok에 영향 없다. stale은 직전 회차 값을 이어받은 행 수.
+   */
+  globalTable: {
+    ok: boolean;
+    skipped?: true;
+    fresh?: number;
+    stale?: number;
+    dropped?: string[];
+    error?: string;
+  };
   volatility: { ok: boolean; upserted?: number; error?: string };
   /** 당일 등락률 순위 저장 결과 — 부수 데이터라 실패해도 잡 전체 ok에 영향 없음 */
   dailyFluctuation: { ok: boolean; count?: number; error?: string };
@@ -274,21 +292,56 @@ async function refreshIndices(fetchedAt: string): Promise<{
  * KIS에 DXY 종목이 없어 환율 통화쌍 6종을 순차 조회(유량 배려)한 뒤 ICE 공식
  * 근사치로 계산한다. 파생 부수 지표라 실패해도 잡 전체 ok에 영향 없이 로그만
  * 남긴다 — 다음 회차가 자연 재시도. export는 로컬 실측용.
+ *
+ * 받아온 통화쌍 원응답을 함께 반환한다 — 글로벌 지표 표(§88)의 유로·일본·영국 행이
+ * 이걸 재사용해 추가 호출 없이 채워진다. 중간에 실패해도 그때까지 받은 응답은 넘긴다.
  */
-export async function refreshDxy(
-  fetchedAt: string
-): Promise<RefreshMarketDataReport["dxy"]> {
-  try {
-    const rawByCode = new Map<string, KisOverseasDailyResponse>();
+export async function refreshDxy(fetchedAt: string): Promise<{
+  report: RefreshMarketDataReport["dxy"];
+  rawByCode: Map<string, KisOverseasDailyResponse>;
+}> {
+  const rawByCode = new Map<string, KisOverseasDailyResponse>();
 
+  try {
     for (const { code } of KIS_DXY_COMPONENTS) {
       rawByCode.set(code, await fetchKisFxPairDaily(code));
     }
 
     await setMarketDetail("dxy", { ...computeDxyDetail(rawByCode), fetchedAt });
-    return { ok: true };
+    return { report: { ok: true }, rawByCode };
   } catch (error) {
     console.error("[job] dxy refresh failed:", error);
+    return { report: { ok: false, error: errorMessage(error) }, rawByCode };
+  }
+}
+
+/**
+ * 글로벌 지표 표 32종 → market:globalTable 저장 (§88).
+ * 하루 3회차(09:00·15:40·18:15 KST)만 갱신한다 — 해외 지수·상품은 전일 종가가 하루 한 번
+ * 바뀔 뿐이어서 10분 주기로 26콜을 태우면 +1,092콜/일이 된다. 그 밖의 회차는 그대로 통과.
+ * 부수 데이터라 실패해도 잡 전체 ok에 영향 없다. export는 로컬 실측용.
+ */
+export async function refreshGlobalTable(
+  fetchedAt: string,
+  fxRawByCode: ReadonlyMap<string, KisOverseasDailyResponse>,
+  domesticBasDt: string
+): Promise<RefreshMarketDataReport["globalTable"]> {
+  if (!isGlobalTableRound()) {
+    return { ok: true, skipped: true };
+  }
+
+  try {
+    const previous = await getGlobalTable();
+    const { sections, fresh, stale, dropped } = await buildGlobalTableSections({
+      fxRawByCode,
+      domesticBasDt,
+      previous,
+    });
+
+    await setGlobalTable({ sections, fetchedAt });
+    return { ok: true, fresh, stale, dropped };
+  } catch (error) {
+    console.error("[job] global table refresh failed:", error);
     return { ok: false, error: errorMessage(error) };
   }
 }
@@ -950,11 +1003,28 @@ export async function refreshMarketData(
   // 1. 지수·환율·금리·유가 5종 → market:detail:*
   const { results: indices, kospiRaw } = await refreshIndices(startedAt);
 
+  // 국내 장 기준일(basDt) — 아래 글로벌 표의 국내 금 행과 마지막 거래일 판정이 함께 쓴다
+  const kospiBasDt = indices.find((row) => row.key === "kospi")?.ok
+    ? ((kospiRaw as KisIndexDailyResponse | null)?.output2 ?? [])
+        .map((row) => row.stck_bsop_date)
+        .filter((basDt): basDt is string => typeof basDt === "string")
+        .sort()
+        .at(-1)
+    : undefined;
+
   // 1a. 달러 인덱스(환율 6종 계산, §28) → market:detail:dxy (파생 부수 지표, 실패 격리)
-  const dxy = await refreshDxy(startedAt);
+  const { report: dxy, rawByCode: fxRawByCode } = await refreshDxy(startedAt);
 
   // 1a'. 비트코인(업비트 원화·USDT, §30) → market:detail:btcKrw·btcUsd (외부 부수 지표, 실패 격리)
   const btc = await refreshBtc(startedAt);
+
+  // 1a''. 글로벌 지표 표 32종(§88) → market:globalTable — 하루 3회차만, 부수 데이터·실패 격리.
+  // 위 dxy의 통화쌍 응답과 oil·gold 스냅샷을 재사용하므로 신규 호출은 26콜이다.
+  const globalTable = await refreshGlobalTable(
+    startedAt,
+    fxRawByCode,
+    kospiBasDt ?? ""
+  );
 
   // 1b. 당일 등락률 순위 상위 30 → market:dailyFluctuation (부수 데이터, 실패 격리)
   const dailyFluctuation = await refreshDailyFluctuation(startedAt);
@@ -1021,13 +1091,6 @@ export async function refreshMarketData(
   const portfolios = await refreshPortfolios(holdingsByEmail, snapshots);
 
   // 거래일 판단 — KIS 기준일(basDt)이 KST 오늘과 다르면 휴장 (§11.10-A5)
-  const kospiBasDt = indices.find((row) => row.key === "kospi")?.ok
-    ? ((kospiRaw as KisIndexDailyResponse | null)?.output2 ?? [])
-        .map((row) => row.stck_bsop_date)
-        .filter((basDt): basDt is string => typeof basDt === "string")
-        .sort()
-        .at(-1)
-    : undefined;
   const tradingDay = kospiBasDt === todayKstDate().replaceAll("-", "");
 
   // 6. 알림 판정·발송 (Phase 10 연결 지점) — 휴장일이면 skip, 실패해도 200 (§11.10-A6)
@@ -1078,6 +1141,7 @@ export async function refreshMarketData(
     indices,
     dxy,
     btc,
+    globalTable,
     volatility,
     dailyFluctuation,
     weeklyFluctuation,

@@ -204,24 +204,35 @@ export async function fetchKisOverseasDaily(
 }
 
 /**
- * 환율 통화쌍 기간별시세 조회 (FHKST03030100, marketDivCode X) — 달러 인덱스
- * 계산용 (plan.md §28). 고정 3종의 fetchKisOverseasDaily와 달리 코드를 직접 받는다.
+ * 해외지수/환율/금리 기간별시세 조회 (FHKST03030100) — 시장 분류·코드를 직접 받는 형태.
+ * 고정 지표 4종만 아는 fetchKisOverseasDaily와 달리 글로벌 지표 표(§88)처럼 카탈로그로
+ * 항목이 늘어나는 쪽이 쓴다.
  */
-export async function fetchKisFxPairDaily(
+export async function fetchKisOverseasDailyByCode(
+  marketDivCode: string,
   code: string
 ): Promise<KisOverseasDailyResponse> {
   return fetchKisJson<KisOverseasDailyResponse>(
-    "fx pair daily",
+    `overseas daily ${marketDivCode}/${code}`,
     KIS_ENDPOINTS.OVERSEAS_DAILY_CHART,
     KIS_TR_ID.OVERSEAS_DAILY_CHART,
     {
-      FID_COND_MRKT_DIV_CODE: "X",
+      FID_COND_MRKT_DIV_CODE: marketDivCode,
       FID_INPUT_ISCD: code,
       FID_INPUT_DATE_1: kstYyyyMmDd(KIS_OVERSEAS_LOOKBACK_DAYS),
       FID_INPUT_DATE_2: todayKstYyyyMmDd(),
       FID_PERIOD_DIV_CODE: "D",
     }
   );
+}
+
+/**
+ * 환율 통화쌍 기간별시세 조회 (marketDivCode X) — 달러 인덱스 계산용 (plan.md §28).
+ */
+export async function fetchKisFxPairDaily(
+  code: string
+): Promise<KisOverseasDailyResponse> {
+  return fetchKisOverseasDailyByCode("X", code);
 }
 
 /**

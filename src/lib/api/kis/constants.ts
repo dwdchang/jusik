@@ -109,7 +109,11 @@ export const KIS_STOCK_MARKET_DIV_CODE = "J";
 /**
  * 해외지수/환율/금리 지표별 조회 코드 — plan.md §9.1 (2026-07-08 실측 검증)
  * marketDivCode: N 해외지수 / X 환율 / I 국채 / S 금선물
- * OIL은 N/WTIF만 사용 — S/M0401 계열은 일자별(output2)이 비어 응답해 사용 금지 (§15.1 실측)
+ *
+ * **`S`(금선물) 카테고리는 절대 쓰지 않는다** — 일자별(output2)이 비는 데서 그치지 않고
+ * **값 자체가 2023년에 멈춘 죽은 피드**다 (§88 실측: S/M0401 WTI 105.24가 2026-07-11과
+ * 한 자리도 안 변함 · S/M0101 금 1,928.60 vs 정상 N/NYGOLD 4,097.00). 백금·팔라듐·납·
+ * 니켈 등 `E`접두 32종이 이 카테고리에만 있어 되살릴 방법이 없다 — 다시 시도하지 말 것.
  */
 export const KIS_OVERSEAS_INDICATOR = {
   USDKRW: { marketDivCode: "X", code: "FX@KRW" },
@@ -140,6 +144,144 @@ export const KIS_DXY_COMPONENTS = [
   { code: "FX@SEK", exponent: 0.042 },
   { code: "FX@CHF", exponent: 0.036 },
 ] as const;
+
+/** 글로벌 지표 표 항목의 값 출처 — Phase 88 */
+export type GlobalTableItemSource =
+  /** 해외 기간별시세(FHKST03030100) 1콜 */
+  | { kind: "overseas"; marketDivCode: string; code: string }
+  /** 달러 인덱스 태스크(KIS_DXY_COMPONENTS)가 이미 받아온 응답 재사용 — 추가 호출 0 */
+  | { kind: "dxyPair"; code: string }
+  /** 같은 회차에 저장된 market:detail 스냅샷 재사용 — 추가 호출 0 */
+  | { kind: "detail"; detailKey: "oil" | "gold" }
+  /** 국내주식 현재가(FHKST01010100) — 국내 금 현물이 이 경로로만 온다 */
+  | { kind: "domestic"; code: string };
+
+export interface GlobalTableItemDef {
+  /** 표 첫 열 항목명 */
+  label: string;
+  /** 항목명 아래 작은 글씨 — 단위·기준·호가 방향 */
+  unit?: string;
+  /** 값 표기 소수점 자리 — 실측 응답의 자리 수를 따른다 */
+  decimals: number;
+  source: GlobalTableItemSource;
+}
+
+export interface GlobalTableSectionDef {
+  id: string;
+  title: string;
+  /** 표 아래 각주 */
+  note?: string;
+  items: readonly GlobalTableItemDef[];
+}
+
+/**
+ * 글로벌 지표 표 카탈로그 — Phase 88 (2026-07-31 32종 전부 라이브 실측).
+ * 섹션마다 표 1개로 그린다. 회차당 신규 26콜 — dxyPair 3(EUR·JPY·GBP)·detail 2(WTI·국제 금)는
+ * 재사용이라 0콜이고, 아래 overseas 25 + domestic 1이 실제 호출이다.
+ *
+ * 요청받았으나 넣을 수 없어 뺀 항목 — 백금·팔라듐·납·니켈·주석·설탕·대두·대두유·소맥(S 카테고리
+ * 죽은 값 또는 NYMEX/CBOT 시세 미신청) · 쌀·TOPIX·러셀2000(마스터에 코드 없음) ·
+ * 국내 휘발유·경유·LPG(KIS 전 경로 부재, 오피넷 키 필요) · 천연가스·난방유(NYMEX) ·
+ * 에너지 선물 섹션 전체. 근거는 plan.md §88 / summary.md.
+ */
+export const KIS_GLOBAL_TABLE_SECTIONS: readonly GlobalTableSectionDef[] = [
+  {
+    id: "worldIndices",
+    title: "세계 증시",
+    note: "미국·유럽 지수는 갱신 창(평일 09:00~18:40 KST)이 현지 장 마감 전에 닫혀 항상 전일 종가입니다. 그래서 기준일을 행마다 표기합니다.",
+    items: [
+      { label: "다우존스", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: ".DJI" } },
+      { label: "S&P 500", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "SPX" } },
+      { label: "나스닥 종합", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "COMP" } },
+      { label: "반도체", unit: "필라델피아 SOX", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "SOX" } },
+      { label: "VIX", unit: "변동성 지수", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "VIX" } },
+      { label: "상해 종합", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "SHANG" } },
+      { label: "항셍", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "HK#HS" } },
+      { label: "니케이 225", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "JP#NI225" } },
+      { label: "유로 STOXX 50", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "SX5E" } },
+      { label: "독일 DAX", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "GR#DAX" } },
+      { label: "영국 FTSE", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "GB#FTSE" } },
+      { label: "대만 가권", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "TW#WT" } },
+    ],
+  },
+  {
+    id: "fx",
+    title: "전세계 환율",
+    note: "KIS 제공 원값입니다 — 미국을 뺀 7종은 원화가 아니라 달러 기준이고, 유로·영국·호주는 호가 방향이 반대(달러/통화)입니다. KIS 마스터는 인도네시아 루피아를 FX@INR로, 인도 루피를 FX@IDR로 알파벳이 뒤바뀌게 담고 있어 한글명 기준으로 맞췄습니다.",
+    items: [
+      { label: "미국", unit: "원/달러", decimals: 2, source: { kind: "overseas", marketDivCode: "X", code: "FX@KRW" } },
+      { label: "중국", unit: "위엔/달러", decimals: 4, source: { kind: "overseas", marketDivCode: "X", code: "FX@CNY" } },
+      { label: "유로", unit: "달러/유로", decimals: 4, source: { kind: "dxyPair", code: "FX@EUR" } },
+      { label: "일본", unit: "엔/달러", decimals: 2, source: { kind: "dxyPair", code: "FX@JPY" } },
+      { label: "인도네시아", unit: "루피아/달러", decimals: 0, source: { kind: "overseas", marketDivCode: "X", code: "FX@INR" } },
+      { label: "영국", unit: "달러/파운드", decimals: 4, source: { kind: "dxyPair", code: "FX@GBP" } },
+      { label: "브라질", unit: "레알/달러", decimals: 4, source: { kind: "overseas", marketDivCode: "X", code: "FX@BRL" } },
+      { label: "호주", unit: "달러/호주달러", decimals: 4, source: { kind: "overseas", marketDivCode: "X", code: "FX@AUD" } },
+    ],
+  },
+  {
+    id: "oil",
+    title: "국제 유가",
+    note: "근월물 선물 기준입니다. 국내 휘발유·경유·LPG는 KIS가 제공하지 않아 빠져 있습니다(오피넷 API 키가 있으면 추가 가능).",
+    items: [
+      { label: "WTI", unit: "USD/배럴 · 서부텍사스산", decimals: 2, source: { kind: "detail", detailKey: "oil" } },
+      { label: "브렌트유", unit: "USD/배럴", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "BRENTF" } },
+      { label: "두바이유", unit: "USD/배럴", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "DUBAIF" } },
+    ],
+  },
+  {
+    id: "preciousMetals",
+    title: "귀금속",
+    note: "국내 금은 KRX 금시장 「금 99.99_1kg」 실시간 현재가로, 국내 장 기준일을 씁니다. 백금·팔라듐은 KIS가 쓸 수 있는 시세를 주지 않아 빠져 있습니다.",
+    items: [
+      { label: "국내 금", unit: "원/g · KRX 99.99_1kg", decimals: 0, source: { kind: "domestic", code: "M04020000" } },
+      { label: "국제 금", unit: "USD/온스 · LBMA 런던", decimals: 2, source: { kind: "detail", detailKey: "gold" } },
+      { label: "은", unit: "USD/온스 · 런던 현물", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "SLVRLN" } },
+    ],
+  },
+  {
+    id: "baseMetals",
+    title: "비철금속",
+    note: "LME 현물이며 알루미늄은 primary(합금 NASAAC 아님)입니다. 납·니켈·주석은 KIS가 쓸 수 있는 시세를 주지 않아 빠져 있습니다.",
+    items: [
+      { label: "구리", unit: "USD/톤 · LME", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "LMECOC" } },
+      { label: "아연", unit: "USD/톤 · LME", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "LMEZINC" } },
+      { label: "알루미늄", unit: "USD/톤 · LME", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "LMEALC" } },
+    ],
+  },
+  {
+    id: "agriculture",
+    title: "농산물",
+    note: "근월물 선물 기준입니다. 설탕·대두·대두유·소맥·쌀은 KIS가 쓸 수 있는 시세를 주지 않아 빠져 있습니다.",
+    items: [
+      { label: "옥수수", unit: "센트/부셸 · 시카고", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "CHICORN" } },
+      { label: "커피", unit: "센트/파운드", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "COFFE" } },
+      { label: "면화", unit: "센트/파운드", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "COTTON" } },
+    ],
+  },
+] as const;
+
+/**
+ * 글로벌 지표 표 갱신 회차 (KST 자정 기준 분) — Phase 88 사용자 확정.
+ * 해외 지수·상품은 전일 종가가 하루 한 번 바뀔 뿐이라 10분 주기 42회차에 26콜을 태우면
+ * +1,092콜/일이 된다. 09:00·15:40·18:15 세 회차만 갱신해 +78콜/일로 묶는다.
+ * 신규 잡 라우트를 만들지 않고 refreshMarketData 안에서 게이트만 둔다 (AGENTS.md §2 잡 6종 유지).
+ *
+ * 세 값은 모두 실제 QStash 슬롯이어야 한다 — `market/staleness.ts`의 `SCHEDULE_MINUTES`
+ * (09:00~15:30 10분 + 15:40 + 18:15)에 있는 시각만 고를 수 있고, 스케줄을 바꾸면 여기도
+ * 함께 고친다 (research.md §9.4 스케줄 동기화 결합점).
+ */
+export const GLOBAL_TABLE_ROUND_MINUTES = [
+  9 * 60,
+  15 * 60 + 40,
+  18 * 60 + 15,
+] as const;
+
+/**
+ * 회차 판정 창(분) — QStash 발화가 늦어도 그 회차로 인정한다.
+ * 10분 주기보다 좁게 잡아 인접 회차가 같은 창에 겹쳐 들어오지 않게 한다.
+ */
+export const GLOBAL_TABLE_ROUND_WINDOW_MINUTES = 9;
 
 /** 업종(지수) 시장 분류 코드 */
 export const KIS_MARKET_DIV_CODE = "U";
