@@ -165,7 +165,11 @@ export interface GlobalTableItemDef {
    * 긴 문구는 줄바꿈된다(§89). 기준·거래소 설명은 섹션 각주로 보낸다.
    */
   unit?: string;
-  /** 항목명 앞 국기 이모지 — 환율 전용 (§89) */
+  /**
+   * 항목명 앞 국기 — 환율 전용 (§89 이모지 → **§90 국가 코드**).
+   * `public/flags/{flag}.svg`를 가리키는 소문자 2자 코드다("us"·"eu" 등).
+   * 이모지를 버린 이유는 Windows 크롬·엣지가 국기 이모지를 「US」 문자로 렌더링하기 때문.
+   */
   flag?: string;
   /** 값 표기 소수점 자리 — 실측 응답의 자리 수를 따른다 */
   decimals: number;
@@ -181,14 +185,19 @@ export interface GlobalTableSectionDef {
 }
 
 /**
- * 글로벌 지표 카탈로그 — Phase 88 신설 / **Phase 89에서 5구획 27종으로 재편**.
+ * 글로벌 지표 카탈로그 — Phase 88 신설 / §89에서 5구획 27종으로 재편 / **§90에서 28종**.
  * 구획마다 타일 그리드 하나로 그린다(§89 — 값 큼직 + 등락률 아래 작게).
- * 회차당 22콜 — dxyPair 3(EUR·JPY·GBP)·detail 2(WTI·국제 금)는 재사용이라 0콜이고,
- * 아래 overseas 21 + domestic 1이 실제 호출이다.
+ * 회차당 23콜 — dxyPair 3(EUR·JPY·GBP)·detail 2(WTI·국제 금)는 재사용이라 0콜이고,
+ * 아래 overseas 22 + domestic 1이 실제 호출이다.
  *
- * **§89에서 뺀 5종** — 다우존스 `.DJI` · VIX `VIX` · 독일 DAX `GR#DAX` · 영국 FTSE `GB#FTSE` ·
- * 대만 가권 `TW#WT`. 코드는 전부 실측으로 검증된 정상 코드이며(§88), 화면에서 항목을 추리자는
- * 사용자 결정에 따라 수집까지 중단했다 — 되살리려면 아래 `worldIndices`에 되돌리면 된다.
+ * **여기에 없는 화면 항목이 셋 있다** — 미국 10년물·비트코인(주요 지표)과 코스피(세계 증시)는
+ * 10분 주기 `market:detail`이라 화면이 직접 읽는다. 카탈로그에 넣으면 콜은 0이지만 하루
+ * 3회차 스냅샷에 갇혀 10분 갱신이 퇴화한다 (§89·§90).
+ *
+ * **§89에서 뺀 5종 중 다우존스 `.DJI`는 §90에서 되살렸다**(세계 증시 4열 2행을 채우는 자리).
+ * 아직 빠져 있는 4종 — VIX `VIX` · 독일 DAX `GR#DAX` · 영국 FTSE `GB#FTSE` · 대만 가권 `TW#WT`.
+ * 코드는 전부 실측으로 검증된 정상 코드이며(§88), 화면에서 항목을 추리자는 사용자 결정에 따라
+ * 수집까지 중단했다 — 되살리려면 아래 `worldIndices`에 되돌리면 된다.
  *
  * 애초에 넣을 수 없어 뺀 항목 — 백금·팔라듐·납·니켈·주석·설탕·대두·대두유·소맥(S 카테고리
  * 죽은 값 또는 NYMEX/CBOT 시세 미신청) · 쌀·TOPIX·러셀2000(마스터에 코드 없음) ·
@@ -210,16 +219,19 @@ export const KIS_GLOBAL_TABLE_SECTIONS: readonly GlobalTableSectionDef[] = [
     ],
   },
   {
+    // 4열 2행 8타일 중 앞 1개(코스피)는 10분 주기 market:detail이라 카탈로그에 없다 —
+    // 화면이 앞에 끼워 넣는다. 아래 7종이 그 뒤를 미국 → 유럽 → 아시아 순으로 채운다 (§90)
     id: "worldIndices",
     title: "세계 증시",
-    note: "미국·유럽 지수(나스닥·S&P 500·유로 STOXX 50)는 갱신 창(평일 09:00~18:40 KST)이 현지 장 마감 전에 닫혀 항상 전일 종가입니다. 아시아 3종은 당일 종가입니다.",
+    note: "코스피는 10분 간격으로, 나머지 7종은 하루 3회차로 갱신됩니다. 미국·유럽 지수(다우존스·나스닥·S&P 500·유로 STOXX 50)는 갱신 창(평일 09:00~18:40 KST)이 현지 장 마감 전에 닫혀 항상 전일 종가입니다. 아시아 3종은 당일 종가입니다.",
     items: [
+      { label: "다우존스", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: ".DJI" } },
       { label: "나스닥 종합", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "COMP" } },
       { label: "S&P 500", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "SPX" } },
+      { label: "유로 STOXX 50", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "SX5E" } },
       { label: "상해 종합", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "SHANG" } },
       { label: "항셍", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "HK#HS" } },
       { label: "니케이 225", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "JP#NI225" } },
-      { label: "유로 STOXX 50", decimals: 2, source: { kind: "overseas", marketDivCode: "N", code: "SX5E" } },
     ],
   },
   {
@@ -227,16 +239,16 @@ export const KIS_GLOBAL_TABLE_SECTIONS: readonly GlobalTableSectionDef[] = [
     title: "전세계 환율",
     note: "KIS 제공 원값입니다 — 미국을 뺀 7종은 원화가 아니라 달러 기준이고, 유로·영국·호주는 호가 방향이 반대(달러/통화)입니다. KIS 마스터는 인도네시아 루피아를 FX@INR로, 인도 루피를 FX@IDR로 알파벳이 뒤바뀌게 담고 있어 한글명 기준으로 맞췄습니다.",
     items: [
-      { label: "미국", flag: "🇺🇸", unit: "원/달러", decimals: 2, source: { kind: "overseas", marketDivCode: "X", code: "FX@KRW" } },
-      { label: "중국", flag: "🇨🇳", unit: "위엔/달러", decimals: 4, source: { kind: "overseas", marketDivCode: "X", code: "FX@CNY" } },
-      { label: "유로", flag: "🇪🇺", unit: "달러/유로", decimals: 4, source: { kind: "dxyPair", code: "FX@EUR" } },
-      { label: "일본", flag: "🇯🇵", unit: "엔/달러", decimals: 2, source: { kind: "dxyPair", code: "FX@JPY" } },
+      { label: "미국", flag: "us", unit: "원/달러", decimals: 2, source: { kind: "overseas", marketDivCode: "X", code: "FX@KRW" } },
+      { label: "중국", flag: "cn", unit: "위엔/달러", decimals: 4, source: { kind: "overseas", marketDivCode: "X", code: "FX@CNY" } },
+      { label: "유로", flag: "eu", unit: "달러/유로", decimals: 4, source: { kind: "dxyPair", code: "FX@EUR" } },
+      { label: "일본", flag: "jp", unit: "엔/달러", decimals: 2, source: { kind: "dxyPair", code: "FX@JPY" } },
       // 4열 타일(360px에서 62px)에 5자 라벨은 들어가지 않아 두 줄이 된다 — 「인니」로 줄이지
       // 않고 줄바꿈을 허용한다. 그리드 행 높이는 그 행에서 가장 높은 타일이 정하므로 어긋나지 않는다
-      { label: "인도네시아", flag: "🇮🇩", unit: "루피아/달러", decimals: 0, source: { kind: "overseas", marketDivCode: "X", code: "FX@INR" } },
-      { label: "영국", flag: "🇬🇧", unit: "달러/파운드", decimals: 4, source: { kind: "dxyPair", code: "FX@GBP" } },
-      { label: "브라질", flag: "🇧🇷", unit: "레알/달러", decimals: 4, source: { kind: "overseas", marketDivCode: "X", code: "FX@BRL" } },
-      { label: "호주", flag: "🇦🇺", unit: "달러/호주달러", decimals: 4, source: { kind: "overseas", marketDivCode: "X", code: "FX@AUD" } },
+      { label: "인도네시아", flag: "id", unit: "루피아/달러", decimals: 0, source: { kind: "overseas", marketDivCode: "X", code: "FX@INR" } },
+      { label: "영국", flag: "gb", unit: "달러/파운드", decimals: 4, source: { kind: "dxyPair", code: "FX@GBP" } },
+      { label: "브라질", flag: "br", unit: "레알/달러", decimals: 4, source: { kind: "overseas", marketDivCode: "X", code: "FX@BRL" } },
+      { label: "호주", flag: "au", unit: "달러/호주달러", decimals: 4, source: { kind: "overseas", marketDivCode: "X", code: "FX@AUD" } },
     ],
   },
   {

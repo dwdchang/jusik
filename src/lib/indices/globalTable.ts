@@ -17,7 +17,7 @@ import type { GlobalTableRow, GlobalTableSection } from "@/types/indices";
 import { applyKisSign, parseNum, resolveDirection } from "./kisMapper";
 
 /**
- * 글로벌 지표 조립 — plan.md §88 · §89(5구획 27종으로 재편).
+ * 글로벌 지표 조립 — plan.md §88 · §89(5구획 27종으로 재편) · §90(다우존스 복귀로 28종).
  * 카탈로그(KIS_GLOBAL_TABLE_SECTIONS) 순서대로 항목별 값을 모아 구획·행으로 만든다.
  * 항목 단위로 실패를 격리하고, 실패한 항목은 직전 스냅샷의 같은 행을 이어받는다 —
  * 하루 3회차만 갱신하므로 한 번의 실패로 행이 사라지면 최대 반나절 빈 자리가 남는다.

@@ -303,7 +303,7 @@ export interface GlobalTableRow {
   label: string;
   /** 라벨 아래 작은 글씨 — 단위·호가 방향(달러/유로처럼 뒤바뀐 통화쌍) */
   unit?: string;
-  /** 라벨 앞 국기 이모지 — 환율 전용 (§89) */
+  /** 라벨 앞 국기 — `public/flags/{flag}.svg`의 소문자 2자 코드, 환율 전용 (§89 이모지 → §90 코드) */
   flag?: string;
   /** 값 표기 소수점 자리 */
   decimals: number;
