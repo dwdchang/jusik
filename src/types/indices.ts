@@ -153,6 +153,19 @@ export interface IntradayFlowSlot {
   institution: number;
   /** 시장 전체 누적 거래대금(백만원) — 지수 스냅샷이 없던 회차는 생략 */
   tradingValue?: number;
+  /**
+   * 기관 세부 7종 누적 순매수(백만원) — Phase 93에서 추가. **옵셔널인 것은
+   * 스키마 확장 전에 쌓인 슬롯(2026-07-31분)에 이 필드가 없기 때문**이고,
+   * 지나간 거래일은 KIS로 복구할 수 없어(§70) 영구히 3주체로 남는다.
+   * 잡이 이미 받아둔 `InvestorFlowRow`에서 그대로 복사하므로 **KIS 호출은 0**이다.
+   */
+  finInvest?: number;
+  trust?: number;
+  privateFund?: number;
+  bank?: number;
+  insurance?: number;
+  merchantBank?: number;
+  pension?: number;
 }
 
 /**
@@ -293,6 +306,20 @@ export interface IndexDetailData {
 
 export const KIS_DATA_NOTICE =
   "지수 데이터는 10분 간격으로 갱신됩니다. (장중 시세 지연 가능)";
+
+/**
+ * 장중 슬롯 아카이브(§92)가 시작된 거래일 "YYYY-MM-DD" — 일별 수급 표가 **어느
+ * 날짜 행에 펼침을 열어줄지** 판정하는 기준 (§93).
+ *
+ * 이 날 이전은 KIS가 시간대별 수급을 주지 않아 어떤 방법으로도 채울 수 없으므로
+ * 펼침 표시를 아예 그리지 않는다. 키 20개의 존재를 확인하는 대신 상수로 가르는 것은,
+ * 그 확인이 결국 **펼치지도 않을 20일치를 미리 읽는 일**이 되기 때문이다.
+ * 잡이 실패해 빠진 날만 펼쳤을 때 "기록 없음"이 된다.
+ *
+ * 클라이언트 컴포넌트가 읽으므로 `market/store.ts`(Redis 클라이언트를 물고 있다)가
+ * 아니라 여기 둔다.
+ */
+export const INTRADAY_ARCHIVE_SINCE = "2026-07-31";
 
 /**
  * 글로벌 지표 타일 하나 — Phase 88 신설 / Phase 89에서 표 행 → 타일로 재편.

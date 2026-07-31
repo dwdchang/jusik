@@ -542,11 +542,21 @@ async function refreshIntradayFlowSlots(
           ? detailRow.tradingValue
           : undefined;
 
+      // 10주체 전부를 슬롯에 담는다 (§93) — `row`가 이미 KIS 응답에서 매핑된
+      // 값이라 **추가 호출이 없고**, 소급 축적이 불가능해 미루면 그 기간이 영구히
+      // 3주체로 남는다. 슬롯 103B → 약 250B (연 2.1MB → 5MB, 한도 64MB).
       const slot: IntradayFlowSlot = {
         hhmm,
         individual: row.individual,
         foreign: row.foreign,
         institution: row.institution,
+        finInvest: row.finInvest,
+        trust: row.trust,
+        privateFund: row.privateFund,
+        bank: row.bank,
+        insurance: row.insurance,
+        merchantBank: row.merchantBank,
+        pension: row.pension,
         ...(tradingValue !== undefined ? { tradingValue } : {}),
       };
 

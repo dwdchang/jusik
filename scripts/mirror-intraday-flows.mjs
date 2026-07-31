@@ -145,6 +145,31 @@ function parseKey(key) {
   };
 }
 
+/**
+ * 기관 세부 7종 (Phase 93에서 슬롯에 추가) — 확장 이전 거래일에는 값이 없어
+ * 전부 NULL 허용이다. 슬롯의 키 이름을 그대로 컬럼명으로 쓴다.
+ */
+const DETAIL_COLUMNS = [
+  "fin_invest",
+  "trust",
+  "private_fund",
+  "bank",
+  "insurance",
+  "merchant_bank",
+  "pension",
+];
+
+/** SQLite 컬럼명 → 슬롯 키 */
+const DETAIL_SLOT_KEYS = {
+  fin_invest: "finInvest",
+  trust: "trust",
+  private_fund: "privateFund",
+  bank: "bank",
+  insurance: "insurance",
+  merchant_bank: "merchantBank",
+  pension: "pension",
+};
+
 function openDatabase(path) {
   mkdirSync(dirname(path), { recursive: true });
   const db = new DatabaseSync(path);
@@ -160,6 +185,13 @@ function openDatabase(path) {
       foreign_net   INTEGER NOT NULL,
       institution   INTEGER NOT NULL,
       trading_value INTEGER,
+      fin_invest    INTEGER,
+      trust         INTEGER,
+      private_fund  INTEGER,
+      bank          INTEGER,
+      insurance     INTEGER,
+      merchant_bank INTEGER,
+      pension       INTEGER,
       fetched_at    TEXT    NOT NULL,
       mirrored_at   TEXT    NOT NULL,
       PRIMARY KEY (market, trading_date, hhmm, source)
@@ -167,6 +199,18 @@ function openDatabase(path) {
     CREATE INDEX IF NOT EXISTS idx_slot_hhmm ON intraday_slot (source, hhmm);
     CREATE INDEX IF NOT EXISTS idx_slot_date ON intraday_slot (trading_date);
   `);
+
+  // Phase 92에 만들어진 DB에는 세부 7컬럼이 없다. CREATE TABLE IF NOT EXISTS는
+  // 기존 테이블을 손대지 않으므로 빠진 컬럼만 따로 붙인다(재실행해도 안전).
+  const existing = new Set(
+    db.prepare("PRAGMA table_info(intraday_slot)").all().map((c) => c.name)
+  );
+  for (const column of DETAIL_COLUMNS) {
+    if (!existing.has(column)) {
+      db.exec(`ALTER TABLE intraday_slot ADD COLUMN ${column} INTEGER`);
+    }
+  }
+
   return db;
 }
 
@@ -230,13 +274,16 @@ async function main() {
   const insert = db.prepare(`
     INSERT INTO intraday_slot (
       market, trading_date, hhmm, source,
-      individual, foreign_net, institution, trading_value, fetched_at, mirrored_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      individual, foreign_net, institution, trading_value,
+      ${DETAIL_COLUMNS.join(", ")},
+      fetched_at, mirrored_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ${DETAIL_COLUMNS.map(() => "?").join(", ")}, ?, ?)
     ON CONFLICT (market, trading_date, hhmm, source) DO UPDATE SET
       individual    = excluded.individual,
       foreign_net   = excluded.foreign_net,
       institution   = excluded.institution,
       trading_value = excluded.trading_value,
+      ${DETAIL_COLUMNS.map((c) => `${c} = excluded.${c}`).join(",\n      ")},
       fetched_at    = excluded.fetched_at,
       mirrored_at   = excluded.mirrored_at
   `);
@@ -271,6 +318,8 @@ async function main() {
             slot.foreign,
             slot.institution,
             slot.tradingValue ?? null,
+            // 세부 7종은 §93 이전 거래일 슬롯에 없다 — 그대로 NULL로 들어간다
+            ...DETAIL_COLUMNS.map((c) => slot[DETAIL_SLOT_KEYS[c]] ?? null),
             stored.fetchedAt ?? "",
             mirroredAt
           );

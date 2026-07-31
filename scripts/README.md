@@ -77,11 +77,16 @@ tail -f ~/Library/Logs/jusik-mirror.log
 | `source` | `qstash`(정규 회차) / `manual`(수동 트리거) |
 | `individual` / `foreign_net` / `institution` | 그 시각까지의 누적 순매수 |
 | `trading_value` | 시장 전체 누적 거래대금. 지수 스냅샷이 없던 회차는 `NULL` |
+| `fin_invest` / `trust` / `private_fund` / `bank` / `insurance` / `merchant_bank` / `pension` | 기관 세부 7종 누적 순매수 (Phase 93). **2026-07-31분은 `NULL`** — 슬롯에 이 값들이 들어가기 전이라 소급이 불가능하다 |
 | `fetched_at` | 잡이 값을 받은 시각 (ISO) |
 | `mirrored_at` | 이 행을 복제한 시각 (ISO) |
 
 PK는 `(market, trading_date, hhmm, source)`라 몇 번을 다시 받아도 중복되지 않는다.
 `foreign`은 SQL 예약어라 컬럼명이 `foreign_net`이다.
+
+Phase 92 때 만들어진 DB에는 세부 7컬럼이 없다. 스크립트가 실행할 때마다
+`PRAGMA table_info`로 빠진 컬럼만 `ALTER TABLE ADD COLUMN` 하므로 **따로 손댈 것은 없다**
+(기존 행의 세부 컬럼은 `NULL`로 남는다).
 
 ### 분석 시 주의
 
