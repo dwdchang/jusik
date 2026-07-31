@@ -1,0 +1,146 @@
+/* 섹션 카드 — 접기 토글 폼은 MarketFlowSummary(§87)와 같다 */
+.card {
+  padding: var(--card-padding);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.summary {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-8);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+}
+
+.summary::-webkit-details-marker {
+  display: none;
+}
+
+.title {
+  font-size: var(--text-body);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.count {
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+}
+
+.chevron {
+  margin-left: auto;
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+  transition: transform 0.15s ease;
+}
+
+.card[open] .chevron {
+  transform: rotate(180deg);
+}
+
+.card[open] .summary {
+  margin-bottom: var(--space-12);
+}
+
+/* 4열(항목·현재가·전일 대비·기준일)이 360px 안에 들어가지만, 라벨이 긴 항목에서
+   넘칠 때는 표가 자기 컨테이너 안에서만 가로 스크롤한다 (페이지는 스크롤되지 않는다) */
+.scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.labelHead,
+.numHead {
+  font-size: var(--text-micro);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-secondary);
+  padding: var(--space-8) var(--space-4);
+  white-space: nowrap;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.labelHead {
+  text-align: left;
+}
+
+.numHead {
+  text-align: right;
+}
+
+.labelCell {
+  text-align: left;
+  padding: var(--space-8) var(--space-4);
+  font-size: var(--text-caption-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-primary);
+}
+
+/* 단위·호가 방향 — 값을 오독하지 않도록 항목명 아래 한 줄 (환율 「달러/유로」 등) */
+.unit {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--text-micro);
+  font-weight: var(--weight-regular);
+  color: var(--color-text-tertiary);
+}
+
+.num {
+  text-align: right;
+  padding: var(--space-8) var(--space-4);
+  font-size: var(--text-caption-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+}
+
+.dateCell {
+  text-align: right;
+  padding: var(--space-8) var(--space-4);
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+  white-space: nowrap;
+}
+
+.stale {
+  margin-left: 2px;
+  color: var(--color-text-tertiary);
+}
+
+tbody tr + tr .labelCell,
+tbody tr + tr .num,
+tbody tr + tr .dateCell {
+  border-top: 1px solid var(--color-border);
+}
+
+.note {
+  margin-top: var(--space-12);
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+  line-height: 1.5;
+}
+
+.empty {
+  font-size: var(--text-caption);
+  color: var(--color-text-tertiary);
+  line-height: 1.5;
+}
+
+.rise {
+  color: var(--color-rise);
+}
+
+.fall {
+  color: var(--color-fall);
+}
+
+.flat {
+  color: var(--color-flat);
+}
