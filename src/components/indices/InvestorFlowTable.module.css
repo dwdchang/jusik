@@ -63,6 +63,105 @@ tbody tr + tr .num {
   border-top: 1px solid var(--color-border);
 }
 
+/* 날짜 펼침 버튼 (§93) — 음수 마진으로 셀 여백까지 클릭 영역에 넣어
+   11px 글자에도 터치 타깃이 행 높이만큼 확보되게 한다. */
+.dateToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: calc(-1 * var(--space-8)) calc(-1 * var(--space-12));
+  padding: var(--space-8) var(--space-12);
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.caret {
+  display: inline-block;
+  color: var(--color-text-tertiary);
+  transition: transform 0.15s ease;
+}
+
+.caretOpen {
+  transform: rotate(90deg);
+}
+
+/* 펼친 영역 — 배경을 한 단 눌러(--color-bg) 상위 행과 시각적으로 갈라놓는다 */
+.expandCell {
+  padding: var(--space-12);
+  background-color: var(--color-bg);
+  border-top: 1px solid var(--color-border);
+}
+
+.panelNote {
+  margin: 0 0 var(--space-8);
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+}
+
+.subTable {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.subTimeHead,
+.subNumHead {
+  font-size: var(--text-micro);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-tertiary);
+  padding: var(--space-8);
+  white-space: nowrap;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.subNumHead {
+  text-align: right;
+}
+
+/* 시각 열도 가로 스크롤 시 고정 — 어느 시각의 값인지가 기준이라 상위 표의 날짜 열과 같다 */
+.subTimeHead,
+.subTimeCell {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  text-align: left;
+  background-color: var(--color-bg);
+}
+
+.subTimeCell {
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-secondary);
+  padding: var(--space-8);
+  white-space: nowrap;
+}
+
+.subNum {
+  padding: var(--space-8);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.subTable tbody tr + tr .subTimeCell,
+.subTable tbody tr + tr .subNum {
+  border-top: 1px solid var(--color-border);
+}
+
+/* 누적은 방향 색으로, 증분은 한 단 흐리게 — 두 줄 다 색을 주면 구분이 안 된다 */
+.cumulative {
+  display: block;
+  font-size: var(--text-micro);
+  font-weight: var(--weight-medium);
+}
+
+.delta {
+  display: block;
+  font-size: var(--text-micro);
+  color: var(--color-text-tertiary);
+}
+
 .rise {
   color: var(--color-rise);
 }

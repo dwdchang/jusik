@@ -4,7 +4,11 @@ import { formatBasDtDisplay } from "@/lib/format/basDt";
 import { formatKstDateTime } from "@/lib/format/datetime";
 import { getIndexDetail } from "@/lib/indices/getIndexDetail";
 import { getOverseasDetail } from "@/lib/indices/getOverseasDetail";
-import type { IndexDetailData, IndicatorId } from "@/types/indices";
+import type {
+  IndexDetailData,
+  IndicatorId,
+  MarketIndex,
+} from "@/types/indices";
 import { DetailTabs, type DetailTab } from "./DetailTabs";
 import { FiRankingTable } from "./FiRankingTable";
 import { IndexCard } from "./IndexCard";
@@ -20,7 +24,11 @@ import styles from "./IndexDetailScreen.module.css";
  * 국내 지수(코스피/코스닥) 상세의 탭 구성 — 일별 시세 / 일별 수급 / 종목별 순위 (§50)
  * / 시총 순위 (§68). 각 스냅샷은 초기 시딩 전 없을 수 있어(B안) 없으면 "준비 중".
  */
-function buildDomesticTabs(data: IndexDetailData): DetailTab[] {
+function buildDomesticTabs(
+  data: IndexDetailData,
+  /** 일별 수급 탭의 날짜 펼침이 어느 시장의 아카이브를 읽을지 (§93) */
+  market: MarketIndex
+): DetailTab[] {
   const emptyPanel = <p className={styles.emptyPanel}>데이터 준비 중입니다.</p>;
 
   return [
@@ -36,9 +44,9 @@ function buildDomesticTabs(data: IndexDetailData): DetailTab[] {
         data.investorRows && data.investorRows.length > 0 ? (
           <>
             <p className={styles.sectionNote}>
-              순매수 금액 · + 순매수 / − 순매도
+              순매수 금액 · + 순매수 / − 순매도 · 날짜를 누르면 시간대별로 펼쳐집니다
             </p>
-            <InvestorFlowTable rows={data.investorRows} />
+            <InvestorFlowTable rows={data.investorRows} market={market} />
           </>
         ) : (
           emptyPanel
@@ -143,7 +151,7 @@ export async function IndexDetailScreen({
 
         {market === "KOSPI" || market === "KOSDAQ" ? (
           <section className={styles.section} aria-label="일별 데이터">
-            <DetailTabs tabs={buildDomesticTabs(data)} />
+            <DetailTabs tabs={buildDomesticTabs(data, market)} />
           </section>
         ) : (
           <section className={styles.section} aria-label="일별 시세">
