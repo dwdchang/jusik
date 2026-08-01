@@ -10,8 +10,11 @@
   min-width: 0;
 }
 
+/* 항목 이름 (§96에서 11px → 13px). 값이 커진 타일 배치에서 라벨만 11px로 남아
+   "무엇의 값인지"가 먼저 읽히지 않았다. 값은 clamp 15~24px·bold라 13px까지 올려도
+   위계는 유지된다(단위 10px → 라벨 13px → 값 15px+ 순). */
 .label {
-  font-size: var(--text-micro);
+  font-size: var(--text-caption);
   font-weight: var(--weight-medium);
   color: var(--color-text-secondary);
   line-height: 1.3;
