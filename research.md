@@ -204,7 +204,7 @@
 | `indices/MyStocksCard` | Server | 홈 **「내 종목」** 카드 (§24→§57 개명→**§67에서 보유+관심 통합**, 구 `WatchlistCard`를 대체) — **왼쪽 보유 4·오른쪽 관심 4** 2열, 제목 우측에 **보유 전체 수익률·전일 대비**. **라벨 텍스트(「보유」·「관심」·이름표) 없음**(사용자 확정) — 좌/우 위치와 글자 크기(수익률 `--text-caption` · 전일 대비 `--text-micro`)로만 구분하고, **열 구분선도 없다**(§57에서 표 세로선을 뺀 것과 같은 방향). 시각 라벨이 없는 대신 `<ol aria-label>`·`.srOnly`로 스크린리더 텍스트는 유지. 2열이 들어가려면 폭이 필요해 카드 자신이 `grid-column: 1 / -1`(전폭)을 갖는다 — 반폭이면 열당 94px로 종목명이 잘린다(§67 계산). 한쪽만 비면 그 열에 `종목을 등록해보세요`, 양쪽 다 비면 카드 전체 placeholder. 골격·staleness 배지는 SummaryCard composes, 행 폼은 구 WatchlistCard 승계 |
 | `indices/DividendCard` | Server | 배당 일정 전용 카드 (§25) — 다가오는 지급일 상위 4행(§33, 종목명·지급일 MM/DD·주당배당금), **보유종목 기준**. 골격·배지·리스트 폼은 MyStocksCard(구 WatchlistCard)와 동일 관례, 카드 전체 `/dividends` 링크 |
 | `indices/IndexDetailScreen` | Server(async) | **지표 상세 3종(코스피·코스닥·원달러) 공용 화면** — `getIndexDetail`/`getOverseasDetail` 분기, 헤더(홈 아이콘 + 지표명 `<h1>`(§36) + 마지막 갱신)+카드+**차트**+**거래대금·수급 요약(국내만, §69 — §87에서 차트 아래로 내려가고 접힘 기본)**+일별 리스트+푸터. `children` 슬롯(일별 시세와 푸터 사이 — usdkrw의 달러 인덱스 섹션용, §28). **푸터 `dataNotice`는 §91에서 `NoteDisclosure` 접힘 토글**(그 아래 「마지막 갱신」·「기준일」은 그대로 — 데이터의 나이라 접지 않는다) |
-| `indices/GlobalTile` | Server | 글로벌 지표 타일 하나 (§89) — 라벨(+국기·단위) / **값 큼직** / 전일 대비율 작게, 세로 4줄 왼쪽 정렬. **라벨은 `--text-caption`(13px, §96에서 11px → 13px)** — §88 표 시절 크기를 물려받아 값만 커지고 항목 이름이 안 읽히던 것을 되돌렸다. 위계는 `단위 10px → 라벨 13px → 값 15~24px bold`이고, 라벨이 `word-break: keep-all`이라 두 줄이 되어도 행 높이는 그 행 최고 타일이 정해 열이 어긋나지 않는다. 값 글자 크기는 **`--tile-value-size` 상속**으로 받는다(CSS Modules는 파일마다 해시가 달라 부모가 자식 클래스를 못 고르지만 CSS 변수는 상속된다). 값은 **포맷된 문자열**로 받는다(소수 0·2·4자리 + 상단은 `formatIndex`도 씀). 이어받은 항목은 **값 뒤** `*`(기준일 열이 없어져 옮긴 자리). **국기는 `public/flags/{code}.svg`**(§90 — `flag-icons` MIT 4x3 SVG 8종을 복사, 패키지 의존성 아님) — `<img width=16 height=12 alt="">`에 `no-img-element` 국소 해제(SVG는 `next/image` 최적화 대상이 아니다), 코드가 경로에 들어가므로 `/^[a-z]{2}$/`로 한 번 더 막는다(스냅샷 경유), 흰 바탕 국기(일본)가 묻히지 않게 `--color-border` 0.5px 한 겹 |
+| `indices/GlobalTile` | Server | 글로벌 지표 타일 하나 (§89) — 라벨(+국기·단위) / **값 큼직** / 전일 대비율 작게, 세로 4줄 왼쪽 정렬. **라벨은 `--text-micro`(11px)** — §96에서 13px로 올렸다가 §96.1에서 원복했다(사용자가 키우려던 것은 항목명이 아니라 구획 제목이었다). 라벨이 `word-break: keep-all`이라 두 줄이 되어도 행 높이는 그 행 최고 타일이 정해 열이 어긋나지 않는다. 값 글자 크기는 **`--tile-value-size` 상속**으로 받는다(CSS Modules는 파일마다 해시가 달라 부모가 자식 클래스를 못 고르지만 CSS 변수는 상속된다). 값은 **포맷된 문자열**로 받는다(소수 0·2·4자리 + 상단은 `formatIndex`도 씀). 이어받은 항목은 **값 뒤** `*`(기준일 열이 없어져 옮긴 자리). **국기는 `public/flags/{code}.svg`**(§90 — `flag-icons` MIT 4x3 SVG 8종을 복사, 패키지 의존성 아님) — `<img width=16 height=12 alt="">`에 `no-img-element` 국소 해제(SVG는 `next/image` 최적화 대상이 아니다), 코드가 경로에 들어가므로 `/^[a-z]{2}$/`로 한 번 더 막는다(스냅샷 경유), 흰 바탕 국기(일본)가 묻히지 않게 `--color-border` 0.5px 한 겹 |
 | `indices/GlobalTileGrid` | Server | 타일 그리드 (§89) — 3열/4열 두 가지, 열 수에 맞는 `--tile-value-size`를 자식에 내려보낸다. **폭 실측**: 내부 폭은 3열 `v/3 − 34.67`·4열 `v/4 − 28`(@360px 88.0/62.0px), 값 폰트 상한은 3열 `v/14.634 − 7.108`(9자)·4열 `v/17.344 − 6.456`(8자) → @360px **17.5/14.3px**. 채택 `clamp(15px, 4.8vw, 24px)` / `clamp(12px, 3.85vw, 20px)` — 기울기는 가장 빠듯한 360px 기준, 최대값은 **컨테이너가 480px에서 멈춘 뒤에도 vw가 계속 커지는 것**을 막는 캡 |
 | `indices/GlobalTileSection` | Server | 글로벌 지표 구획 (§88의 `GlobalTableSection` 4열 표를 §89에서 대체·삭제) — `<details open>`/`<summary>` 네이티브라 JS 0·서버 컴포넌트. **기본 펼침이지만 접기는 남겼다**(요청은 "펼친 상태"였지 "접기 제거"가 아니고 비용이 0). 값 자리 수는 행의 `decimals`(`formatFixed`). **기준일 열 제거** — 기준일이 알려주던 것(미국·유럽은 항상 전일 종가)과 단위 축약으로 잘라낸 거래소·기준 설명은 전부 **구획 각주**로 옮겼다 — 그 각주는 §91에서 `NoteDisclosure` 접힘 토글이 되어 `<details>`가 중첩된다(부모 `<summary>` 바깥이라 클릭 영역은 안 겹친다) |
 | `indices/MarketFlowSummary` | Server | 국내 지수 상세 **차트 아래** 「거래대금 · 수급」 요약 (§69, §70, 배치·접힘은 §87 — `<details>`/`<summary>` 네이티브라 JS 0·서버 컴포넌트 유지, 접힌 채로도 거래대금 금액은 `summary`에 보인다) — 시장 전체 거래대금 1줄 + 개인·외국인·기관계 3열(값·증감). **KIS 추가 콜 0**(저장된 스냅샷만). 값이 "그 시각까지의 누적"이라 **전일 같은 시각 슬롯**(`intradayBaseline`, §70)과 비교하고 — `pickBaselineSlot`=현재 시각 이하의 마지막 슬롯, 없으면 가장 이른 슬롯 — 슬롯이 없는 첫 거래일만 전일 종일 대비로 폴백(라벨로 구분). 거래대금과 3열은 각각 기준을 정한다. 3열은 **순매수 금액**이며 투자자별 *거래대금*은 KIS 미제공(§69 실측) — 화면 주석으로 명시. 셀 폭 때문에 3열만 억원 반올림 표기(`formatEokwon`). 데이터가 둘 다 없으면 `null` 반환(자체 margin 보유). `pickBaselineSlot`은 §86에서 `lib/indices/marketFlow.ts`로 이동해 홈 카드와 공용 |
@@ -260,9 +260,14 @@
 - `src/styles/tokens.css` — 디자인 토큰(색·타이포·간격·radius). `html[data-theme="dark"]`
   오버라이드. 등락색: rise `#f04452` / fall `#3182f6` (한국식 빨강=상승).
   타이포 계단: `--text-price` 28 / `--text-title` 22 /
-  `--text-page-title` 20(§36 페이지 h1 전용) / `--text-caption` 13 /
+  `--text-page-title` 20(§36 페이지 h1 전용) / **`--text-section-title` 18(§96.1
+  카드·구획 제목 전용, 굵기는 regular)** / **`--text-body` 16** / `--text-caption` 13 /
   `--text-caption-sm` 12(§35 보조 수치용) / `--text-micro` 11px.
-  굵기: `--weight-regular` 400(§36 페이지 h1) / medium 500 / semibold 600 / bold 700.
+  ⚠️ **`--text-body`는 §96.1 전까지 정의가 없었다** — `var(--text-body)`를 쓰던 3곳이
+  폴백 없이 상속값 16px으로 렌더되고 있었고 값이 우연히 같아 드러나지 않았다. 실효값
+  그대로 명시했으므로 동작은 불변이다(같은 함정이 또 있는지 볼 때의 단서).
+  굵기: `--weight-regular` 400(§36 페이지 h1 · §96.1 구획 제목) / medium 500 /
+  semibold 600 / bold 700.
   페이지 제목은 전 화면 공통으로 `<h1 className={styles.title}>` +
   `--text-page-title`·`--weight-regular` (§36 — 각 `page.module.css`에 같은
   `.title` 블록이 복붙되어 있으니 제목 스타일 변경 시 14곳을 함께 고친다).
