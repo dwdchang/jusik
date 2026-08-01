@@ -19,9 +19,13 @@
   display: none;
 }
 
+/* 구획 제목 — §96.1에서 16px semibold → 18px regular.
+   크기로 위계를 주고 굵기는 오히려 낮춘다(사용자 확정 "크게 하되 굵게는 하지마").
+   페이지 제목(20px)도 regular라 같은 방향이며, 커진 만큼 굵기까지 올리면 타일 값보다
+   제목이 먼저 읽혀 §89에서 값을 키운 취지가 뒤집힌다. */
 .title {
-  font-size: var(--text-body);
-  font-weight: var(--weight-semibold);
+  font-size: var(--text-section-title);
+  font-weight: var(--weight-regular);
   color: var(--color-text-primary);
 }
 

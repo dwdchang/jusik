@@ -41,10 +41,12 @@
   border-radius: var(--radius-lg);
 }
 
+/* 「주요 지표」 — 아래 구획 카드들과 같은 위계라 `GlobalTileSection`의 `.title`과
+   크기·굵기를 맞춘다 (§96.1). 둘이 어긋나면 첫 카드만 다른 종류로 보인다. */
 .cardTitle {
   margin-bottom: var(--space-8);
-  font-size: var(--text-body);
-  font-weight: var(--weight-semibold);
+  font-size: var(--text-section-title);
+  font-weight: var(--weight-regular);
   color: var(--color-text-primary);
 }
 
