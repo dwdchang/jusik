@@ -121,9 +121,66 @@ export function daysBetweenYyyyMmDd(
 }
 
 /**
+ * 문장 종결 위치 — `.`·`!`·`?` 뒤가 공백이거나 문자열 끝인 자리.
+ * 뒤가 숫자면 매치되지 않으므로 `1.5조`·`60.5조` 같은 소수점은 자연히 빠진다.
+ */
+const SENTENCE_END = /[.!?](?=\s|$)/g;
+
+/** 다듬은 결과가 이보다 짧아지면 원문을 그대로 둔다 — 한 문장만 남아 정보가 준다 */
+const MIN_TIDIED_CHARS = 40;
+
+/**
+ * 발췌를 **마지막 온전한 문장까지**로 다듬는다 (Phase 97).
+ *
+ * 네이버 뉴스 API의 `description`은 요약이 아니라 **검색어 주변을 잘라낸 스니펫**이라
+ * 문장 중간에서 뚝 끊긴다("…5대 데이터센터 고객사와 이미"). 원문 본문을 수집하지 않는
+ * 이상(§84.2에서 그은 저작권 선) 진짜 요약을 만들 재료가 없으므로, **끝의 불완전한
+ * 조각만 버려** 읽는 느낌을 고친다. 요약이 아니라 정리라는 점은 화면 각주 그대로다.
+ *
+ * **앞쪽은 건드리지 않는다** — 한국어는 문장이 중간부터 시작했는지 판정할 신뢰할 만한
+ * 단서가 없어(영어의 대문자 같은 것이 없다) 잘못 자르면 멀쩡한 첫 문장을 날린다.
+ * 선행 말줄임표만 지운다.
+ *
+ * 원문의 **절반 미만**으로 줄거나 `MIN_TIDIED_CHARS`보다 짧아지면 **원문을 그대로 둔다**
+ * — 첫 문장이 짧은 기사에서 다듬기가 오히려 정보를 깎는 경우다.
+ */
+export function tidyNewsSummary(raw: string): string {
+  // 잘린 자리를 표시하는 말줄임표를 먼저 걷어낸다 — 실데이터는 대부분 `…`가 아니라
+  // 마침표 3개이고, 온전한 문장 뒤에 붙으면 `썼다....`처럼 4개가 연달아 나온다.
+  const base = raw
+    .trim()
+    .replace(/^(?:…|\.{3})\s*/, "")
+    .replace(/\s*(?:…|\.{3})$/, "")
+    .trim();
+  if (base === "") {
+    return raw;
+  }
+
+  let lastEnd = -1;
+  for (const match of base.matchAll(SENTENCE_END)) {
+    lastEnd = match.index;
+  }
+  // 종결부호가 하나도 없는 스니펫은 자를 자리가 없다 — 말줄임표만 정리하고 그대로 둔다
+  if (lastEnd < 0) {
+    return base;
+  }
+
+  const tidied = base.slice(0, lastEnd + 1);
+  if (tidied.length < MIN_TIDIED_CHARS || tidied.length * 2 < base.length) {
+    return base;
+  }
+  return tidied;
+}
+
+/**
  * 화면에 실을 보도 목록. 기준 공시가 너무 오래됐으면 빈 배열을 돌려준다.
  * 접수일을 못 읽는 스냅샷(구 버전·손상)은 **보수적으로 숨긴다** — 언제 것인지 모르는
  * 기사를 "최근 실적 보도"라고 붙여 두는 편이 더 나쁘다.
+ *
+ * 발췌 다듬기(§97)를 **저장이 아니라 여기서** 하는 이유 둘 — ① 이미 저장된 스냅샷에도
+ * 즉시 적용돼 다음 발표 시즌을 기다리지 않아도 된다 ② 스냅샷에는 원문이 남아 방침을
+ * 되돌리거나 규칙을 바꿔도 재수집이 필요 없다. 점수·필터(`scoreEarningsArticle`)는
+ * 수집 시점에 **원문 발췌**로 매기므로 다듬기가 선별에 영향을 주지 않는다.
  */
 export function visibleEarningsNews(
   stored: StoredEarningsNews | null,
@@ -136,5 +193,8 @@ export function visibleEarningsNews(
   if (age === null || age > EARNINGS_NEWS_MAX_AGE_DAYS) {
     return [];
   }
-  return stored.items;
+  return stored.items.map((item) => ({
+    ...item,
+    summary: tidyNewsSummary(item.summary),
+  }));
 }
