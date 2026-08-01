@@ -8,6 +8,7 @@ import {
   type EarningsQuarterPoint,
 } from "@/lib/feeds/earningsFocus";
 import type { EarningsNewsItem } from "@/lib/feeds/store";
+import { NoteDisclosure } from "@/components/ui/NoteDisclosure";
 import { EarningsFocusChartClient } from "./EarningsFocusChartClient";
 import styles from "./EarningsFocusPanel.module.css";
 
@@ -268,10 +269,11 @@ function EarningsNews({ items }: { items: EarningsNewsItem[] }) {
           </li>
         ))}
       </ul>
-      <p className={styles.caption}>
+      {/* §91의 각주 토글을 실적 탭에도 (§98) — 출처·한계 설명이라 상시 펼침이 아니어도 된다 */}
+      <NoteDisclosure>
         네이버 뉴스 검색 결과이며 발췌·링크만 표시합니다. 기사 내용의 정확성은 각
         언론사 원문을 확인해주세요.
-      </p>
+      </NoteDisclosure>
     </div>
   );
 }
@@ -304,7 +306,7 @@ async function FocusBody({ symbolCode }: { symbolCode: string }) {
       />
       <EarningsFocusChartClient points={focus.points} />
       <QuarterTable points={focus.points} />
-      <p className={styles.caption}>
+      <NoteDisclosure>
         {focus.basis}재무제표 기준 · 확정 실적은 정기보고서(DART), 「잠정」 표시 분기는
         영업(잠정)실적 공정공시에서 왔습니다.
         {focus.provisionalSource !== null
@@ -312,7 +314,7 @@ async function FocusBody({ symbolCode }: { symbolCode: string }) {
               focus.provisionalSource.rceptDt
             )} 접수분(단위 ${focus.provisionalSource.unit})이며 감사 전 수치라 확정치와 다를 수 있습니다.`
           : ""}
-      </p>
+      </NoteDisclosure>
       <IrEvents events={focus.irEvents} />
       <Briefings items={focus.briefings} />
       <EarningsNews items={focus.news} />

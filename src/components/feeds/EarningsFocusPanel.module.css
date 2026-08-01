@@ -120,11 +120,8 @@
   color: var(--color-text-tertiary);
 }
 
-.caption {
-  font-size: var(--text-micro);
-  line-height: 1.5;
-  color: var(--color-text-tertiary);
-}
+/* `.caption`은 §98에서 삭제 — 각주 2곳(재무 기준·뉴스 출처)이 `NoteDisclosure`로
+   옮겨 가면서 사용처가 0이 됐다. 폰트·색은 이제 그 컴포넌트가 쥔다. */
 
 .status {
   padding: var(--space-16) 0;
