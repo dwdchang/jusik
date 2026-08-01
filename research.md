@@ -71,7 +71,7 @@
 | `indices/market/page.tsx` | 글로벌 지표(§37에서 표시명 `시장`→`글로벌 지표` — 라우트·컴포넌트명·Redis 키는 `market` 유지). **§88 전면 개편**(차트 전면 제거 — `BtcChartClient`·`BtcLineChart`는 파일까지 삭제, `IndexChartClient`는 지수 상세·DXY가 계속 써서 남김) **→ §89 타일 재개편**: 맨 위 「주요 지표」 카드에 **3열 2행 `GlobalTileGrid`**(미국 10년물·비트코인(USD) + `highlights` 구획의 반도체·두바이유·브렌트유·WTI) — **출처가 둘**이라 구획 컴포넌트로 못 그린다(앞 2개는 10분 주기 `market:detail`, 뒤 4개는 하루 3회차 `market:globalTable`). 그 아래 **`GlobalTileSection` 4개**(세계 증시 **4열**(§90)·환율 **4열**·귀금속·비철금속 3열·농산물 3열, **전부 펼침**). 열 수는 화면이 구획 id로 정한다(`FOUR_COLUMN_SECTIONS`) — 스냅샷에 표현 정보를 넣지 않았다. **세계 증시 첫 타일 코스피는 구획 밖에서 온다**(§90) — `market:detail:kospi`(10분)를 표 스냅샷 행 모양으로 만들어 `rows` 앞에 끼우므로 구획 컴포넌트는 그대로 쓴다. **기준일·일별 기록·`btcKrw` 제거**(§89). 읽기는 `getMarketDetails` MGET 1회(3키: us10y·btcUsd·kospi) + `getGlobalTable` 1회 **병렬**. 헤더 「마지막 갱신」은 detail 3종 기준이고 **지표는 자기 갱신 시각을 따로 적는다** — 하루 3회차라 같이 묶으면 10분마다 도는 값까지 낡아 보인다(§85 dxy와 같은 이유). **§91에서 각주 6지점(주요 지표·구획 4개·갱신 주기 푸터)이 `NoteDisclosure` 접힘 토글로** — 값을 크게 보려고 만든 타일 아래에 4~5줄 회색 문단이 붙어 §89·§90의 정보 밀도가 되돌아간 것을 되돌린다 |
 | `indices/actions.ts` | 지수 상세 Server Action 1종 (Phase 93) — `fetchIntradayFlowSlots(market, tradingDate)`: 일별 수급 표에서 펼친 하루의 장중 시각 슬롯을 `:archive:{날짜}` GET 1회로 돌려준다. **Redis 스냅샷만 읽고 KIS 호출 없음**(§2). UI를 거치지 않고도 POST되는 엔드포인트라 페이지 게이트와 별개로 `auth`+허용 이메일을 다시 검사하고, `market` 화이트리스트·거래일 `YYYY-MM-DD` 패턴·축적 시작일 이후인지까지 확인한 뒤에야 키를 조립한다. 수동 트리거 슬롯(`:manual:`)은 읽지 않는다. 없는 날은 빈 배열(화면 "기록 없음"), Redis 실패는 예외로 올려 화면이 재시도를 안내 |
 | `indices/trade/[yyyymm]/page.tsx` | 수출입 상세(Phase 17-5) — 월 합계 3지표 + 품목별(국가 무관, HS 4단위 상위 15+기타) + 국가별(상위 8+기타, 클릭 시 품목 팝업). `getTradeDetailView` 1회. `/feeds` 수출입 탭의 월 링크로 진입. 맨 아래 출처·오차 각주는 §91에서 `NoteDisclosure` 접힘(표 위 `cardNote` 2개는 집계 기준·조작 안내라 그대로 펼침) |
-| `indices/kospi-volatility/page.tsx` | 변동성 상세 — 월별 평균 막대 차트 + 당월 일별 기록 목록. 푸터 계산식 안내는 §91에서 `NoteDisclosure` 접힘 |
+| `indices/kospi-volatility/page.tsx` | 변동성 상세 — 월별 평균 막대 차트 + 기준월 일별 기록 목록(§95에서 「당월」 고정 → 폴백, 제목에 월 명시). 푸터 계산식 안내는 §91에서 `NoteDisclosure` 접힘 |
 | `stocks/page.tsx` | **내 종목 목록**(Phase 56, Phase 58에서 `/watchlist`→`/stocks`로 개명·통합 — 제목 `내 종목`, 홈 "내 종목" 카드에서 진입) — **4탭 단일 구조**(`?mode=all\|holdings\|watchlist\|balance` 서버 탭 `TABS`, 기본 `all`, 핫종목·배당과 동형). 표 폼은 배당률 순위 표 관례(`.tableScroll`+`.stockTable`, **종목명 열 sticky** 가로 스크롤, 값 숫자 열 우측 `.numCell`). **모두·보유종목 탭 = 종목명+6열**(현재가·등락률(전일 대비)·수익률·수익금·평균단가·총 매입금액), **관심종목 탭 = 종목명+4열**(현재가·등락률·수익률·기준일), **잔고 탭 = 표가 아니라 `<HoldingsOverview>`**(구 `/holdings` 화면 본문 통째, §58). 모두 탭의 관심종목 행은 보유 전용 3열이 `-`. **전 탭 수익률 내림차순**(`sortRowsByReturnRate`, 수익률 null은 맨 뒤·그들끼리 종목명순). 보유·관심에 같은 종목이 있으면 **2행으로 따로** 표시(합치지 않음 — 사용자 확정). 모두 탭에서만 보유종목 **종목명 글자색** 강조(`--color-holding-name`, 라이트/다크 2벌). 데이터는 활성 탭 것만 로드(`getHoldings`+`getPortfolioValuation` / `getWatchlist`, **잔고 탭은 목록·시세를 읽지 않고 `HoldingsOverview`가 직접 읽는다**)하고 시세는 두 목록 합집합 `getStockSnapshots` 1회(+평가 내부 MGET 1회) — KIS 직접 호출 없음. 추가 폼은 **관심종목 탭(기준일 → `addWatchItemAction`)과 잔고 탭(수량·총 매입금액 → `addHoldingAction`)에만**(§58에서 보유종목 탭 추가 폼 제거 — 보유 등록 동선은 잔고 탭 하나), 모두·보유 탭엔 없음. 종목명 클릭 시 펼침(`StockRowItem`, 아래) |
 | `stocks/[symbolCode]/page.tsx` | **종목 상세 통합 라우트**(Phase 58 — 구 `holdings/[symbolCode]`+`watchlist/[symbolCode]`). 같은 종목이 보유·관심에 동시에 있을 수 있어 **`?kind=holding\|watch`로 어느 쪽 상세인지 가른다**(A안). kind가 없거나 그쪽 목록에 없으면 **보유 → 관심 순 폴백**, 둘 다 없으면 `/stocks` redirect. 보유=평가 요약 6지표·보유 내역 수정/삭제(`?kind=holding&edit=1`)·2년 평가금액 추이·일별 기록(`DailyHistoryList`+종가 열, §29) / 관심=현재가·기준일·기준가·등록 기준 수익률 3지표·등록일 이후 기준가 대비 추이(현재가·등락률·수익률은 스냅샷이 없으면 목록과 같은 종가 폴백을 흐린 값으로 표시하고, 보유 계산 `currentValue`·`profit`에는 쓰지 않는다 — Phase 65. 「저장된 시세 없음」 배너도 관심은 폴백마저 없을 때만). 공통=정보 블록 4종 + 인라인 알림 토글(`AlertToggleButton`) + 양쪽에 다 있을 때만 뜨는 반대쪽 상세 전환 줄 |
 | `stocks/rows.ts` | 표 행 모델 `StockRow`(kind=holding\|watch, 보유 전용·관심 전용 필드는 반대쪽에서 null) + `buildHoldingRows`/`buildWatchRows`/`sortRowsByReturnRate` (Phase 56). `detailHref`는 §58에서 `/stocks/{code}?kind=…`. 펼침 지표(52주 최고·최저+현재가 대비 괴리율·PER/PBR·시가총액)는 스냅샷 `raw`에서 여기서만 뽑아 행에 실어, 클라이언트가 KIS 원본 타입을 몰라도 되게 한다(`buildStockIndicators` 재사용 + `parseNum`). 오늘 손익은 평가금액을 전일 대비 등락률로 역산해 계산. **관심 행은 스냅샷이 없으면 등록 시 종가로 폴백**(`snapshot?.price ?? item.priceAtRegistration`, 등락률은 `changeRateAtRegistration`) — `provisionalPrice`·`priceBasisDate`를 행에 실어 화면이 흐리게 표시한다(Phase 65). 보유는 `provisionalPrice: false` 고정(평가금액 계산 오염 방지). 정렬은 불변(폴백 수익률 0%가 그대로 참여) |
@@ -157,7 +157,7 @@
 | `indices/getIndexDetail.ts` / `getOverseasDetail.ts` | 상세 리더 — `market:detail:{key}` 1건. **두 파일 내용이 사실상 동일** (§8) |
 | `indices/globalTable.ts` | 글로벌 지표 조립 (§88 · §89에서 6섹션 32종 → 5구획 27종 · §90에서 다우존스 복귀로 **28종**, 구획 id `oil`·`preciousMetals`·`baseMetals` → `highlights`·`metals`로 변경 — 이어받기가 `id + label` 기준이라 재편 후 첫 회차에는 이어받을 값이 없다) — `isGlobalTableRound`(하루 3회차 게이트: `GLOBAL_TABLE_ROUND_MINUTES` 09:00·15:40·18:15 + 9분 창. 세 값은 `market/staleness.ts`의 `SCHEDULE_MINUTES`에 실제로 있는 슬롯이어야 한다)·`buildGlobalTableSections`(카탈로그 `KIS_GLOBAL_TABLE_SECTIONS` 순서대로 순차 조회 — 출처 4종 `overseas`/`dxyPair`(재사용)/`detail`(재사용)/`domestic`. **항목 단위 실패 격리** 후 직전 스냅샷 행을 이어받고 `staleAt` 표시, 이어받을 값도 없으면 그 행만 빠진다. `rt_cd=0`인데 종가가 0인 계열은 실패로 다뤄 "0.00"이 표에 남지 않게 한다) |
 | `indices/marketFlow.ts` | 거래대금·수급 계산 (§86, 순수 함수) — `pickBaselineSlot`(§70에서 이동, 현재 시각 이하 마지막 슬롯. **상세·홈이 같은 기준을 쓰게 공용화**)·`computeFlowStreak`(같은 부호 연속 거래일. 당일 행부터 세므로 **장중엔 확정값 아님**, 20거래일 창 소진 시 `capped`, 당일 0이면 null)·`buildHomeIndexFlow`(홈 카드용 요약 조립 — 거래대금·3열 각각 전일 슬롯 우선·전일 종일 폴백, 둘 다 없으면 null) |
-| `indices/volatility.ts` | 변동성 기록 store+계산+카드 요약 (한 파일에 쓰기·읽기 혼재). 카드 요약은 최신 2개 기록의 전일 대비 + 월 집계 2종, 당일 진행분 판정(KST 15:30)까지 (§71) |
+| `indices/volatility.ts` | 변동성 기록 store+계산+카드 요약 (한 파일에 쓰기·읽기 혼재). 카드 요약은 최신 2개 기록의 전일 대비 + 월 집계 2종, 당일 진행분 판정(KST 15:30)까지 (§71). **월 지표 기준월은 `resolveVolatilityBaseMonth`가 정한다** — 당월 기록이 있으면 당월, 달이 바뀐 뒤 첫 거래일 전이면 기록이 있는 마지막 달 (§95). 카드·상세가 이 헬퍼와 `monthLabel`을 공유해 기준월이 어긋나지 않는다 |
 | `indices/dates.ts` | `getLast7BusinessDates` — **현재 미사용 (레거시)** (§9.2) |
 | `market/store.ts` | 공용 시세 Redis 스토어 — `market:detail:*`, `market:stock:*`, `market:stockInfo:*`(배당 회차 `rounds` 포함, §25), `market:lastRefreshAt`(`LastRefreshRecord`: `at`=마지막 성공·`attemptedAt`=마지막 실행 시작(§52)·`trigger`·`ok`), `market:dailyFluctuation`, `market:weeklyFluctuation`, `market:stockMaster`, `market:investor:*`(§42), `market:investorIntraday:*`(+`:baseline` §70, +`:archive:{날짜}`·`:manual:{날짜}` §92 — 후자 2종은 **TTL 없는 영구 축적**이며 미러 스크립트가 `INTRADAY_ARCHIVE_SCAN_MATCH`로 훑는다), `market:fiRanking:*`(§50), `market:marketCapRanking:*`(+`:baseline`, §68), `market:globalTable`(§88·§89·§90 — 구획 5×28종의 값·등락률·기준일만, 항목별 detail 키를 만들지 않아 화면이 GET 1회로 완결) (§5). `getStockInfoBlocksMap`(MGET 일괄, 없는 종목은 맵에서 제외) 제공 |
 | `stocks/search.ts` | `"use server"` — `searchStocks(query)` 종목명 검색 액션. `auth`+`isEmailAllowed` 가드 후 `market:stockMaster` 부분일치 필터, 접두 우선·가나다 정렬 상위 20. 등록 폼 전용, KIS 직접 호출 없음 |
@@ -612,11 +612,13 @@ QStash 스케줄 (매일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 * * *) → POST /a
   (Phase 17-2에서 A안 철회 — 보유·관심 상세 페이지는 더 이상 공시를 읽지 않는다.
   17-2b에서 게시판을 홈 전체폭→`/feeds`로 이동.)
 - **핫종목**: `?mode` 서버 분기 — 월간은 `getHotStocks` 통짜 1건→`?period` 탭(링크에 `mode=monthly` 유지), 당일/주간은 `getDailyFluctuation`/`getWeeklyFluctuation` 1건(상위 30)+`getStockMaster`(위첨자 매핑)+`resolveStaleness`. (검증: 알 수 없는 mode→daily, period→1m).
-- **변동성**: `getVolatilityHistory` → `aggregateMonthlyAverages`(최근 6개월) + 당월 필터
+- **변동성**: `getVolatilityHistory` → `aggregateMonthlyAverages`(최근 6개월) + 기준월 필터
   일별 기록 목록(내림차순 — 페치 1회 재사용, Phase 27).
   홈 카드(`getVolatilityCardSummary`)는 같은 history 1건에서 **최신 2개 기록으로 전일 대비**,
-  월 집계로 당월 평균·전월 대비를 함께 만든다(§71 — 기록이 1건이라도 있으면 카드 표시,
-  당월/전월분이 없으면 해당 값만 null).
+  월 집계로 기준월 평균·전월 대비를 함께 만든다(§71 — 기록이 1건이라도 있으면 카드 표시).
+  **기준월은 당월 고정이 아니라 `resolveVolatilityBaseMonth` 폴백**(§95) — 당월 기록이
+  0건인 달 초에도 월평균 줄·일별 목록이 사라지지 않고 직전 달 기준으로 남는다. 전월분이
+  없을 때만 `monthOverMonthDiff`가 null.
 - **예외 — DLQ(`/dlq`, Phase 18)**: 유일하게 Redis가 아닌 외부 API(QStash)를 Server
   Component에서 직접 읽는다(`listDlqMessages`, `QSTASH_TOKEN` 서버 전용). 운영 확인용
   읽기 전용 화면이라 스냅샷 캐시 없음. KIS 금지 원칙(§3)과는 무관(QStash는 KIS 아님).
@@ -745,7 +747,8 @@ QStash 스케줄 (매일 03:00 KST — CRON_TZ=Asia/Seoul 0 3 * * *) → POST /a
   `IndexSnapshot`/`IndexSeries`/`IndexDailyRow`/`IndexDetailData`/`IndexDashboardData`
   (§86에서 `kospiFlow`·`kosdaqFlow` 추가), `HomeIndexFlow`/`HomeIndexFlowInvestor`(§86 홈 카드
   거래대금·수급 보조 블록 — 금액은 전부 백만원 원값, 표기는 화면에서),
-  `PriceDirection`, 변동성 3종(`VolatilityCardSummary`는 §71에서 일 지표 4·월 지표 2로 확장),
+  `PriceDirection`, 변동성 3종(`VolatilityCardSummary`는 §71에서 일 지표 4·월 지표 2로 확장,
+  §95에서 월 지표가 `baseMonth`·`baseMonthAvg`·`monthOverMonthDiff` 3종 — 앞 둘은 non-null),
   `KIS_DATA_NOTICE`, `INDICATOR_NAMES`.
 - `types/holdings.ts` — `Holding`(totalCost 모델), `PortfolioDailyRecord`,
   `HoldingValuation`/`PortfolioValuation`. (`HoldingsCardSummary`는 §58 홈 보유종목 카드 삭제와 함께 제거)
