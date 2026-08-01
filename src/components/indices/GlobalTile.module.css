@@ -10,12 +10,16 @@
   min-width: 0;
 }
 
-/* 항목 이름. §96에서 13px로 올렸다가 §96.1에서 11px로 되돌렸다 — 사용자가 키우려던
-   것은 항목명이 아니라 구획 제목이었고, 둘 다 크면 타일 안이 무거워진다. */
+/* 항목 이름(코스피·미국·두바이유 …) — **13px regular·primary** (§96.2).
+   §96에서 13px로 올렸다가 §96.1에서 11px로 되돌렸는데, 사용자가 가리킨 "컬럼명"이
+   결국 이 줄이어서 다시 키웠다. 굵기는 medium → **regular**로 낮춘다(사용자 확정
+   "굵기는 하지 말고 좀 더 크게"). 색은 secondary → primary — 구획 제목과 크기가
+   같아진 만큼 색으로 앞뒤를 가른다(제목 secondary / 라벨 primary). 값은 여전히
+   clamp 15~24px·bold라 타일 안 위계는 값이 쥔다. */
 .label {
-  font-size: var(--text-micro);
-  font-weight: var(--weight-medium);
-  color: var(--color-text-secondary);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-regular);
+  color: var(--color-text-primary);
   line-height: 1.3;
   /* 「인도네시아」처럼 타일 폭을 넘는 라벨은 두 줄이 된다 — 행 높이는 그 행에서
      가장 높은 타일이 정하므로 열이 어긋나지 않는다 */

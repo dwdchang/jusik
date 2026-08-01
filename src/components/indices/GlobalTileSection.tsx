@@ -25,9 +25,10 @@ export function GlobalTileSection({
 }) {
   return (
     <details className={styles.card} open>
+      {/* 「8종」 항목 수 표기는 §96.2에서 제거 — 타일이 눈앞에 다 보이는 배치라
+          세어 줄 필요가 없고, 제목 옆 군더더기로만 남았다(사용자 확정) */}
       <summary className={styles.summary}>
         <h2 className={styles.title}>{section.title}</h2>
-        <span className={styles.count}>{section.rows.length}종</span>
         <span className={styles.chevron} aria-hidden="true">
           ▾
         </span>

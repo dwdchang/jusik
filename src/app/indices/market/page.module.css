@@ -42,12 +42,13 @@
 }
 
 /* 「주요 지표」 — 아래 구획 카드들과 같은 위계라 `GlobalTileSection`의 `.title`과
-   크기·굵기를 맞춘다 (§96.1). 둘이 어긋나면 첫 카드만 다른 종류로 보인다. */
+   크기·굵기·색을 맞춘다 (§96.1 → §96.2에서 13px regular·secondary로). 둘이
+   어긋나면 첫 카드만 다른 종류로 보인다. */
 .cardTitle {
   margin-bottom: var(--space-8);
-  font-size: var(--text-section-title);
+  font-size: var(--text-caption);
   font-weight: var(--weight-regular);
-  color: var(--color-text-primary);
+  color: var(--color-text-secondary);
 }
 
 /* 각주 본문은 NoteDisclosure(§91)가 그리고 여기는 카드 안 여백만 준다 */
