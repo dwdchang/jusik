@@ -11,6 +11,7 @@ import { formatIndex } from "@/lib/format/index";
 import type { DailyHotCardSummary } from "@/lib/hotstocks/dailyCard";
 import { formatKstTime } from "@/lib/format/datetime";
 import { resolveDirection } from "@/lib/indices/kisMapper";
+import { monthLabel } from "@/lib/indices/volatility";
 import type {
   RefreshIncident,
   StalenessLevel,
@@ -120,7 +121,8 @@ function dollarIndexNote(dxy: IndexSnapshot | null): string | undefined {
 
 /**
  * 변동성 카드 — 대표값은 최신 거래일의 일중 변동폭, 1행 전일 대비(장중이면 진행 중 표시),
- * 2행은 기준이 다른 월 지표(당월 평균 · 전월 대비)를 한 줄로 (§71).
+ * 2행은 기준이 다른 월 지표(기준월 평균 · 전월 대비)를 한 줄로 (§71).
+ * 기준월은 당월 첫 거래일 전이면 직전 기록 월이라 라벨에 달을 명시한다 (§95).
  */
 function volatilitySummaryProps(
   summary: VolatilityCardSummary,
@@ -128,9 +130,7 @@ function volatilitySummaryProps(
   staleness: StalenessLevel | null
 ) {
   const monthParts = [
-    summary.currentMonthAvg !== null
-      ? `월평균 ${summary.currentMonthAvg.toFixed(2)}%`
-      : null,
+    `${monthLabel(summary.baseMonth)} 평균 ${summary.baseMonthAvg.toFixed(2)}%`,
     summary.monthOverMonthDiff !== null
       ? `전월 ${formatPercentPoint(summary.monthOverMonthDiff)}`
       : null,

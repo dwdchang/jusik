@@ -77,6 +77,32 @@ export function computeVolatilityRecords(
     .filter((record): record is KospiVolatilityRecord => record !== null);
 }
 
+/** "2026-07" → "7월" */
+export function monthLabel(month: string): string {
+  return `${Number(month.slice(5))}월`;
+}
+
+/**
+ * 월 지표(카드 월평균·상세 일별 목록)의 기준월 — 당월 기록이 있으면 당월,
+ * 없으면 기록이 있는 마지막 달 (§95).
+ *
+ * 달이 바뀐 뒤 당월 첫 거래일 전에는 당월 기록이 0건이라, 당월로 고정하면
+ * 월평균 줄과 일별 목록이 통째로 사라진다. 기록이 아예 없을 때만 당월을 낸다.
+ *
+ * @param records 날짜 오름차순 기록
+ */
+export function resolveVolatilityBaseMonth(
+  records: KospiVolatilityRecord[],
+  today: string = todayKstDate()
+): string {
+  const currentMonth = today.slice(0, 7);
+
+  if (records.some((record) => record.date.startsWith(currentMonth))) {
+    return currentMonth;
+  }
+  return records.at(-1)?.date.slice(0, 7) ?? currentMonth;
+}
+
 /** 월별 평균 변동성 — 기록이 있는 최근 monthCount개월 (오름차순) */
 export function aggregateMonthlyAverages(
   records: KospiVolatilityRecord[],
@@ -96,7 +122,7 @@ export function aggregateMonthlyAverages(
     .slice(-monthCount)
     .map(([month, values]) => ({
       month,
-      label: `${Number(month.slice(5))}월`,
+      label: monthLabel(month),
       avgGapPercent:
         values.reduce((sum, value) => sum + value, 0) / values.length,
     }));
@@ -117,9 +143,9 @@ function previousMonth(month: string): string {
 const MARKET_CLOSE_HHMM = "1530";
 
 /**
- * 홈 카드 요약 — 대표값은 **최신 거래일의 일중 변동폭**, 보조로 당월 평균·전월 대비 (§71).
+ * 홈 카드 요약 — 대표값은 **최신 거래일의 일중 변동폭**, 보조로 기준월 평균·전월 대비 (§71).
  * 기록이 하나도 없거나 조회 실패 시 null (placeholder 표시).
- * 월 지표는 당월 기록이 없는 달 초에도 카드를 비우지 않도록 각각 null을 허용한다.
+ * 월 지표의 기준월은 당월 첫 거래일 전이면 직전 기록 월로 폴백한다 (§95).
  */
 export async function getVolatilityCardSummary(): Promise<VolatilityCardSummary | null> {
   try {
@@ -135,10 +161,15 @@ export async function getVolatilityCardSummary(): Promise<VolatilityCardSummary 
 
     const today = todayKstDate();
     const monthly = aggregateMonthlyAverages(records);
-    const currentMonth = today.slice(0, 7);
-    const current = monthly.find((point) => point.month === currentMonth);
+    const baseMonth = resolveVolatilityBaseMonth(records, today);
+    const base = monthly.find((point) => point.month === baseMonth);
+
+    if (base === undefined) {
+      return null;
+    }
+
     const prevMonth = monthly.find(
-      (point) => point.month === previousMonth(currentMonth)
+      (point) => point.month === previousMonth(baseMonth)
     );
 
     return {
@@ -150,10 +181,11 @@ export async function getVolatilityCardSummary(): Promise<VolatilityCardSummary 
           : null,
       latestIntraday:
         latest.date === today && kstHhmm(Date.now()) < MARKET_CLOSE_HHMM,
-      currentMonthAvg: current?.avgGapPercent ?? null,
+      baseMonth,
+      baseMonthAvg: base.avgGapPercent,
       monthOverMonthDiff:
-        current !== undefined && prevMonth !== undefined
-          ? current.avgGapPercent - prevMonth.avgGapPercent
+        prevMonth !== undefined
+          ? base.avgGapPercent - prevMonth.avgGapPercent
           : null,
     };
   } catch (error) {

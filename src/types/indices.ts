@@ -383,8 +383,13 @@ export interface VolatilityCardSummary {
    * 계속 벌어지는 진행 값이라 전일 대비가 낮게 나온다. 표기로 구분한다 (§71).
    */
   latestIntraday: boolean;
-  /** 당월 평균 변동성(%) — 오늘까지의 진행분 평균. 당월 기록이 없으면 null */
-  currentMonthAvg: number | null;
-  /** 전월 대비 증감(%p), 당월·전월 기록이 없으면 null */
+  /**
+   * 월 지표 기준월 "YYYY-MM" — 당월 기록이 있으면 당월, 달이 바뀐 뒤 당월 첫 거래일
+   * 전이면 기록이 있는 마지막 달 (§95). 라벨에 이 달을 명시한다.
+   */
+  baseMonth: string;
+  /** 기준월 평균 변동성(%) — 기준월이 당월이면 오늘까지의 진행분 평균 */
+  baseMonthAvg: number;
+  /** 기준월의 전월 대비 증감(%p), 전월 기록이 없으면 null */
   monthOverMonthDiff: number | null;
 }

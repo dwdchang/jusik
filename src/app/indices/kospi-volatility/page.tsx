@@ -3,10 +3,11 @@ import { VolatilityChartClient } from "@/components/indices/VolatilityChartClien
 import { NavIconLink } from "@/components/nav/NavIconLink";
 import { NoteDisclosure } from "@/components/ui/NoteDisclosure";
 import { ensureAllowedSession } from "@/lib/auth/ensureAllowedSession";
-import { todayKstDate } from "@/lib/date/kst";
 import {
   aggregateMonthlyAverages,
   getVolatilityHistory,
+  monthLabel,
+  resolveVolatilityBaseMonth,
 } from "@/lib/indices/volatility";
 import type {
   KospiVolatilityRecord,
@@ -16,22 +17,24 @@ import styles from "./page.module.css";
 
 export const metadata: Metadata = {
   title: "코스피 변동성 지수 — jusik",
-  description: "코스피 일중 변동성 — 최근 6개월 월별 평균 차트 + 당월 일별 기록",
+  description: "코스피 일중 변동성 — 최근 6개월 월별 평균 차트 + 일별 기록",
 };
 
 export default async function KospiVolatilityPage() {
   await ensureAllowedSession();
 
   let points: VolatilityMonthlyPoint[];
-  let currentMonthRecords: KospiVolatilityRecord[];
+  let baseMonth: string;
+  let baseMonthRecords: KospiVolatilityRecord[];
 
   try {
     const records = await getVolatilityHistory();
     points = aggregateMonthlyAverages(records);
 
-    const currentMonth = todayKstDate().slice(0, 7);
-    currentMonthRecords = records
-      .filter((record) => record.date.startsWith(currentMonth))
+    // 달이 바뀐 뒤 당월 첫 거래일 전에는 직전 기록 월을 보여준다 (§95)
+    baseMonth = resolveVolatilityBaseMonth(records);
+    baseMonthRecords = records
+      .filter((record) => record.date.startsWith(baseMonth))
       .reverse();
   } catch (error) {
     console.error("[KospiVolatilityPage] getVolatilityHistory failed:", error);
@@ -70,11 +73,13 @@ export default async function KospiVolatilityPage() {
           )}
         </section>
 
-        {currentMonthRecords.length > 0 ? (
-          <section className={styles.section} aria-label="당월 일별 기록">
-            <h2 className={styles.sectionTitle}>당월 일별 기록</h2>
+        {baseMonthRecords.length > 0 ? (
+          <section className={styles.section} aria-label="일별 기록">
+            <h2 className={styles.sectionTitle}>
+              {monthLabel(baseMonth)} 일별 기록
+            </h2>
             <ol className={styles.dailyList}>
-              {currentMonthRecords.map((record) => (
+              {baseMonthRecords.map((record) => (
                 <li key={record.date} className={styles.dailyRow}>
                   <span className={styles.dailyDate}>{record.date}</span>
                   <span className={`${styles.dailyValue} numeric`}>
@@ -89,8 +94,9 @@ export default async function KospiVolatilityPage() {
         <footer className={styles.footer}>
           <NoteDisclosure>
             코스피 변동성 지수는 일중 (고가 − 저가) ÷ 저가 × 100(%)의 월별
-            평균입니다. 당월은 오늘까지의 진행분 평균이며, 일별 기록은 평일 장중
-            갱신 회차(09:00~15:30 KST, 10분 간격)마다 저장됩니다.
+            평균입니다. 당월은 오늘까지의 진행분 평균이고, 달이 바뀐 뒤 첫
+            거래일 전에는 직전 달 기록을 그대로 보여줍니다. 일별 기록은 평일
+            장중 갱신 회차(09:00~15:30 KST, 10분 간격)마다 저장됩니다.
           </NoteDisclosure>
         </footer>
       </div>
